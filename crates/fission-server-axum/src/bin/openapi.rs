@@ -1,6 +1,6 @@
+use fission_server::docs::ApiDoc;
 use std::{fs::File, io::prelude::*, path::PathBuf};
 use utoipa::OpenApi;
-use fission_server::docs::ApiDoc;
 
 fn main() {
     let json_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/specs/latest.json");
