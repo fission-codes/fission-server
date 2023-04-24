@@ -15,4 +15,3 @@ pub mod routes;
 pub mod settings;
 pub mod tracer;
 pub mod tracing_layers;
-
