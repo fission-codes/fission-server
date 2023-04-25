@@ -4,7 +4,7 @@ version = "0.1.0"
 description = ""
 keywords = []
 categories = []
-include = ["/src", "README.md", "LICENSE"]
+include = ["/src", "README.md", "../LICENSE"]
 license = "Apache-2.0"
 readme = "README.md"
 edition = "2021"
@@ -32,7 +32,7 @@ bench = false
 
 [dependencies]
 ansi_term = { version = "0.12", optional = true, default-features = false }
-anyhow = { version = "1.0", features = ["backtrace"] }
+anyhow = { workspace = true }
 async-trait = "0.1"
 axum = { version = "0.6", features = ["headers"] }
 axum-tracing-opentelemetry = { version = "0.10", features = ["otlp"] }
@@ -41,6 +41,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 config = "0.13"
 console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
+fission-common = { path = "../fission-common" }
 futures = "0.3"
 headers = "0.3"
 http = "0.2"
@@ -79,8 +80,10 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.18"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
+ucan = { workspace = true }
+ucan-key-support = "0.1.2"
 ulid = { version = "1.0", features = ["serde"] }
-url = "2.3"
+url = { workspace = true }
 utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
 utoipa-swagger-ui = { version = "3.1", features = ["axum"] }
 

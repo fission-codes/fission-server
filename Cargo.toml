@@ -1,2 +1,7 @@
 [workspace]
 members = ["fission-server"]
+
+[workspace.dependencies]
+anyhow = { version = "1.0", features = ["backtrace"] }
+ucan = "0.1.2"
+url = "2.3"

@@ -1,0 +1,6 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "./fission-server/Cargo.toml"
+  ],
+  "rust-analyzer.showUnlinkedFileNotification": false
+}
