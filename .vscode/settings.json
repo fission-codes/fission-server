@@ -1,0 +1,9 @@
+{
+  "rust-analyzer.cargo.extraEnv": {
+    "CARGO_TARGET_DIR": "/tmp/cargo-target"
+  },
+  "rust-analyzer.linkedProjects": [
+    "./fission-server/Cargo.toml"
+  ],
+  "rust-analyzer.showUnlinkedFileNotification": false
+}

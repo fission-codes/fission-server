@@ -1,0 +1,26 @@
+[package]
+name = "fission-common"
+version = "0.1.0"
+description = ""
+keywords = []
+categories = []
+include = ["/src", "README.md", "../LICENSE"]
+license = "Apache-2.0"
+readme = "README.md"
+edition = "2021"
+rust-version = "1.64"
+documentation = "https://docs.rs/fission-common"
+repository = "https://github.com/fission-codes/fission-server"
+authors = ["Steven Vandevelde <icid.asset@gmail.com>"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ucan = { workspace = true }
+ucan-key-support = { workspace = true }
+url = { workspace = true }
