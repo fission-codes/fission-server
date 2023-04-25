@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >
       github.ref == 'refs/heads/main' &&
-      github.repository_owner == 'icidasset' &&
+      github.repository_owner == 'fission-codes' &&
       github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     outputs:

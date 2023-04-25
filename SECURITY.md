@@ -13,5 +13,5 @@ Github respository's [security portal][sec-advisories] and and the
 [RustSec advisory database][rustsec-db].
 
 [rustsec-db]: https://github.com/RustSec/advisory-db
-[sec-advisories]: https://github.com/icidasset/fission-server/security/advisories
+[sec-advisories]: https://github.com/fission-codes/fission-server/security/advisories
 [support-email]: mailto:icid.asset@gmail.com
