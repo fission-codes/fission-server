@@ -49,7 +49,7 @@ paths:
           '500':
             description: Internal Server Error
 
-    /account/create:
+    /account:
       post:
         tags:
           - account
@@ -110,7 +110,7 @@ paths:
     /account/{accountName}/did:
       parameters:
         - $ref: "#/components/parameters/AccountName"
-      post:
+      put:
         tags:
           - account
         summary: Update the DID associated with an account.
@@ -125,7 +125,6 @@ paths:
                       did:
                         type: string
                         example: 'did:key:pkAlice'
-                  - $ref: "#/components/schemas/AccountIdentifier"
         responses:
           '201':
             description: created
@@ -146,10 +145,22 @@ paths:
         tags:
           - volume
         summary: Get the CID for a Volume
+
+        responses:
+          '200':
+            description: Volume CID
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Volume'
+          '400':
+            description: Bad Request
+          '500':
+            description: Internal Server Error
         security:
           - UCANAuth: []
 
-      post:
+      put:
         tags:
           - volume
         summary: Update the CID for a Volume
@@ -160,7 +171,6 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/Volume"
                   - $ref: "#/components/schemas/AccountIdentifier"
-
         responses:
           '200':
             description: success
