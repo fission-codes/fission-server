@@ -1,0 +1,396 @@
+openapi: 3.1.0
+info:
+  title: Fission Server
+  description: |-
+    This is a sketch of the API for the Fission-Server-in-Rust.
+
+    Some useful links:
+    - [The Fission Server repository](https://github.com/fission-codes/fission-server)
+    
+  version: 3.0.0alpha
+
+tags:
+  - name: auth
+    description: Authentication
+  - name: account
+    description: Account management
+  - name: volume
+    description: Volume management
+  - name: app
+    description: App management
+  - name: domain
+    description: Domain (DNS) management
+
+paths:
+    /auth/requestToken:
+      post:
+        tags:
+          - account
+          - auth
+        summary: Request an email verification token.
+        description: |-
+          Reqeust an email verification token, to be used to [create an account](#/paths/~1account~1create/post) or [reset the DID](#/paths/~1account~1update/post) associated with an account.
+        requestBody:
+          description: Email address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email:
+                    $ref: "#/components/schemas/Account/properties/email"
+        responses:
+          '200':
+            description: success
+          '400':
+            description: Bad Request
+          '429':
+            description: Too Many Requests
+          '500':
+            description: Internal Server Error
+
+    /account:
+      post:
+        tags:
+          - account
+        summary: Creates a new account
+        description: Creates a new Fission account.
+
+        requestBody:
+          description: Account parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+
+        responses:
+          '201':
+            description: created
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/Account'
+                    - $ref: '#/components/schemas/Volume'
+          '400':
+            description: Bad Request
+          '401':
+            description: Unauthorized
+          '500':
+            description: Internal Server Error
+        security:
+          - UCANAuth: []
+          - EmailTokenAuth: []
+
+    /account/{accountName}:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+
+      get:
+        tags:
+          - account
+        summary: Fetches account details for the specified account.
+
+        responses:
+          '200':
+            description: Account details
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/Account'
+                    - $ref: '#/components/schemas/Volume'
+          '400':
+            description: Bad Request
+          '500': 
+            description: Internal Server Error
+        security:
+          - UCANAuth: []
+
+    /account/{accountName}/did:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+      put:
+        tags:
+          - account
+        summary: Update the DID associated with an account.
+        description: Updates the DID associated with an account.
+        requestBody:
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      did:
+                        type: string
+                        example: 'did:key:pkAlice'
+        responses:
+          '201':
+            description: created
+          '400':
+            description: Bad Request
+          '401':
+            description: Unauthorized
+          '500':
+            description: Internal Server Error
+        security:
+          - UCANAuth: []
+          - EmailTokenAuth: []
+
+    /account/{accountName}/volume:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+      get:
+        tags:
+          - volume
+        summary: Get the CID for a Volume
+
+        responses:
+          '200':
+            description: Volume CID
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Volume'
+          '400':
+            description: Bad Request
+          '500':
+            description: Internal Server Error
+        security:
+          - UCANAuth: []
+
+      put:
+        tags:
+          - volume
+        summary: Update the CID for a Volume
+        requestBody:
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Volume"
+                  - $ref: "#/components/schemas/AccountIdentifier"
+        responses:
+          '200':
+            description: success
+          '400':
+            description: Bad Request
+          '500':
+            description: Internal Server Error
+        security:
+          - UCANAuth: []
+
+    /account/{accountName}/apps:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+      get:
+        tags:
+          - app
+          - account
+        summary: Get a list of all apps associated with the account
+        responses: 
+          '200':
+            description: success
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/App'
+          '400':
+            description: Bad Request
+          '500':
+            description: Internal Server Error
+        security:
+          - UCANAuth: []
+
+    /account/{accountName}/app/{name}:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+
+      get:
+        tags:
+          - app
+        summary: Get details for an existing App
+        parameters:
+          - in: path
+            name: name
+            description: The App Name
+            required: true
+            schema:
+              $ref: "#/components/schemas/App/properties/name"
+        responses: 
+          '200':
+            description: success
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/App"
+          '400':
+            description: Bad Request
+          '500':
+            description: Internal Server Error
+
+        security:
+          - UCANAuth: []
+
+    /account/{accountName}/app/create:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+
+      post:
+        tags:
+          - app
+        summary: Create a new App
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/App"
+        responses: 
+          '200':
+            description: success
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/App"
+          '400':
+            description: Bad Request
+          '500':
+            description: Internal Server Error
+
+        security:
+          - UCANAuth: []
+
+    /account/{accountName}/domains:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+
+      get:
+        tags:
+          - domain
+        summary: Get a list of domains for this user.
+    
+    /account/{accountName}/domain/{domain}:
+      parameters:
+        - $ref: "#/components/parameters/AccountName"
+      
+      get:
+        tags:
+          - domain
+        
+      post:
+        tags:
+          - domain
+
+
+components:
+  schemas:
+    Account:
+      type: object
+      properties:  
+        name:
+          type: string
+          format: idn-hostname
+          example: 'alice'
+        email:
+          type: string
+          format: idn-email
+          example: 'alice@example.com'
+        did:
+          type: string
+          example: 'did:key:pkAlice'
+    
+    AccountIdentifier:
+      oneOf:
+        - type: object
+          properties:
+            email:
+              $ref: "#/components/schemas/Account/properties/email"
+        - type: object
+          properties:
+            name:
+              $ref: "#/components/schemas/Account/properties/name"
+      
+    Volume:
+      type: object
+      properties:
+        cid:
+          type: string
+          example: 'QmPK1s3pNYLi9ERiq3BDxKa4XosgWwFRQUydHUtz4YgpqB'
+    
+    App:
+      type: object
+      properties:
+        name:
+          type: string
+          format: idn-hostname
+          example: 'alice-app'
+        wnfs_path:
+          type: string
+          example: '/apps/alice'
+        
+    
+    AppIdentifier:
+      allOf:
+        - $ref: "#/components/schemas/AccountIdentifier"
+        - type: object
+          properties:
+            name:
+              $ref: "#/components/schemas/App/properties/name"
+
+    Domain:
+      type: object
+      properties:
+        domain:
+          type: string
+          format: idn-hostname
+          example: "example.com"
+    
+    Hostname:
+      type: object
+      properties:
+        domain:
+          $ref: "#/components/schemas/Domain/properties/domain"
+        name:
+          type: string
+          format: idn-hostname
+          example: "host"
+
+    EmailToken:
+      type: object
+      properties:
+        email:
+          type: string
+          format: idn-email
+          example: alice@example.com
+        token:
+          type: string
+          example: '3914ee85400c'
+        expiry:
+          type: string
+          format: date-time
+  
+  parameters:
+    AccountName:
+      in: path
+      name: accountName
+      description: Account Name
+      required: true
+      schema:
+        $ref: "#/components/schemas/Account/properties/name"
+
+  securitySchemes:
+    UCANAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |-
+        Authentication using a UCAN. The UCAN issuer (`iss`) must match the expected actor - normally the [DID of the account in question](#/components/schemas/Account/did). The audience (`aud`) should be ?, or is this a use-case for UCAN invocations?
+    EmailTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: string
+      description: |-
+        Authentication using a token obtained via Fission's internal email token system. Request a token by using the [token request](#/paths/account~1requestToken) endpoint. The token is a bare string. User agents should make a request to the server to send a token, and then prompt the user to enter the token if one is required (i.e., if a DID isn't available).
