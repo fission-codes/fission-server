@@ -3,16 +3,40 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{fallback::notfound_404, health, ping},
+    routes::{auth, fallback::notfound_404, health, ping},
 };
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use utoipa::ToSchema;
+
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Debug, ToSchema)]
+/// The App State
+pub struct AppState {
+    /// An in-memory map of request tokens (email -> token)
+    pub request_tokens: Arc<Mutex<std::collections::HashMap<String, String>>>,
+}
 
 /// Setup main router for application.
 pub fn setup_app_router(db_pool: Pool) -> Router {
+    let state = AppState {
+        request_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+    };
+
     let mut router = Router::new()
         .route("/ping", get(ping::get))
         .fallback(notfound_404)
         .with_state(db_pool);
+
+    let api_router = Router::new()
+        .route("/auth/requestToken", post(auth::request_token))
+        .with_state(state)
+        .fallback(notfound_404);
+
+    router = router.nest("/api", api_router);
 
     // Logging layer
     router = router.layer(axum::middleware::from_fn(log_request_response::<Logger>));
