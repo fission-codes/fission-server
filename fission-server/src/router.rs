@@ -3,7 +3,7 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{auth, fallback::notfound_404, health, ping},
+    routes::{account, auth, fallback::notfound_404, health, ping},
 };
 use axum::{
     routing::{get, post},
@@ -18,12 +18,15 @@ use std::sync::{Arc, RwLock};
 pub struct AppState {
     /// An in-memory map of request tokens (email -> token)
     pub request_tokens: Arc<RwLock<std::collections::HashMap<String, u32>>>,
+    /// An in-memory map of accounts (username -> account)
+    pub accounts: Arc<RwLock<std::collections::HashMap<String, account::Account>>>,
 }
 
 /// Setup main router for application.
 pub fn setup_app_router(db_pool: Pool) -> Router {
     let state = AppState {
         request_tokens: Arc::new(RwLock::new(std::collections::HashMap::new())),
+        accounts: Arc::new(RwLock::new(std::collections::HashMap::new())),
     };
 
     let mut router = Router::new()
