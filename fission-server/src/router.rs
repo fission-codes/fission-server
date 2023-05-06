@@ -11,19 +11,19 @@ use axum::{
 };
 use utoipa::ToSchema;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 #[derive(Clone, Debug, ToSchema)]
 /// The App State
 pub struct AppState {
     /// An in-memory map of request tokens (email -> token)
-    pub request_tokens: Arc<Mutex<std::collections::HashMap<String, String>>>,
+    pub request_tokens: Arc<RwLock<std::collections::HashMap<String, u32>>>,
 }
 
 /// Setup main router for application.
 pub fn setup_app_router(db_pool: Pool) -> Router {
     let state = AppState {
-        request_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        request_tokens: Arc::new(RwLock::new(std::collections::HashMap::new())),
     };
 
     let mut router = Router::new()

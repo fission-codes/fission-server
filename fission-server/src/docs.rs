@@ -2,15 +2,15 @@
 
 use crate::{
     error::AppError,
-    routes::{health, ping},
+    routes::{auth, health, ping},
 };
 use utoipa::OpenApi;
 
 /// API documentation generator.
 #[derive(OpenApi)]
 #[openapi(
-        paths(health::healthcheck, ping::get),
-        components(schemas(AppError)),
+        paths(health::healthcheck, ping::get, auth::request_token),
+        components(schemas(AppError, auth::Email, auth::Response)),
         tags(
             (name = "", description = "fission-server service/middleware")
         )

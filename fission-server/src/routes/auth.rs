@@ -1,60 +1,66 @@
 //! Generic ping route.
 
-use crate::router::AppState;
+use crate::{error::AppResult, router::AppState};
 use axum::{
     self,
     extract::{Json, State},
     http::StatusCode,
-    response::IntoResponse,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use rand::{distributions::Alphanumeric, Rng};
+use utoipa::ToSchema;
 
-fn generate_random_string(len: usize) -> String {
-    let mut rng = rand::thread_rng();
-    std::iter::repeat(())
-        .map(|()| rng.sample(Alphanumeric))
-        .map(char::from)
-        .take(len)
-        .collect()
+use rand::Rng;
+
+/// Email Parameter
+#[derive(Deserialize, Clone, Debug, ToSchema)]
+pub struct Email {
+    email: String,
+}
+
+/// Response for Request Token
+#[derive(Serialize, Debug, ToSchema)]
+pub struct Response {
+    msg: String,
+}
+
+impl Response {
+    /// Create a new Response
+    pub fn new(msg: String) -> Self {
+        Self { msg }
+    }
 }
 
 /// POST handler for requesting a new token by email
-// #[utoipa::path(
-//     post,
-//     path = "/auth/requestToken",
-//     request_body = CreateEmail,
-//     responses(
-//         (status = 200, description = "Successfully sent request token"),
-//         (status = 400, description = "Invalid request"),
-//         (status = 429, description = "Too many requests"),
-//         (status = 500, description = "Internal Server Error", body=AppError)
-//     )
-// )]
-
-/// Email Parameter
-#[derive(Deserialize, Clone, Debug)]
-pub struct CreateEmail {
-    email: String,
-}
+#[utoipa::path(
+    post,
+    path = "/api/auth/requestToken",
+    request_body = Email,
+    responses(
+        (status = 200, description = "Successfully sent request token", body=Response),
+        (status = 400, description = "Invalid request"),
+        (status = 429, description = "Too many requests"),
+        (status = 500, description = "Internal Server Error", body=AppError)
+    )
+)]
 
 /// POST handler for requesting a new token by email
 pub async fn request_token(
     State(state): State<AppState>,
-    Json(payload): Json<CreateEmail>,
-) -> impl IntoResponse {
+    Json(payload): Json<Email>,
+) -> AppResult<(StatusCode, Json<Response>)> {
     let email = payload.email;
 
-    let mut request_tokens = state.request_tokens.lock().expect("lock state");
-    let request_token = request_tokens.get(&email);
+    let mut request_tokens = state.request_tokens.write().unwrap();
 
-    match request_token {
-        Some(token) => (StatusCode::OK, format!("Some?! {}", token.to_string())),
-        None => {
-            let random_string = generate_random_string(10); // Length of the random string
-            request_tokens.insert(email, random_string);
-            (StatusCode::OK, "yeah".to_string())
-        }
-    };
+    // obviously this isn't the correct behaviour, just filling in the basics.
+    request_tokens.remove(&email);
+    let mut rng = rand::thread_rng();
+    // This is maybe way too little entropy. That said, my bank sends me 5 digit codes. 🤷‍♂️
+    let random_integer: u32 = rng.gen_range(10000..=99999);
+    request_tokens.insert(email, random_integer);
+    Ok((
+        StatusCode::OK,
+        Response::new("Successfully sent request token".to_string()).into(),
+    ))
 }
