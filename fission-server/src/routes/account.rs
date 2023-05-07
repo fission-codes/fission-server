@@ -3,7 +3,7 @@
 use crate::{error::AppResult, router::AppState};
 use axum::{
     self,
-    extract::{Json, State},
+    extract::{Json, Path, State},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -85,9 +85,9 @@ pub async fn create_account(
 
 #[utoipa::path(
     get,
-    path = "/api/account/{name}",
+    path = "/api/account/:name",
     responses(
-        (status = 200, description = "Successfully created account", body=Account),
+        (status = 200, description = "Found account", body=Account),
         (status = 400, description = "Invalid request", body=Response),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
@@ -97,11 +97,50 @@ pub async fn create_account(
 /// GET handler to retrieve account details
 pub async fn get_account(
     State(state): State<AppState>,
-    name: String,
+    Path(name): Path<String>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
     let accounts = state.accounts.read().unwrap();
 
     if let Some(account) = accounts.get(&name) {
+        Ok((StatusCode::OK, Json(Response::Account(account.clone()))))
+    } else {
+        Ok((
+            StatusCode::NOT_FOUND,
+            Json(Response::Error(Message::new(
+                "Account not found".to_string(),
+            ))),
+        ))
+    }
+}
+
+/// DID Struct
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
+pub struct Did {
+    name: String,
+    did: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/account/:name/did",
+    responses(
+        (status = 200, description = "Successfully updated DID", body=Account),
+        (status = 400, description = "Invalid request", body=Response),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error", body=AppError)
+    )
+)]
+
+/// Handler to update the DID associated with an account
+pub async fn update_did(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(payload): Json<Did>,
+) -> AppResult<(StatusCode, Json<Response>)> {
+    let mut accounts = state.accounts.write().unwrap();
+
+    if let Some(account) = accounts.get_mut(&name) {
+        account.did = payload.did;
         Ok((StatusCode::OK, Json(Response::Account(account.clone()))))
     } else {
         Ok((

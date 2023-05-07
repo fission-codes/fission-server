@@ -38,7 +38,8 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
     let api_router = Router::new()
         .route("/auth/requestToken", post(auth::request_token))
         .route("/account", post(account::create_account))
-        //        .route("/account/{name}", get(account::get_account))
+        .route("/account/:name", get(account::get_account))
+        .route("/account/:name/did", post(account::update_did))
         .with_state(state)
         .fallback(notfound_404);
 
