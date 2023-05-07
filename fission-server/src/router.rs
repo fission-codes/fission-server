@@ -20,6 +20,7 @@ pub struct AppState {
     pub request_tokens: Arc<RwLock<std::collections::HashMap<String, u32>>>,
     /// An in-memory map of accounts (username -> account)
     pub accounts: Arc<RwLock<std::collections::HashMap<String, account::Account>>>,
+    //    pub volumes: Arc<RwLock<std::collections::HashMap<String, volume::Volume>>>
 }
 
 /// Setup main router for application.
@@ -36,6 +37,8 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
 
     let api_router = Router::new()
         .route("/auth/requestToken", post(auth::request_token))
+        .route("/account", post(account::create_account))
+        //        .route("/account/{name}", get(account::get_account))
         .with_state(state)
         .fallback(notfound_404);
 

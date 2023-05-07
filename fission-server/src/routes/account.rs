@@ -10,15 +10,6 @@ use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
 
-/// AccountResponse Enum
-#[derive(Debug)]
-pub enum AccountResponse {
-    /// Account created
-    Created(Json<Account>),
-    /// Bad Request
-    BadRequest(Json<Response>),
-}
-
 /// Account Struct
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct Account {
@@ -34,20 +25,29 @@ impl Account {
     }
 }
 
-/// Response Struct
+/// Message Struct
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct Response {
+pub struct Message {
     msg: String,
 }
 
-impl Response {
-    /// Create a new instance of [Response]
+impl Message {
+    /// Create a new instance of [Message]
     pub fn new(msg: String) -> Self {
         Self { msg }
     }
 }
 
-/// POST handler for requesting a new token by email
+/// Response Enum
+#[derive(Debug, Serialize)]
+pub enum Response {
+    /// Account created
+    Account(Account),
+    /// Error
+    Error(Message),
+}
+
+/// POST handler for creating a new account
 #[utoipa::path(
     post,
     path = "/api/account",
@@ -60,11 +60,11 @@ impl Response {
     )
 )]
 
-/// POST handler for requesting a new token by email
+/// POST handler for creating a new account
 pub async fn create_account(
     State(state): State<AppState>,
     Json(payload): Json<Account>,
-) -> AppResult<(StatusCode, AccountResponse)> {
+) -> AppResult<(StatusCode, Json<Response>)> {
     let mut accounts = state.accounts.write().unwrap();
 
     let name = payload.name.to_string();
@@ -72,11 +72,43 @@ pub async fn create_account(
     if accounts.contains_key(&name) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            AccountResponse::BadRequest(Response::new("Account already exists".to_string()).into()),
+            Json(Response::Error(Message::new(
+                "Account already exists".to_string(),
+            ))),
         ));
     }
 
     let account = Account::new(payload.name, payload.email, payload.did);
     accounts.insert(name, account.clone());
-    Ok((StatusCode::OK, AccountResponse::Created(account.into())))
+    Ok((StatusCode::OK, Json(Response::Account(account))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/account/{name}",
+    responses(
+        (status = 200, description = "Successfully created account", body=Account),
+        (status = 400, description = "Invalid request", body=Response),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error", body=AppError)
+    )
+)]
+
+/// GET handler to retrieve account details
+pub async fn get_account(
+    State(state): State<AppState>,
+    name: String,
+) -> AppResult<(StatusCode, Json<Response>)> {
+    let accounts = state.accounts.read().unwrap();
+
+    if let Some(account) = accounts.get(&name) {
+        Ok((StatusCode::OK, Json(Response::Account(account.clone()))))
+    } else {
+        Ok((
+            StatusCode::NOT_FOUND,
+            Json(Response::Error(Message::new(
+                "Account not found".to_string(),
+            ))),
+        ))
+    }
 }
