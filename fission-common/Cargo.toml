@@ -18,5 +18,9 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 ucan = { workspace = true }
+ucan-key-support = { workspace = true }
 url = { workspace = true }

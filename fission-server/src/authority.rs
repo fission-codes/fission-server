@@ -1,12 +1,17 @@
-use fission_common::capabilities::delegation;
-use ucan::{capability::Capability, chain::ProofChain, crypto::KeyMaterial};
+use fission_common::authority::key_material::SUPPORTED_KEYS;
+use std::time::{SystemTime, UNIX_EPOCH};
+use ucan::crypto::did::DidParser;
+
+// 🧬
+
+use fission_common::authority;
 
 ///////////
 // TYPES //
 ///////////
 
 pub struct Authority {
-    proof: ProofChain,
+    pub ucan: ucan::Ucan,
 }
 
 /////////////////////
@@ -14,28 +19,17 @@ pub struct Authority {
 /////////////////////
 
 impl Authority {
-    // pub fn try_authorize(
-    //     &self,
-    //     capability: &Capability<delegation::Resource, delegation::Ability>,
-    // ) -> Result<(), StatusCode> {
-    //     let capability_infos = self.proof.reduce_capabilities(&delegation::SEMANTICS);
+    pub async fn validate(&self) -> Result<(), authority::Error> {
+        let mut did_parser = DidParser::new(SUPPORTED_KEYS);
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|t| t.as_secs());
 
-    //     for capability_info in capability_infos {
-    //         trace!("Checking capability: {:?}", capability_info.capability);
-    //         if capability_info
-    //             .originators
-    //             .contains()
-    //             && capability_info.capability.enables(capability)
-    //         {
-    //             debug!("Authorized!");
-    //             return Ok(());
-    //         }
-    //     }
-
-    //     Err(StatusCode::UNAUTHORIZED)
-    // }
-
-    // TODO:
-    // Implement authority checking.
-    // Different functions for different capabilities, or somehow merge them?
+        ucan::Ucan::validate(&self.ucan, current_time, &mut did_parser)
+            .await
+            .map_err(|err| authority::Error::InvalidUcan {
+                reason: err.to_string(),
+            })
+    }
 }

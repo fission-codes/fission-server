@@ -2,7 +2,6 @@
 
 use crate::error::AppResult;
 use axum::{self, http::StatusCode};
-use ucan::ucan::Ucan;
 
 /// GET handler for internal pings and availability
 #[utoipa::path(
@@ -14,8 +13,6 @@ use ucan::ucan::Ucan;
     )
 )]
 
-pub async fn get(ucan: Ucan) -> AppResult<(StatusCode, String)> {
-    let ucan_string = Ucan::encode(&ucan)?;
-    let response = format!("Authed successfully!\n{}", ucan_string);
-    Ok((StatusCode::OK, response))
+pub async fn get() -> AppResult<StatusCode> {
+    Ok(StatusCode::OK)
 }

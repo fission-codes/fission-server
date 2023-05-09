@@ -1083,7 +1083,11 @@ name = "fission-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ucan 0.1.2",
+ "axum",
+ "serde",
+ "serde_json",
+ "ucan",
+ "ucan-key-support",
  "url",
 ]
 
@@ -1142,7 +1146,7 @@ dependencies = [
  "tracing-appender",
  "tracing-opentelemetry 0.18.0",
  "tracing-subscriber",
- "ucan 0.1.2",
+ "ucan",
  "ucan-key-support",
  "ulid",
  "url",
@@ -4295,34 +4299,6 @@ checksum = "497961ef93d974e23eb6f433eb5fe1b7930b659f06d12dec6fc44a8f554c0bba"
 
 [[package]]
 name = "ucan"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f45b08aa0818ab9be5d922d3931ea893a6c2e84d1a3bd6433ff2ca3e04a23425"
-dependencies = [
- "anyhow",
- "async-recursion",
- "async-std",
- "async-trait",
- "base64 0.21.0",
- "bs58",
- "cid",
- "futures",
- "getrandom 0.2.9",
- "instant",
- "libipld-core",
- "libipld-json",
- "log",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "strum",
- "strum_macros",
- "unsigned-varint",
- "url",
-]
-
-[[package]]
-name = "ucan"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0237a17cf06465fce3ab4126c91d0745123b0d21a2ef5adbd3da47d10309455"
@@ -4365,7 +4341,7 @@ dependencies = [
  "p256",
  "rsa 0.8.2",
  "sha2 0.10.6",
- "ucan 0.2.0",
+ "ucan",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

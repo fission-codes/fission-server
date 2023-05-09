@@ -4,4 +4,5 @@
 
 //! fission-common
 
+pub mod authority;
 pub mod capabilities;
