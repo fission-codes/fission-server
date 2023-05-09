@@ -29,8 +29,6 @@ impl TryFrom<Url> for Resource {
     type Error = anyhow::Error;
 
     fn try_from(value: Url) -> Result<Self> {
-        type Error = anyhow::Error;
-
         match value.scheme() {
             "did" => Ok(Resource {
                 did: format!("did:{}", value.path()),

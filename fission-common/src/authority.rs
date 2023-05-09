@@ -1,3 +1,5 @@
+//! Common code regarding authority
+
 mod error;
 
 // Public

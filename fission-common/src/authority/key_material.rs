@@ -1,3 +1,5 @@
+//! Authority key material constants and functions
+
 use ucan::crypto::did::KeyConstructorSlice;
 
 use ucan_key_support::{
@@ -9,6 +11,7 @@ use ucan_key_support::{
 // SUPPORTED KEYS
 // --------------
 
+/// Supported key types by the various Fission services
 pub const SUPPORTED_KEYS: &KeyConstructorSlice = &[
     (ED25519_MAGIC_BYTES, bytes_to_ed25519_key),
     (P256_MAGIC_BYTES, bytes_to_p256_key),

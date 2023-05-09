@@ -96,6 +96,7 @@ impl TryFrom<String> for Ability {
 // SEMANTICS //
 ///////////////
 
+#[derive(Debug)]
 pub struct Semantics {}
 
 impl CapabilitySemantics<Resource, Ability> for Semantics {}

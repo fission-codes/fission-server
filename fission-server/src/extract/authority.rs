@@ -1,3 +1,5 @@
+//! Authority extractor
+
 use axum::{
     async_trait,
     extract::{FromRequestParts, TypedHeader},
@@ -13,9 +15,7 @@ use ucan::ucan::Ucan;
 use crate::authority::Authority;
 use fission_common::{
     authority,
-    authority::Error::{
-        InsufficientCapabilityScope, InvalidUcan, MissingCredentials, MissingProofs,
-    },
+    authority::Error::{InvalidUcan, MissingCredentials},
 };
 
 ////////////
