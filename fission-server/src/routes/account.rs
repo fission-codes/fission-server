@@ -1,6 +1,9 @@
 //! Account routes
 
-use crate::{error::AppResult, router::AppState};
+use crate::{
+    error::{AppError, AppResult},
+    router::AppState,
+};
 use axum::{
     self,
     extract::{Json, Path, State},
@@ -65,7 +68,7 @@ pub async fn create_account(
     State(state): State<AppState>,
     Json(payload): Json<Account>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
-    let mut accounts = state.accounts.write().unwrap();
+    let mut accounts = state.accounts.write().await;
 
     let name = payload.name.to_string();
 
@@ -98,17 +101,15 @@ pub async fn create_account(
 pub async fn get_account(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> AppResult<(StatusCode, Json<Response>)> {
-    let accounts = state.accounts.read().unwrap();
+) -> AppResult<(StatusCode, Json<Account>)> {
+    let accounts = state.accounts.read().await;
 
     if let Some(account) = accounts.get(&name) {
-        Ok((StatusCode::OK, Json(Response::Account(account.clone()))))
+        Ok((StatusCode::OK, Json(account.clone())))
     } else {
-        Ok((
+        Err(AppError::new(
             StatusCode::NOT_FOUND,
-            Json(Response::Error(Message::new(
-                "Account not found".to_string(),
-            ))),
+            Some("Account not found".to_string()),
         ))
     }
 }
@@ -121,7 +122,7 @@ pub struct Did {
 }
 
 #[utoipa::path(
-    post,
+    put,
     path = "/api/account/:name/did",
     responses(
         (status = 200, description = "Successfully updated DID", body=Account),
@@ -137,7 +138,7 @@ pub async fn update_did(
     Path(name): Path<String>,
     Json(payload): Json<Did>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
-    let mut accounts = state.accounts.write().unwrap();
+    let mut accounts = state.accounts.write().await;
 
     if let Some(account) = accounts.get_mut(&name) {
         account.did = payload.did;

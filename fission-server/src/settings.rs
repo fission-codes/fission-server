@@ -75,6 +75,24 @@ impl std::fmt::Debug for Otel {
     }
 }
 
+/// [Mailgun] settings.
+#[serde_as]
+#[derive(Debug, Deserialize)]
+pub struct Mailgun {
+    /// Mailgun API key.
+    pub api_key: String,
+    /// Mailgun domain.
+    pub domain: String,
+    /// Mailgun Subject
+    pub subject: String,
+    /// Mailgun From Address
+    pub from_address: String,
+    /// Mailgun From Name
+    pub from_name: String,
+    /// Mailgun Template
+    pub template: String,
+}
+
 #[derive(Debug, Deserialize)]
 /// Application settings.
 pub struct Settings {
@@ -82,6 +100,7 @@ pub struct Settings {
     monitoring: Monitoring,
     server: Server,
     otel: Otel,
+    mailgun: Mailgun,
 }
 
 impl Settings {
@@ -108,6 +127,11 @@ impl Settings {
     /// Server settings getter.
     pub fn server(&self) -> &Server {
         &self.server
+    }
+
+    /// Mailgun settings getter.
+    pub fn mailgun(&self) -> &Mailgun {
+        &self.mailgun
     }
 }
 

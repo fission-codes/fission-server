@@ -34,7 +34,8 @@ bench = false
 ansi_term = { version = "0.12", optional = true, default-features = false }
 anyhow = { workspace = true }
 async-trait = "0.1"
-axum = { workspace = true }
+axum = { version = "0.6", workspace = true, features = ["headers"] }
+axum-macros = "0.3.7"
 axum-tracing-opentelemetry = { version = "0.10", features = ["otlp"] }
 base64 = "0.21"
 bb8 = "0.8.0"
@@ -50,6 +51,7 @@ headers = "0.3"
 http = "0.2"
 http-serde = "1.1"
 hyper = "0.14"
+mailgun-rs = "0.1.5"
 metrics = "0.20"
 metrics-exporter-prometheus = "0.11"
 metrics-util = { version = "0.15", default-features = true }

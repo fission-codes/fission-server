@@ -314,6 +314,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-macros"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bb524613be645939e280b7279f7b017f98cf7f5ef084ec374df373530e73277"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
 name = "axum-tracing-opentelemetry"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1161,6 +1173,7 @@ dependencies = [
  "assert-json-diff",
  "async-trait",
  "axum",
+ "axum-macros",
  "axum-tracing-opentelemetry",
  "base64 0.21.0",
  "bb8",
@@ -1176,6 +1189,7 @@ dependencies = [
  "http",
  "http-serde",
  "hyper",
+ "mailgun-rs",
  "metrics 0.20.1",
  "metrics-exporter-prometheus",
  "metrics-util 0.15.0",
@@ -1922,6 +1936,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d0d1830bcd151a6fc4aea1369af235b36c1528fe976b8ff678683c9995eade8"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "mailgun-rs"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e0a84bc9a6846455a180a8380001db7180cb0e9436425dd7ea8c8306392ccd2"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
