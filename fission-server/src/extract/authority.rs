@@ -43,7 +43,7 @@ where
         })?;
 
         // Construct authority
-        let authority = Authority { ucan: ucan };
+        let authority = Authority { ucan };
 
         // Validate the authority
         authority

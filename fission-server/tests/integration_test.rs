@@ -1,3 +1,10 @@
+use fission_server::{
+    middleware::{
+        client::metrics::Metrics, logging::Logger, reqwest_retry::RetryTransientMiddleware,
+        reqwest_tracing::ExtendedTrace,
+    },
+    settings::{AppEnvironment, HttpClient, HttpClientRetryOptions, Settings},
+};
 use http::Uri;
 use reqwest::Client;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -9,13 +16,6 @@ use std::time::Duration;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
-};
-use fission_server::{
-    middleware::{
-        client::metrics::Metrics, logging::Logger, reqwest_retry::RetryTransientMiddleware,
-        reqwest_tracing::ExtendedTrace,
-    },
-    settings::{AppEnvironment, HttpClient, HttpClientRetryOptions, Settings},
 };
 
 /// Test loading settings.

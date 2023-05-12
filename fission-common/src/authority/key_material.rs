@@ -14,7 +14,7 @@ use ucan_key_support::{
 ///////////////
 
 /// DID of the fission-server
-pub const SERVER_DID: &'static str =
+pub const SERVER_DID: &str =
     "did:key:zStEZpzSMtTt9k2vszgvCwF4fLQQSyA15W5AQ4z3AR6Bx4eFJ5crJFbuGxKmbma4";
 
 /// Supported key types by the various Fission services
