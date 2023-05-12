@@ -11,13 +11,14 @@ repos:
         entry: cargo fmt
         language: system
         types: [rust]
-        args: ["--", "--check"]
+        args: ["--all", "--", "--check"]
       - id: cargo-check
         name: cargo check
         description: Check the package for errors.
         entry: cargo check
         language: system
         types: [rust]
+        args: ["--all"]
         pass_filenames: false
       - id: clippy
         name: clippy
