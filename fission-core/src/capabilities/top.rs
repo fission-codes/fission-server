@@ -1,14 +1,12 @@
-//! Top ability
+//! Top capability
 
 use anyhow::{anyhow, Result};
 use ucan::capability::Action;
 
-/////////////
-// ABILITY //
-/////////////
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+/// Top ability
 pub enum Ability {
+    /// *
     Top,
 }
 

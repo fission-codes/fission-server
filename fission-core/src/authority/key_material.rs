@@ -28,6 +28,7 @@ pub const SUPPORTED_KEYS: &KeyConstructorSlice = &[
 // ED25519 //
 /////////////
 
+/// Generate an ed25519 key pair
 pub fn generate_ed25519_material() -> Ed25519KeyMaterial {
     let private_key = Ed25519PrivateKey::new(rand::thread_rng());
     let public_key = Ed25519PublicKey::from(&private_key);

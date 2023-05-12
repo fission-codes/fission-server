@@ -1,4 +1,4 @@
-//! DID resource
+//! DID Capabilities
 
 use anyhow::{anyhow, Result};
 use ucan::capability::Scope;
@@ -9,7 +9,9 @@ use url::Url;
 //////////////
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+/// DID Resource
 pub struct Resource {
+    /// The DID related to the resource
     pub did: String,
 }
 

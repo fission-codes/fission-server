@@ -1,4 +1,4 @@
-//! Redelegation capabilities
+//! Delegation capabilities
 
 use anyhow::{anyhow, Result};
 use ucan::capability::{Action, CapabilitySemantics, Scope};
@@ -9,8 +9,12 @@ use url::Url;
 //////////////
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+/// Delegation resource
 pub enum Resource {
+    /// All possible provable UCANs
     AllProvableUCANs,
+
+    /// All in this UCAN's proofs
     AllProofs,
 }
 
@@ -66,7 +70,9 @@ impl TryFrom<Url> for Resource {
 /////////////
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+/// Delegation ability
 pub enum Ability {
+    /// Target all the capabilities
     AllCapabilities,
 }
 
@@ -97,8 +103,10 @@ impl TryFrom<String> for Ability {
 ///////////////
 
 #[derive(Debug)]
+/// Semantics
 pub struct Semantics {}
 
 impl CapabilitySemantics<Resource, Ability> for Semantics {}
 
+/// Semantics constant
 pub const SEMANTICS: Semantics = Semantics {};

@@ -15,10 +15,23 @@ use serde_json::json;
 #[derive(Debug)]
 /// Implements https://github.com/ucan-wg/ucan-as-bearer-token#33-errors
 pub enum Error {
+    /// UCAN does not include sufficient authority to perform the requestor's action
     InsufficientCapabilityScope,
-    InvalidUcan { reason: String },
+
+    /// UCAN is expired, revoked, malformed, or otherwise invalid
+    InvalidUcan {
+        /// Reason why the UCAN is invalid
+        reason: String,
+    },
+
+    /// UCAN is missing
     MissingCredentials,
-    MissingProofs { proofs_needed: Vec<String> },
+
+    /// Referenced proofs are missing from the cache
+    MissingProofs {
+        /// The CIDs of the proofs that are missing
+        proofs_needed: Vec<String>,
+    },
 }
 
 /////////////////////
@@ -27,18 +40,16 @@ pub enum Error {
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        let note;
-
         let (status, json_value) = match self {
             Error::InsufficientCapabilityScope => (
                 StatusCode::FORBIDDEN,
                 json!({ "error": "Insufficient capability scope" }),
             ),
 
-            Error::InvalidUcan { reason } => {
-                note = format!("Invalid UCAN: {}", reason);
-                (StatusCode::UNAUTHORIZED, json!({ "error": note.as_str() }))
-            }
+            Error::InvalidUcan { reason } => (
+                StatusCode::UNAUTHORIZED,
+                json!({ "error": format!("Invalid UCAN: {}", reason) }),
+            ),
             Error::MissingCredentials => (
                 StatusCode::UNAUTHORIZED,
                 json!({ "error": "Missing credentials" }),
