@@ -1,6 +1,6 @@
 //! Authority struct and functions
 
-use fission_common::authority::key_material::SUPPORTED_KEYS;
+use fission_core::authority::key_material::SUPPORTED_KEYS;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ucan::crypto::did::DidParser;
 
@@ -41,7 +41,7 @@ impl Authority {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fission_common::authority::key_material::{generate_ed25519_material, SERVER_DID};
+    use fission_core::authority::key_material::{generate_ed25519_material, SERVER_DID};
     use ucan::builder::UcanBuilder;
 
     #[tokio::test]

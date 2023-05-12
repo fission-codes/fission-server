@@ -41,7 +41,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 config = "0.13"
 console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
-fission-common = { path = "../fission-common" }
+fission-core = { path = "../fission-core" }
 futures = "0.3"
 headers = "0.3"
 http = "0.2"

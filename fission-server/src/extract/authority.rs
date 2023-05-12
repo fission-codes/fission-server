@@ -13,7 +13,7 @@ use ucan::ucan::Ucan;
 // 🧬
 
 use crate::authority::Authority;
-use fission_common::{
+use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
 };
@@ -65,7 +65,7 @@ mod tests {
         http::StatusCode,
         routing::{get, Router},
     };
-    use fission_common::authority::key_material::{generate_ed25519_material, SERVER_DID};
+    use fission_core::authority::key_material::{generate_ed25519_material, SERVER_DID};
     use http::Request;
     use tower::ServiceExt;
     use ucan::builder::UcanBuilder;

@@ -2,7 +2,7 @@
 #![warn(missing_debug_implementations, rust_2018_idioms)]
 #![deny(unreachable_pub, private_in_public)]
 
-//! fission-common
+//! fission-core
 
 pub mod authority;
 pub mod capabilities;
