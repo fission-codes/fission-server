@@ -29,7 +29,6 @@ jobs:
           override: true
           toolchain: nightly
           components: llvm-tools-preview
-          profile: minimal
 
       - name: Cache Project
         uses: Swatinem/rust-cache@v2
@@ -38,8 +37,8 @@ jobs:
         env:
           CARGO_INCREMENTAL: '0'
           LLVM_PROFILE_FILE: "fission-server-%p-%m.profraw"
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort'
         run: cargo test --all-features
 
       - name: Install grcov
