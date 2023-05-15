@@ -6,7 +6,7 @@ info:
 
     Some useful links:
     - [The Fission Server repository](https://github.com/fission-codes/fission-server)
-    
+
   version: 3.0.0alpha
 
 tags:
@@ -102,7 +102,7 @@ paths:
                     - $ref: '#/components/schemas/Volume'
           '400':
             description: Bad Request
-          '500': 
+          '500':
             description: Internal Server Error
         security:
           - UCANAuth: []
@@ -189,7 +189,7 @@ paths:
           - app
           - account
         summary: Get a list of all apps associated with the account
-        responses: 
+        responses:
           '200':
             description: success
             content:
@@ -220,7 +220,7 @@ paths:
             required: true
             schema:
               $ref: "#/components/schemas/App/properties/name"
-        responses: 
+        responses:
           '200':
             description: success
             content:
@@ -248,7 +248,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/App"
-        responses: 
+        responses:
           '200':
             description: success
             content:
@@ -271,15 +271,15 @@ paths:
         tags:
           - domain
         summary: Get a list of domains for this user.
-    
+
     /account/{accountName}/domain/{domain}:
       parameters:
         - $ref: "#/components/parameters/AccountName"
-      
+
       get:
         tags:
           - domain
-        
+
       post:
         tags:
           - domain
@@ -289,7 +289,7 @@ components:
   schemas:
     Account:
       type: object
-      properties:  
+      properties:
         name:
           type: string
           format: idn-hostname
@@ -301,7 +301,7 @@ components:
         did:
           type: string
           example: 'did:key:pkAlice'
-    
+
     AccountIdentifier:
       oneOf:
         - type: object
@@ -312,14 +312,14 @@ components:
           properties:
             name:
               $ref: "#/components/schemas/Account/properties/name"
-      
+
     Volume:
       type: object
       properties:
         cid:
           type: string
           example: 'QmPK1s3pNYLi9ERiq3BDxKa4XosgWwFRQUydHUtz4YgpqB'
-    
+
     App:
       type: object
       properties:
@@ -330,8 +330,8 @@ components:
         wnfs_path:
           type: string
           example: '/apps/alice'
-        
-    
+
+
     AppIdentifier:
       allOf:
         - $ref: "#/components/schemas/AccountIdentifier"
@@ -347,7 +347,7 @@ components:
           type: string
           format: idn-hostname
           example: "example.com"
-    
+
     Hostname:
       type: object
       properties:
@@ -371,7 +371,7 @@ components:
         expiry:
           type: string
           format: date-time
-  
+
   parameters:
     AccountName:
       in: path
