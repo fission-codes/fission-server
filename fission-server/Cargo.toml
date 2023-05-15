@@ -37,10 +37,13 @@ async-trait = "0.1"
 axum = { workspace = true }
 axum-tracing-opentelemetry = { version = "0.10", features = ["otlp"] }
 base64 = "0.21"
+bb8 = "0.8.0"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 config = "0.13"
 console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
+diesel = { version = "2.0.4", features = ["postgres"] }
+diesel-async = { version = "0.2.2", features = ["bb8", "postgres"] }
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
 headers = "0.3"

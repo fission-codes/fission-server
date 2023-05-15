@@ -42,6 +42,11 @@
 
 ## Running the Webserver
 
+Before starting the server, make sure PostgreSQL is running and the database is created:
+```console
+createdb fission-server
+```
+
 To start-up the [axum][axum] webserver, just run:
 
 ```console
