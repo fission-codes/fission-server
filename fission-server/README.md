@@ -70,6 +70,15 @@ recommend running:
 cargo run --features ansi-logs
 ```
 
+### Database
+
+Migrations are managed using the Diesel CLI, which can be installed using:
+```console
+cargo install diesel_cli --no-default-features --features postgres
+```
+More info in the [Diesel guide](https://diesel.rs/guides/getting-started#installing-diesel-cli).
+Migrations are ran automatically when the server starts.
+
 ### Debugging and Diagnostics
 
 To better help diagnose and debug your server application, you can run:
