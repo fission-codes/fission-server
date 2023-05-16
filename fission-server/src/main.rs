@@ -3,6 +3,20 @@
 use anyhow::Result;
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
+use fission_server::{
+    docs::ApiDoc,
+    metrics::{process, prom::setup_metrics_recorder},
+    middleware::{self, request_ulid::MakeRequestUlid, runtime},
+    router,
+    routes::fallback::notfound_404,
+    settings::{Otel, Settings},
+    tracer::init_tracer,
+    tracing_layers::{
+        format_layer::LogFmtLayer,
+        metrics_layer::{MetricsLayer, METRIC_META_PREFIX},
+        storage_layer::StorageLayer,
+    },
+};
 use http::header;
 use std::{
     future::ready,
@@ -27,20 +41,6 @@ use tracing_subscriber::{
 };
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use fission_server::{
-    docs::ApiDoc,
-    metrics::{process, prom::setup_metrics_recorder},
-    middleware::{self, request_ulid::MakeRequestUlid, runtime},
-    router,
-    routes::fallback::notfound_404,
-    settings::{Otel, Settings},
-    tracer::init_tracer,
-    tracing_layers::{
-        format_layer::LogFmtLayer,
-        metrics_layer::{MetricsLayer, METRIC_META_PREFIX},
-        storage_layer::StorageLayer,
-    },
-};
 
 /// Request identifier field.
 const REQUEST_ID: &str = "request_id";
