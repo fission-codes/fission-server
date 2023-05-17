@@ -44,6 +44,7 @@ console-subscriber = { version = "0.1", default-features = false, features = [ "
 const_format = "0.2"
 diesel = { version = "2.0.4", features = ["postgres"] }
 diesel-async = { version = "0.2.2", features = ["bb8", "postgres"] }
+diesel_async_migrations = { git = "https://github.com/niroco/diesel_async_migrations.git", tag = "v0.9.0" }
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
 headers = "0.3"
