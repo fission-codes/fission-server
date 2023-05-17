@@ -48,6 +48,7 @@ diesel-async = { version = "0.2.2", features = ["bb8", "postgres"] }
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
 headers = "0.3"
+hex = "0.4.3"
 http = "0.2"
 http-serde = "1.1"
 hyper = "0.14"
@@ -92,6 +93,7 @@ ulid = { version = "1.0", features = ["serde"] }
 url = { workspace = true }
 utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
 utoipa-swagger-ui = { version = "3.1", features = ["axum"] }
+validator = { version = "0.16.0", features = ["derive"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0"

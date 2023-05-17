@@ -11,6 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use tracing::log;
 use utoipa::ToSchema;
 
 /// Account Struct
@@ -68,6 +69,21 @@ pub async fn create_account(
     State(state): State<AppState>,
     Json(payload): Json<Account>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
+    let request_tokens = state.request_tokens.read().await;
+
+    if !request_tokens.contains_key(&payload.email) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(Response::Error(Message::new(
+                "Invalid request token".to_string(),
+            ))),
+        ));
+    }
+
+    let request = request_tokens.get(&payload.email).unwrap();
+    log::info!("Request code hash: {}", request.code_hash.clone().unwrap(),);
+    log::info!("\n\nname: {}\n\n", payload.name);
+
     let mut accounts = state.accounts.write().await;
 
     let name = payload.name.to_string();
@@ -88,7 +104,7 @@ pub async fn create_account(
 
 #[utoipa::path(
     get,
-    path = "/api/account/:name",
+    path = "/api/account/{name}",
     responses(
         (status = 200, description = "Found account", body=Account),
         (status = 400, description = "Invalid request", body=Response),
@@ -103,6 +119,8 @@ pub async fn get_account(
     Path(name): Path<String>,
 ) -> AppResult<(StatusCode, Json<Account>)> {
     let accounts = state.accounts.read().await;
+
+    log::info!("name: {}", name);
 
     if let Some(account) = accounts.get(&name) {
         Ok((StatusCode::OK, Json(account.clone())))
@@ -123,7 +141,7 @@ pub struct Did {
 
 #[utoipa::path(
     put,
-    path = "/api/account/:name/did",
+    path = "/api/account/{name}/did",
     responses(
         (status = 200, description = "Successfully updated DID", body=Account),
         (status = 400, description = "Invalid request", body=Response),

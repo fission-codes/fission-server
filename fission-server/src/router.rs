@@ -3,6 +3,7 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
+    models,
     routes::{account, auth, fallback::notfound_404, health, ping, volume},
 };
 use axum::{
@@ -18,7 +19,8 @@ use tokio::sync::RwLock;
 /// The App State
 pub struct AppState {
     /// An in-memory map of request tokens (email -> token)
-    pub request_tokens: Arc<RwLock<std::collections::HashMap<String, u32>>>,
+    pub request_tokens:
+        Arc<RwLock<std::collections::HashMap<String, models::email_verification::Request>>>,
     /// An in-memory map of accounts (username -> account)
     pub accounts: Arc<RwLock<std::collections::HashMap<String, account::Account>>>,
     /// An in-memory map of volumes (username -> volume)
@@ -39,7 +41,7 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .with_state(db_pool);
 
     let api_router = Router::new()
-        .route("/auth/requestToken", post(auth::request_token))
+        .route("/auth/emailVerification", post(auth::request_token))
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
         .route("/account/:name/did", put(account::update_did))

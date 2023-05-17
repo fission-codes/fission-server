@@ -25,7 +25,7 @@ impl Volume {
 
 #[utoipa::path(
     get,
-    path = "/api/account/:name/volume",
+    path = "/api/account/{name}/volume",
     responses(
         (status = 200, description = "Volume Found", body=Volume),
         (status = 400, description = "Invalid request", body=Response),
@@ -45,7 +45,7 @@ pub async fn get_cid(
 
 #[utoipa::path(
     put,
-    path = "/api/account/:name/volume",
+    path = "/api/account/{name}/volume",
     request_body = Volume,
     responses(
         (status = 200, description = "Updated Volume CID", body=Volume),
