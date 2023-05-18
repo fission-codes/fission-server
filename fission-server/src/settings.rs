@@ -29,6 +29,13 @@ impl std::fmt::Display for AppEnvironment {
     }
 }
 
+/// Database settings.
+#[derive(Debug, Deserialize)]
+pub struct Database {
+    /// Database URL
+    pub url: String,
+}
+
 /// Server settings.
 #[derive(Debug, Deserialize)]
 pub struct Server {
@@ -71,12 +78,18 @@ impl std::fmt::Debug for Otel {
 #[derive(Debug, Deserialize)]
 /// Application settings.
 pub struct Settings {
+    database: Database,
     monitoring: Monitoring,
     server: Server,
     otel: Otel,
 }
 
 impl Settings {
+    /// Database settings getter.
+    pub fn database(&self) -> &Database {
+        &self.database
+    }
+
     /// Environment settings getter.
     pub fn environment(&self) -> AppEnvironment {
         self.server().environment

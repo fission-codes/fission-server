@@ -5,12 +5,14 @@
 //! fission-server
 
 pub mod authority;
+pub mod db;
 pub mod docs;
 pub mod error;
 pub mod extract;
 pub mod headers;
 pub mod metrics;
 pub mod middleware;
+pub mod models;
 pub mod router;
 pub mod routes;
 pub mod settings;

@@ -59,6 +59,6 @@ mod tests {
 
         let authority = Authority { ucan };
 
-        assert_eq!(authority.validate().await.is_ok(), true);
+        assert!(authority.validate().await.is_ok());
     }
 }

@@ -42,6 +42,11 @@
 
 ## Running the Webserver
 
+Before starting the server, make sure PostgreSQL is running and the database is created:
+```console
+createdb fission-server
+```
+
 To start-up the [axum][axum] webserver, just run:
 
 ```console
@@ -64,6 +69,14 @@ recommend running:
 ```console
 cargo run --features ansi-logs
 ```
+
+### Database
+
+Migrations are managed using the Diesel CLI, which can be installed using:
+```console
+cargo install diesel_cli --no-default-features --features postgres
+```
+More info in the [Diesel guide](https://diesel.rs/guides/getting-started#installing-diesel-cli).
 
 ### Debugging and Diagnostics
 

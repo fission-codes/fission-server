@@ -1,9 +1,11 @@
 //! fission-server
 
 use anyhow::Result;
+
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
+    db,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
@@ -79,7 +81,9 @@ async fn main() -> Result<()> {
 
     let app = async {
         let req_id = HeaderName::from_static(REQUEST_ID);
-        let router = router::setup_app_router()
+        let db_pool = db::pool().await?;
+
+        let router = router::setup_app_router(db_pool)
             .route_layer(axum::middleware::from_fn(middleware::metrics::track))
             .layer(Extension(env))
             // Include trace context as header into the response.

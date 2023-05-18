@@ -11,7 +11,7 @@ repos:
         entry: cargo fmt
         language: system
         types: [rust]
-        args: ["--all", "--", "--check"]
+        args: ["--all", "--"]
       - id: cargo-check
         name: cargo check
         description: Check the package for errors.
