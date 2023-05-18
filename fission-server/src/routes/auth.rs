@@ -1,6 +1,11 @@
 //! Generic ping route.
 
-use crate::{authority::Authority, error::AppResult, models::email_verification, router::AppState};
+use crate::{
+    authority::Authority,
+    error::{AppError, AppResult},
+    models::email_verification,
+    router::AppState,
+};
 use axum::{
     self,
     extract::{Json, State},
@@ -30,6 +35,9 @@ impl Response {
     post,
     path = "/api/auth/emailVerification",
     request_body = email_verification::Request,
+    security(
+        ("ucan_bearer" = []),
+    ),
     responses(
         (status = 200, description = "Successfully sent request token", body=Response),
         (status = 400, description = "Invalid request"),
@@ -41,21 +49,28 @@ impl Response {
 /// POST handler for requesting a new token by email
 pub async fn request_token(
     State(state): State<AppState>,
-    _authority: Authority,
+    authority: Authority,
     Json(payload): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
     let email = payload.email.clone();
 
     let mut request_tokens = state.request_tokens.write().await;
 
+    if payload.did != authority.ucan.issuer() {
+        Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            Some("DID must match Audience".to_string()),
+        ))?;
+    }
+
     // obviously this isn't the correct behaviour, just filling in the basics.
     request_tokens.remove(&email);
 
     let mut request = payload.clone();
     if request.compute_code_hash().is_err() {
-        return Ok((
+        return Err(AppError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Response::new("Failed to send request token.".to_string())),
+            Some("Failed to send request token.".to_string()),
         ));
     } else {
         log::info!(
@@ -72,9 +87,9 @@ pub async fn request_token(
             Json(Response::new("Successfully sent request token".to_string())),
         ))
     } else {
-        Ok((
+        Err(AppError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Response::new("Failed to send request token".to_string())),
+            Some("Failed to send request token".to_string()),
         ))
     }
 }

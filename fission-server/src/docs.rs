@@ -2,6 +2,7 @@
 
 use crate::{
     error::AppError,
+    extract::authority_addon::UcanAddon,
     models::email_verification,
     routes::{account, auth, health, ping, volume},
 };
@@ -14,6 +15,7 @@ use utoipa::OpenApi;
         account::create_account, account::get_account, account::update_did,
         volume::get_cid, volume::update_cid),
         components(schemas(AppError, email_verification::Request, auth::Response, account::Account, volume::Volume)),
+        modifiers(&UcanAddon),
         tags(
             (name = "", description = "fission-server service/middleware")
         )
