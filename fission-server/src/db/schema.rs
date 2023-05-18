@@ -1,7 +1,5 @@
 // @generated automatically by Diesel CLI.
 
-#![allow(missing_docs)]
-
 diesel::table! {
     accounts (id) {
         id -> Int4,
