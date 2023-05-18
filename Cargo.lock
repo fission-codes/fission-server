@@ -952,18 +952,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diesel_async_migrations"
-version = "0.9.0"
-source = "git+https://github.com/niroco/diesel_async_migrations.git?tag=v0.9.0#c958d50979351d0f6e956b7af021b43be349b356"
-dependencies = [
- "diesel",
- "diesel-async",
- "macros",
- "scoped-futures",
- "tracing",
-]
-
-[[package]]
 name = "diesel_derives"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1182,7 +1170,6 @@ dependencies = [
  "const_format",
  "diesel",
  "diesel-async",
- "diesel_async_migrations",
  "fission-core",
  "futures",
  "headers",
@@ -1934,15 +1921,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d0d1830bcd151a6fc4aea1369af235b36c1528fe976b8ff678683c9995eade8"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "macros"
-version = "0.1.0"
-source = "git+https://github.com/niroco/diesel_async_migrations.git?tag=v0.9.0#c958d50979351d0f6e956b7af021b43be349b356"
-dependencies = [
- "proc-macro2",
- "quote",
 ]
 
 [[package]]

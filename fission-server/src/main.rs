@@ -83,9 +83,6 @@ async fn main() -> Result<()> {
         let req_id = HeaderName::from_static(REQUEST_ID);
         let db_pool = db::pool().await?;
 
-        // Run migrations automatically
-        db::migrations::run(&db_pool).await?;
-
         let router = router::setup_app_router(db_pool)
             .route_layer(axum::middleware::from_fn(middleware::metrics::track))
             .layer(Extension(env))
