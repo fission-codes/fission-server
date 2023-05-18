@@ -1,4 +1,4 @@
-//! Database models
+//! Structs
 
 #![allow(missing_docs)]
 
