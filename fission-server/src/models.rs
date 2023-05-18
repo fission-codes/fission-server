@@ -17,7 +17,6 @@ pub struct Account {
     pub did: String,
     pub email: String,
     pub username: String,
-    pub verified: bool,
 }
 
 #[derive(Debug, Queryable)]
