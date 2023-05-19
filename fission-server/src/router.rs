@@ -41,7 +41,7 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .with_state(db_pool);
 
     let api_router = Router::new()
-        .route("/auth/emailVerification", post(auth::request_token))
+        .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
         .route("/account/:name/did", put(account::update_did))

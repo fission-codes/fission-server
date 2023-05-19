@@ -33,7 +33,7 @@ impl Response {
 /// POST handler for requesting a new token by email
 #[utoipa::path(
     post,
-    path = "/api/auth/emailVerification",
+    path = "/api/auth/email/verify",
     request_body = email_verification::Request,
     security(
         ("ucan_bearer" = []),
