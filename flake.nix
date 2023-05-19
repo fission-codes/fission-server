@@ -55,6 +55,7 @@
               rust-toolchain
               pre-commit
               protobuf
+              postgresql
               direnv
               self.packages.${system}.irust
             ]
