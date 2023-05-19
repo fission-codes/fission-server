@@ -96,6 +96,7 @@ impl Request {
 
         let sender = EmailAddress::name_address(&settings.from_name, &settings.from_address);
 
+        // The mailgun library doesn't support async, so we have to spawn a blocking task.
         if let Err(e) = tokio::task::spawn_blocking(move || client.send(&sender)).await? {
             log::error!("ERROR: Failed to send the message to the recipient. {}.", e);
             return Err(e)?;
