@@ -57,7 +57,7 @@ pub enum Response {
     path = "/api/account",
     request_body = Account,
     responses(
-        (status = 200, description = "Successfully created account", body=Account),
+        (status = 201, description = "Successfully created account", body=Account),
         (status = 400, description = "Invalid request", body=Response),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
