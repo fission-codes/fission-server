@@ -69,7 +69,7 @@ retry-policies = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_path_to_error = "0.1"
-serde_with = "2.3"
+serde_with = "3.0"
 sysinfo = "0.28"
 task-local-extensions = "0.1"
 thiserror = "1.0"
