@@ -77,14 +77,17 @@ pub async fn create_account(
         .ucan
         .facts()
         .iter()
-        .filter(|f| f.as_object().is_some())
-        .map(|f| f.as_object().unwrap().clone())
-        .filter(|f| f.contains_key("code"))
-        .find_map(|f| f["code"].as_u64());
+        .filter_map(|f| f.as_object())
+        .filter_map(|f| {
+            f.get("code")
+                .and_then(|c| c.as_str())
+                .and_then(|c| c.parse::<u64>().ok())
+        })
+        .next();
 
-    if code.is_some() {
+    if let Some(code) = code {
         let computed_hash =
-            email_verification::hash_code(&payload.email, authority.ucan.issuer(), code.unwrap());
+            email_verification::hash_code(&payload.email, authority.ucan.issuer(), code);
         if computed_hash != request.code_hash.clone().unwrap() {
             return Ok((
                 StatusCode::BAD_REQUEST,
