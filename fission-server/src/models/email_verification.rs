@@ -15,10 +15,20 @@ use rand::Rng;
 use crate::settings::Settings;
 
 /// Generate a code that can be sent to the user.
-fn generate_code() -> u32 {
+fn generate_code() -> u64 {
     let mut rng = rand::thread_rng();
     // This is maybe way too little entropy. That said, my bank sends me 5 digit codes. 🤷‍♂️
     rng.gen_range(10000..=99999)
+}
+
+/// Compute a hash given email, did, and verification code.
+pub fn hash_code(email: &str, did: &str, code: u64) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(email.as_bytes());
+    hasher.update(did.as_bytes());
+    hasher.update(code.to_string().as_bytes());
+    let result = hasher.finish();
+    hex::encode(result)
 }
 
 /// [Request] Parameters
@@ -32,7 +42,7 @@ pub struct Request {
     pub did: String,
     #[serde(skip)]
     #[serde(default = "generate_code")]
-    code: u32,
+    code: u64,
     /// The hash of the code, so that it can only be used by the intended recipient.
     /// We only store the hash, not the code itself.
     #[serde(skip_deserializing)]
@@ -48,12 +58,7 @@ impl Request {
             return Err(ValidationError::new("Failed to validate the request.").into());
         }
 
-        let mut hasher = Sha256::new();
-        hasher.update(self.email.as_bytes());
-        hasher.update(self.did.as_bytes());
-        hasher.update(self.code.to_string().as_bytes());
-        let result = hasher.finish();
-        self.code_hash = Some(hex::encode(result));
+        self.code_hash = Some(hash_code(&self.email, &self.did, self.code));
         Ok(())
     }
 

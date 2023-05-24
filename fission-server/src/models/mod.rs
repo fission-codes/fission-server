@@ -1,6 +1,8 @@
 //! Models for the Fission server.
 #![allow(missing_docs)]
 
+pub mod account;
+pub mod app;
 pub mod email_verification;
 
 use chrono::NaiveDateTime;

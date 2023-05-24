@@ -59,9 +59,24 @@ pub async fn request_token(
     if payload.did != authority.ucan.issuer() {
         Err(AppError::new(
             StatusCode::BAD_REQUEST,
-            Some("DID must match Audience".to_string()),
+            Some("did must match ucan".to_string()),
         ))?;
     }
+
+    /*
+
+    I'm not including this here, but presumably we want this check, or something like it?
+    Alternatively, we can use an invocation?
+
+    This can be done within the authority extractor, presumably?
+
+    if Settings::load()?.server()?.did != authority.ucan.audience() {
+        Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            Some("Authorization UCAN must delegate to server DID".to_string()),
+        ))?;
+    }
+    */
 
     // obviously this isn't the correct behaviour, just filling in the basics.
     request_tokens.remove(&email);

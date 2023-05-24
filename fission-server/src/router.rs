@@ -3,7 +3,7 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    models,
+    models::{self, account::NewAccount},
     routes::{account, auth, fallback::notfound_404, health, ping, volume},
 };
 use axum::{
@@ -22,7 +22,7 @@ pub struct AppState {
     pub request_tokens:
         Arc<RwLock<std::collections::HashMap<String, models::email_verification::Request>>>,
     /// An in-memory map of accounts (username -> account)
-    pub accounts: Arc<RwLock<std::collections::HashMap<String, account::Account>>>,
+    pub accounts: Arc<RwLock<std::collections::HashMap<String, NewAccount>>>,
     /// An in-memory map of volumes (username -> volume)
     pub volumes: Arc<RwLock<std::collections::HashMap<String, volume::Volume>>>,
 }
