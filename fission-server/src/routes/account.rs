@@ -16,28 +16,6 @@ use serde::{Deserialize, Serialize};
 use tracing::log;
 use utoipa::ToSchema;
 
-/// Message Struct
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct Message {
-    msg: String,
-}
-
-impl Message {
-    /// Create a new instance of [Message]
-    pub fn new(msg: String) -> Self {
-        Self { msg }
-    }
-}
-
-/// Response Enum
-#[derive(Debug, Serialize)]
-pub enum Response {
-    /// Account created
-    NewAccount(NewAccount),
-    /// Error
-    Error(Message),
-}
-
 /// POST handler for creating a new account
 #[utoipa::path(
     post,
@@ -48,7 +26,7 @@ pub enum Response {
     ),
     responses(
         (status = 201, description = "Successfully created account", body=NewAccount),
-        (status = 400, description = "Invalid request", body=Response),
+        (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
     )
@@ -59,15 +37,13 @@ pub async fn create_account(
     State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<NewAccount>,
-) -> AppResult<(StatusCode, Json<Response>)> {
+) -> AppResult<(StatusCode, Json<NewAccount>)> {
     let request_tokens = state.request_tokens.read().await;
 
     if !request_tokens.contains_key(&payload.email) {
-        return Ok((
+        return Err(AppError::new(
             StatusCode::BAD_REQUEST,
-            Json(Response::Error(Message::new(
-                "Invalid request token".to_string(),
-            ))),
+            Some("Invalid request token".to_string()),
         ));
     }
 
@@ -89,11 +65,9 @@ pub async fn create_account(
         let computed_hash =
             email_verification::hash_code(&payload.email, authority.ucan.issuer(), code);
         if computed_hash != request.code_hash.clone().unwrap() {
-            return Ok((
+            return Err(AppError::new(
                 StatusCode::BAD_REQUEST,
-                Json(Response::Error(Message::new(
-                    "Invalid validation token".to_string(),
-                ))),
+                Some("Invalid validation token".to_string()),
             ));
         }
     } else {
@@ -108,17 +82,16 @@ pub async fn create_account(
     let username = payload.username.to_string();
 
     if accounts.contains_key(&username) {
-        return Ok((
+        return Err(AppError::new(
             StatusCode::BAD_REQUEST,
-            Json(Response::Error(Message::new(
-                "Account already exists".to_string(),
-            ))),
+            Some("Account already exists".to_string()),
         ));
     }
 
     let account = NewAccount::new(payload.username, payload.email, payload.did);
     accounts.insert(username, account.clone());
-    Ok((StatusCode::OK, Json(Response::NewAccount(account))))
+
+    Ok((StatusCode::OK, Json(account)))
 }
 
 #[utoipa::path(
@@ -126,7 +99,7 @@ pub async fn create_account(
     path = "/api/account/{name}",
     responses(
         (status = 200, description = "Found account", body=NewAccount),
-        (status = 400, description = "Invalid request", body=Response),
+        (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
     )
@@ -163,7 +136,7 @@ pub struct Did {
     path = "/api/account/{name}/did",
     responses(
         (status = 200, description = "Successfully updated DID", body=NewAccount),
-        (status = 400, description = "Invalid request", body=Response),
+        (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
     )
@@ -174,18 +147,16 @@ pub async fn update_did(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Json(payload): Json<Did>,
-) -> AppResult<(StatusCode, Json<Response>)> {
+) -> AppResult<(StatusCode, Json<NewAccount>)> {
     let mut accounts = state.accounts.write().await;
 
     if let Some(account) = accounts.get_mut(&name) {
         account.did = payload.did;
-        Ok((StatusCode::OK, Json(Response::NewAccount(account.clone()))))
+        Ok((StatusCode::OK, Json(account.clone())))
     } else {
-        Ok((
+        Err(AppError::new(
             StatusCode::NOT_FOUND,
-            Json(Response::Error(Message::new(
-                "Account not found".to_string(),
-            ))),
+            Some("Account not found".to_string()),
         ))
     }
 }
