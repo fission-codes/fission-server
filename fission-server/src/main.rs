@@ -35,7 +35,7 @@ use tower_http::{
     catch_panic::CatchPanicLayer, sensitive_headers::SetSensitiveHeadersLayer,
     timeout::TimeoutLayer, ServiceBuilderExt,
 };
-use tracing::info;
+use tracing::{info, log};
 use tracing_subscriber::{
     filter::{dynamic_filter_fn, filter_fn, LevelFilter},
     prelude::*,
@@ -82,6 +82,13 @@ async fn main() -> Result<()> {
     let app = async {
         let req_id = HeaderName::from_static(REQUEST_ID);
         let db_pool = db::pool().await?;
+
+        let db_pool_clone = db_pool.clone();
+        let conn = db::connect(&db_pool_clone).await;
+
+        if let Err(err) = conn {
+            log::error!("couldn't connect to database {}", err);
+        }
 
         let router = router::setup_app_router(db_pool)
             .route_layer(axum::middleware::from_fn(middleware::metrics::track))

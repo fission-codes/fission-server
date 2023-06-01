@@ -2,9 +2,12 @@
 
 use crate::{
     authority::Authority,
+    db::{self, Pool},
     error::{AppError, AppResult},
-    models::{account::NewAccount, email_verification},
-    router::AppState,
+    models::{
+        account::{Account, NewAccount},
+        email_verification::EmailVerification,
+    },
 };
 use axum::{
     self,
@@ -34,21 +37,10 @@ use utoipa::ToSchema;
 
 /// POST handler for creating a new account
 pub async fn create_account(
-    State(state): State<AppState>,
+    State(pool): State<Pool>,
     authority: Authority,
     Json(payload): Json<NewAccount>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    let request_tokens = state.request_tokens.read().await;
-
-    if !request_tokens.contains_key(&payload.email) {
-        return Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some("Invalid request token".to_string()),
-        ));
-    }
-
-    let request = request_tokens.get(&payload.email).unwrap();
-
     let code = authority
         .ucan
         .facts()
@@ -62,9 +54,14 @@ pub async fn create_account(
         .next();
 
     if let Some(code) = code {
-        let computed_hash =
-            email_verification::hash_code(&payload.email, authority.ucan.issuer(), code);
-        if computed_hash != request.code_hash.clone().unwrap() {
+        let request = EmailVerification::find_token(
+            db::connect(&pool).await?,
+            &payload.email,
+            &payload.did,
+            code,
+        )
+        .await;
+        if !request.is_ok() {
             return Err(AppError::new(
                 StatusCode::BAD_REQUEST,
                 Some("Invalid validation token".to_string()),
@@ -77,21 +74,15 @@ pub async fn create_account(
         ));
     }
 
-    let mut accounts = state.accounts.write().await;
+    let account = Account::new(db::connect(&pool).await?, payload.username, payload.email, payload.did).await;
 
-    let username = payload.username.to_string();
+    let account_response = NewAccount {
+        username: account.username,
+        email: account.email,
+        did: account.did,
+    };
 
-    if accounts.contains_key(&username) {
-        return Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some("Account already exists".to_string()),
-        ));
-    }
-
-    let account = NewAccount::new(payload.username, payload.email, payload.did);
-    accounts.insert(username, account.clone());
-
-    Ok((StatusCode::OK, Json(account)))
+    Ok((StatusCode::OK, Json(account_response)))
 }
 
 #[utoipa::path(
@@ -107,15 +98,15 @@ pub async fn create_account(
 
 /// GET handler to retrieve account details
 pub async fn get_account(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
+    State(pool): State<Pool>,
+    Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    let accounts = state.accounts.read().await;
+    let account = Account::find_by_username(db::connect(&pool).await?, username.clone()).await;
 
-    log::info!("name: {}", name);
+    log::info!("name: {}", username.clone());
 
-    if let Some(account) = accounts.get(&name) {
-        Ok((StatusCode::OK, Json(account.clone())))
+    if account.is_ok() {
+        Ok((StatusCode::OK, Json(account.unwrap().into())))
     } else {
         Err(AppError::new(
             StatusCode::NOT_FOUND,
@@ -131,32 +122,46 @@ pub struct Did {
     did: String,
 }
 
-#[utoipa::path(
-    put,
-    path = "/api/account/{name}/did",
-    responses(
-        (status = 200, description = "Successfully updated DID", body=NewAccount),
-        (status = 400, description = "Invalid request", body=AppError),
-        (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal Server Error", body=AppError)
-    )
-)]
+// #[utoipa::path(
+// put,
+// path = "/api/account/{username}/did",
+// responses(
+// (status = 200, description = "Successfully updated DID", body=NewAccount),
+// (status = 400, description = "Invalid request", body=AppError),
+// (status = 401, description = "Unauthorized"),
+// (status = 500, description = "Internal Server Error", body=AppError)
+// )
+// )]
 
-/// Handler to update the DID associated with an account
-pub async fn update_did(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-    Json(payload): Json<Did>,
-) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    let mut accounts = state.accounts.write().await;
+// / Handler to update the DID associated with an account
+// pub async fn update_did(
+//     State(pool): State<Pool>,
+//     Path(name): Path<String>,
+//     Json(payload): Json<Did>,
+// ) -> AppResult<(StatusCode, Json<NewAccount>)> {
+//     use crate::db::schema::accounts::dsl::*;
 
-    if let Some(account) = accounts.get_mut(&name) {
-        account.did = payload.did;
-        Ok((StatusCode::OK, Json(account.clone())))
-    } else {
-        Err(AppError::new(
-            StatusCode::NOT_FOUND,
-            Some("Account not found".to_string()),
-        ))
-    }
-}
+//     let accountResult = Account::find_by_username(db::connect(&pool).await?, name).await;
+
+//     if accountResult.is_ok() {
+//         let account = accountResult.unwrap();
+
+//         let account = diesel::update(&account)
+//             .set(did.eq(&payload.did))
+//             .returning(Account::as_returning())
+//             .get_result(&mut conn)
+//             .unwrap();
+
+//         let newAccount = NewAccount {
+//             username: account.username,
+//             email: account.email,
+//             did: account.did,
+//         };
+//         Ok((StatusCode::OK, Json(newAccount)))
+//     } else {
+//         Err(AppError::new(
+//             StatusCode::NOT_FOUND,
+//             Some("Account not found".to_string()),
+//         ))
+//     }
+// }

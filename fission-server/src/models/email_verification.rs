@@ -12,7 +12,73 @@ use mailgun_rs::{EmailAddress, Mailgun, Message};
 
 use rand::Rng;
 
-use crate::settings::Settings;
+use crate::{db::Conn, settings::Settings};
+
+use chrono::NaiveDateTime;
+use diesel::prelude::*;
+
+use diesel_async::RunQueryDsl;
+
+use crate::db::schema::email_verifications;
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = email_verifications)]
+pub struct NewEmailVerification {
+    pub email: String,
+    pub did: String,
+    pub code_hash: String,
+}
+
+#[derive(Debug, Queryable, Selectable, Insertable, Clone)]
+#[diesel(table_name = email_verifications)]
+pub struct EmailVerification {
+    pub id: i32,
+
+    pub inserted_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+
+    /// Email address associated with the account
+    pub email: String,
+
+    /// The (pre-generated) did of the client application.
+    /// Currently only did:key is supported.
+    pub did: String,
+
+    /// The hash of the code, so that it can only be used by the intended recipient.
+    /// We only store the hash, not the code itself.
+    pub code_hash: String,
+}
+
+impl EmailVerification {
+    /// Create a new instance of [EmailVerification]
+    pub async fn new(mut conn: Conn<'_>, request: Request) -> Result<Self, diesel::result::Error> {
+        let new_request = NewEmailVerification {
+            email: request.email,
+            did: request.did,
+            code_hash: request.code_hash.unwrap(),
+        };
+
+        log::info!("Creating new email verification: {:?}", new_request);
+
+        diesel::insert_into(email_verifications::table)
+            .values(&new_request)
+            .get_result(&mut conn)
+            .await
+    }
+
+    pub async fn find_token(mut conn: Conn<'_>, email: &str, did: &str, code: u64) -> Result<Self> {
+        let code_hash = hash_code(email, did, code);
+
+        let result = email_verifications::dsl::email_verifications
+            .filter(email_verifications::email.eq(email))
+            .filter(email_verifications::did.eq(did))
+            .filter(email_verifications::code_hash.eq(&code_hash))
+            .first(&mut conn)
+            .await?;
+
+        Ok(result)
+    }
+}
 
 /// Generate a code that can be sent to the user.
 fn generate_code() -> u64 {
@@ -109,52 +175,4 @@ impl Request {
 
         Ok(())
     }
-
-    // fn generate_code_hash(&self) -> String {
-    //     let mut hasher = Sha256::new();
-    //     hasher.update(self.email.as_bytes());
-    //     hasher.update(self.did.as_bytes());
-    //     hasher.update(self.code.to_string().as_bytes());
-    //     let result = hasher.finalize();
-    //     hex::encode(result)
-    // }
-
-    // pub fn to_record(&self) -> Record {
-    //     let code_hash = self.generate_code_hash();
-    //     Record {
-    //         email: self.email.clone(),
-    //         did: self.did.clone(),
-    //         code_hash,
-    //     }
-    // }
 }
-
-/// The Email Verification [Record] that we store internally
-#[derive(Debug)]
-pub struct Record {
-    /// The email address of the user
-    pub email: String,
-    /// The did associated with the user's client
-    pub did: String,
-    /// The hash of the code
-    /// We don't store the code itself, only the hash, since it's treated like a
-    /// password. We salt the hash with the email and DID.
-    ///
-    /// We do send the code to the user in plaintext, however.
-    pub code_hash: String,
-}
-
-// impl Request {
-//     /// Create a new instance of [Request]
-//     pub fn new(email: String, did: String) -> Self {
-//         Self { email, did }
-//     }
-
-//     pub fn generate_code_hash(&self) -> String {
-//         let mut hasher = Sha256::new();
-//         hasher.update(self.email.as_bytes());
-//         hasher.update(self.did.as_bytes());
-//         let result = hasher.finalize();
-//         hex::encode(result)
-//     }
-// }

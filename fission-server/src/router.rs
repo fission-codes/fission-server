@@ -3,49 +3,26 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    models::{self, account::NewAccount},
-    routes::{account, auth, fallback::notfound_404, health, ping, volume},
+    routes::{account, auth, fallback::notfound_404, health, ping},
 };
 use axum::{
-    routing::{get, post, put},
+    routing::{get, post},
     Router,
 };
-use utoipa::ToSchema;
-
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-#[derive(Clone, Debug, ToSchema)]
-/// The App State
-pub struct AppState {
-    /// An in-memory map of request tokens (email -> token)
-    pub request_tokens:
-        Arc<RwLock<std::collections::HashMap<String, models::email_verification::Request>>>,
-    /// An in-memory map of accounts (username -> account)
-    pub accounts: Arc<RwLock<std::collections::HashMap<String, NewAccount>>>,
-    /// An in-memory map of volumes (username -> volume)
-    pub volumes: Arc<RwLock<std::collections::HashMap<String, volume::Volume>>>,
-}
 
 /// Setup main router for application.
 pub fn setup_app_router(db_pool: Pool) -> Router {
-    let state = AppState {
-        request_tokens: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        accounts: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        volumes: Arc::new(RwLock::new(std::collections::HashMap::new())),
-    };
-
     let mut router = Router::new()
         .route("/ping", get(ping::get))
         .fallback(notfound_404)
-        .with_state(db_pool);
+        .with_state(db_pool.clone());
 
     let api_router = Router::new()
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
-        .route("/account/:name/did", put(account::update_did))
-        .with_state(state)
+        // .route("/account/:name/did", put(account::update_did))
+        .with_state(db_pool.clone())
         .fallback(notfound_404);
 
     router = router.nest("/api", api_router);

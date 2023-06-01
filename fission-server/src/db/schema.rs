@@ -5,9 +5,7 @@ diesel::table! {
         id -> Int4,
         did -> Text,
         username -> Text,
-        verified -> Bool,
         email -> Text,
-        app_id -> Nullable<Int4>,
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
     }
@@ -23,4 +21,21 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(accounts, apps,);
+diesel::table! {
+    email_verifications (id) {
+        id -> Int4,
+        inserted_at -> Timestamp,
+        updated_at -> Timestamp,
+        email -> Text,
+        did -> Text,
+        code_hash -> Text,
+    }
+}
+
+diesel::joinable!(apps -> accounts (owner_id));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    accounts,
+    apps,
+    email_verifications,
+);

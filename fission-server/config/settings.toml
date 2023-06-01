@@ -1,5 +1,5 @@
 [database]
-url = "postgres://postgres:postgres@localhost:5432/fission-server"
+url = "postgres://localhost/fission-server"
 
 [monitoring]
 process_collector_interval = 10
