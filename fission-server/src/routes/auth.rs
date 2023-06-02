@@ -87,20 +87,15 @@ pub async fn request_token(
         request.code_hash.clone().unwrap()
     );
 
-    log::info!("Connecting to db");
     let conn = db::connect(&pool).await;
-    if let Err(result) = conn {
-        log::info!("Failed to connect to db {}", result);
-    }
-    log::info!("Connected to db");
 
-    // let insert_result = EmailVerification::new(conn.unwrap(), request.clone()).await;
-    // if insert_result.is_err() {
-    //     return Err(AppError::new(
-    //         StatusCode::INTERNAL_SERVER_ERROR,
-    //         Some("Failed to send request token.".to_string()),
-    //     ));
-    // }
+    let insert_result = EmailVerification::new(conn.unwrap(), request.clone()).await;
+    if insert_result.is_err() {
+        return Err(AppError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some("Failed to create request token.".to_string()),
+        ));
+    }
 
     log::info!("Insertion to the database seemed to have worked!");
 

@@ -24,7 +24,7 @@ pub async fn pool() -> Result<Pool> {
 
     let config =
         AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(&db_settings.url);
-    let pool = bb8::Pool::builder().build(config).await?;
+    let pool = bb8::Pool::builder().build(config).await.unwrap();
 
     Ok(pool)
 }

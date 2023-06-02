@@ -88,6 +88,8 @@ async fn main() -> Result<()> {
 
         if let Err(err) = conn {
             log::error!("couldn't connect to database {}", err);
+        } else {
+            log::error!("connected to database");
         }
 
         let router = router::setup_app_router(db_pool)
