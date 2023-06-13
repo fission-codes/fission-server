@@ -3,16 +3,29 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{fallback::notfound_404, health, ping},
+    routes::{account, auth, fallback::notfound_404, health, ping},
 };
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 
 /// Setup main router for application.
 pub fn setup_app_router(db_pool: Pool) -> Router {
     let mut router = Router::new()
         .route("/ping", get(ping::get))
         .fallback(notfound_404)
-        .with_state(db_pool);
+        .with_state(db_pool.clone());
+
+    let api_router = Router::new()
+        .route("/auth/email/verify", post(auth::request_token))
+        .route("/account", post(account::create_account))
+        .route("/account/:name", get(account::get_account))
+        // .route("/account/:name/did", put(account::update_did))
+        .with_state(db_pool)
+        .fallback(notfound_404);
+
+    router = router.nest("/api", api_router);
 
     // Logging layer
     router = router.layer(axum::middleware::from_fn(log_request_response::<Logger>));

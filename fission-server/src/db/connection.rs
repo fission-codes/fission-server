@@ -3,6 +3,7 @@
 use anyhow::Result;
 use bb8::PooledConnection;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
+use tracing::log;
 
 // 🧬
 
@@ -19,6 +20,8 @@ pub async fn pool() -> Result<Pool> {
     let global_settings = Settings::load()?;
     let db_settings = global_settings.database();
 
+    log::info!("Connecting to database: {}", db_settings.url);
+
     let config =
         AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(&db_settings.url);
     let pool = bb8::Pool::builder().build(config).await.unwrap();
@@ -28,6 +31,7 @@ pub async fn pool() -> Result<Pool> {
 
 /// Establish a connection
 pub async fn connect(pool: &Pool) -> Result<Conn<'_>> {
+    log::error!("trying to connect");
     let conn = pool.get().await?;
     Ok(conn)
 }
