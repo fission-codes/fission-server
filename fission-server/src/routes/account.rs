@@ -61,7 +61,7 @@ pub async fn create_account(
             code,
         )
         .await;
-        if !request.is_ok() {
+        if request.is_err() {
             return Err(AppError::new(
                 StatusCode::BAD_REQUEST,
                 Some("Invalid validation token".to_string()),
@@ -74,7 +74,13 @@ pub async fn create_account(
         ));
     }
 
-    let account = Account::new(db::connect(&pool).await?, payload.username, payload.email, payload.did).await;
+    let account = Account::new(
+        db::connect(&pool).await?,
+        payload.username,
+        payload.email,
+        payload.did,
+    )
+    .await;
 
     let account_response = NewAccount {
         username: account.username,
@@ -88,6 +94,9 @@ pub async fn create_account(
 #[utoipa::path(
     get,
     path = "/api/account/{name}",
+    security(
+        ("ucan_bearer" = []),
+    ),
     responses(
         (status = 200, description = "Found account", body=NewAccount),
         (status = 400, description = "Invalid request", body=AppError),
@@ -99,11 +108,25 @@ pub async fn create_account(
 /// GET handler to retrieve account details
 pub async fn get_account(
     State(pool): State<Pool>,
+    authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    let account = Account::find_by_username(db::connect(&pool).await?, username.clone()).await;
+    if let Err(err) = authority.validate().await {
+        log::debug!("Error validating authority: {}", err);
+        return Err(AppError::new(
+            StatusCode::UNAUTHORIZED,
+            Some("Unauthorized".to_string()),
+        ));
+    };
 
-    log::info!("name: {}", username.clone());
+    let account = Account::find_by_username_and_did(
+        db::connect(&pool).await?,
+        username.clone(),
+        authority.ucan.issuer().to_string(),
+    )
+    .await;
+
+    log::debug!("Got user: {}", username.clone());
 
     if account.is_ok() {
         Ok((StatusCode::OK, Json(account.unwrap().into())))
@@ -122,46 +145,38 @@ pub struct Did {
     did: String,
 }
 
-// #[utoipa::path(
-// put,
-// path = "/api/account/{username}/did",
-// responses(
-// (status = 200, description = "Successfully updated DID", body=NewAccount),
-// (status = 400, description = "Invalid request", body=AppError),
-// (status = 401, description = "Unauthorized"),
-// (status = 500, description = "Internal Server Error", body=AppError)
-// )
-// )]
+#[utoipa::path(
+    put,
+    path = "/api/account/{username}/did",
+    responses(
+        (status = 200, description = "Successfully updated DID", body=NewAccount),
+        (status = 400, description = "Invalid request", body=AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error", body=AppError)
+    )
+)]
 
-// / Handler to update the DID associated with an account
-// pub async fn update_did(
-//     State(pool): State<Pool>,
-//     Path(name): Path<String>,
-//     Json(payload): Json<Did>,
-// ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-//     use crate::db::schema::accounts::dsl::*;
+/// Handler to update the DID associated with an account
+pub async fn update_did(
+    State(pool): State<Pool>,
+    authority: Authority,
+    Path(name): Path<String>,
+    Json(payload): Json<Did>,
+) -> AppResult<(StatusCode, Json<NewAccount>)> {
+    let account = Account::update_did(
+        db::connect(&pool).await?,
+        name,
+        authority.ucan.issuer().to_string(),
+        payload.did,
+    )
+    .await;
 
-//     let accountResult = Account::find_by_username(db::connect(&pool).await?, name).await;
-
-//     if accountResult.is_ok() {
-//         let account = accountResult.unwrap();
-
-//         let account = diesel::update(&account)
-//             .set(did.eq(&payload.did))
-//             .returning(Account::as_returning())
-//             .get_result(&mut conn)
-//             .unwrap();
-
-//         let newAccount = NewAccount {
-//             username: account.username,
-//             email: account.email,
-//             did: account.did,
-//         };
-//         Ok((StatusCode::OK, Json(newAccount)))
-//     } else {
-//         Err(AppError::new(
-//             StatusCode::NOT_FOUND,
-//             Some("Account not found".to_string()),
-//         ))
-//     }
-// }
+    if account.is_ok() {
+        Ok((StatusCode::OK, Json(account.unwrap().into())))
+    } else {
+        Err(AppError::new(
+            StatusCode::NOT_FOUND,
+            Some("Account not found".to_string()),
+        ))
+    }
+}

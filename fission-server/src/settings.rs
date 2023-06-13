@@ -47,6 +47,8 @@ pub struct Server {
     pub metrics_port: u16,
     /// Server timeout in milliseconds.
     pub timeout_ms: u64,
+    /// Server DID
+    pub did: String,
 }
 
 /// Process monitoring settings.

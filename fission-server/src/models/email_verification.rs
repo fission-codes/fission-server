@@ -58,7 +58,7 @@ impl EmailVerification {
             code_hash: request.code_hash.unwrap(),
         };
 
-        log::info!("Creating new email verification: {:?}", new_request);
+        log::debug!("Creating new email verification request: {:?}", new_request);
 
         diesel::insert_into(email_verifications::table)
             .values(&new_request)
@@ -68,6 +68,13 @@ impl EmailVerification {
 
     pub async fn find_token(mut conn: Conn<'_>, email: &str, did: &str, code: u64) -> Result<Self> {
         let code_hash = hash_code(email, did, code);
+
+        log::debug!(
+            "Looking up email verification request for email: {}, did: {}, code: {}",
+            email,
+            did,
+            code
+        );
 
         let result = email_verifications::dsl::email_verifications
             .filter(email_verifications::email.eq(email))
@@ -124,6 +131,13 @@ impl Request {
             return Err(ValidationError::new("Failed to validate the request.").into());
         }
 
+        log::debug!(
+            "Computing code hash for email: {} did: {} code: {}",
+            self.email,
+            self.did,
+            self.code
+        );
+
         self.code_hash = Some(hash_code(&self.email, &self.did, self.code));
         Ok(())
     }
@@ -154,11 +168,10 @@ impl Request {
             to: vec![delivery_address],
             subject: settings.subject.clone(),
             template: settings.template.clone(),
-            template_vars,
+            template_vars: template_vars.clone(),
             ..Default::default()
         };
 
-        print!("{} {}", settings.api_key.clone(), settings.domain.clone());
         let client = Mailgun {
             api_key: settings.api_key.clone(),
             domain: settings.domain.clone(),
@@ -166,6 +179,15 @@ impl Request {
         };
 
         let sender = EmailAddress::name_address(&settings.from_name, &settings.from_address);
+
+        log::debug!("Sending verification email; API Key: {}, domain: {}, Message:\nTo: {}\nSubject: {}\nTemplate: {}\nTemplate Vars: {:?}",
+            settings.api_key,
+            settings.domain,
+            self.email,
+            settings.subject.clone(),
+            settings.template.clone(),
+            template_vars.clone()
+        );
 
         // The mailgun library doesn't support async, so we have to spawn a blocking task.
         if let Err(e) = tokio::task::spawn_blocking(move || client.send(&sender)).await? {

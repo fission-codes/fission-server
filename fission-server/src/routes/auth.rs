@@ -5,6 +5,7 @@ use crate::{
     db::{self, Pool},
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
+    settings::Settings,
 };
 use axum::{
     self,
@@ -55,24 +56,43 @@ pub async fn request_token(
     if payload.did != authority.ucan.issuer() {
         Err(AppError::new(
             StatusCode::BAD_REQUEST,
-            Some("did must match ucan".to_string()),
+            Some("`did` parameter must match the issuer of the UCAN presented in the Authorization header.".to_string()),
         ))?;
     }
 
     /*
 
-    I'm not including this here, but presumably we want this check, or something like it?
-    Alternatively, we can use an invocation?
+    The age-old question, should this be an invocation, or is the REST endpoint enough here?
 
-    This can be done within the authority extractor, presumably?
+    For now, we're using regular UCANs. This check can be done within the authority extractor,
+    but we're going to repeat ourselves for now until we're sure that we don't need different
+    audiences for different methods.
 
-    if Settings::load()?.server()?.did != authority.ucan.audience() {
-        Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some("Authorization UCAN must delegate to server DID".to_string()),
-        ))?;
-    }
     */
+
+    let settings = Settings::load();
+    if let Err(error) = settings {
+        log::error!("Failed to load settings: {}", error);
+        return Err(AppError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some("Internal Server Error."),
+        ));
+    }
+
+    let server_did = settings.unwrap().server().did.clone();
+    let ucan_aud = authority.ucan.audience();
+    if ucan_aud != server_did {
+        log::debug!(
+            "Incorrect UCAN `aud` used. Expected {}, got {}.",
+            server_did,
+            ucan_aud
+        );
+        let error_msg = format!(
+            "Authorization UCAN must delegate to this server's DID (expected {}, got {})",
+            server_did, ucan_aud
+        );
+        return Err(AppError::new(StatusCode::BAD_REQUEST, Some(error_msg)));
+    }
 
     let mut request = payload.clone();
     if request.compute_code_hash().is_err() {
@@ -82,7 +102,7 @@ pub async fn request_token(
         ));
     }
 
-    log::info!(
+    log::debug!(
         "Successfully computed code hash {}",
         request.code_hash.clone().unwrap()
     );
@@ -91,13 +111,17 @@ pub async fn request_token(
 
     let insert_result = EmailVerification::new(conn.unwrap(), request.clone()).await;
     if insert_result.is_err() {
+        log::error!(
+            "Failed to insert request token into database. {:?}",
+            insert_result.unwrap()
+        );
         return Err(AppError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             Some("Failed to create request token.".to_string()),
         ));
     }
 
-    log::info!("Insertion to the database seemed to have worked!");
+    log::debug!("Successfully inserted email verification record.");
 
     let email_response = request.send_code().await;
     if email_response.is_ok() {

@@ -1,11 +1,5 @@
 //! Volume routes
 
-use crate::{error::AppResult, db::Pool};
-use axum::{
-    self,
-    extract::{Json, Path, State},
-    http::StatusCode,
-};
 use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;

@@ -54,14 +54,32 @@ impl Account {
             .expect("Error saving new account")
     }
 
-    pub async fn find_by_username(
+    pub async fn find_by_username_and_did(
         mut conn: Conn<'_>,
         username: String,
+        did: String,
     ) -> Result<Self, diesel::result::Error> {
         accounts::dsl::accounts
             .filter(accounts::username.eq(username))
+            .filter(accounts::did.eq(did))
             .first(&mut conn)
             .await
+    }
+
+    pub async fn update_did(
+        mut conn: Conn<'_>,
+        username: String,
+        old_did: String,
+        new_did: String,
+    ) -> Result<Self, diesel::result::Error> {
+        diesel::update(
+            accounts::dsl::accounts
+                .filter(accounts::username.eq(username))
+                .filter(accounts::did.eq(old_did)),
+        )
+        .set(accounts::did.eq(new_did))
+        .get_result(&mut conn)
+        .await
     }
 }
 

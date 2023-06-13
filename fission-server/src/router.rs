@@ -22,7 +22,7 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
         // .route("/account/:name/did", put(account::update_did))
-        .with_state(db_pool.clone())
+        .with_state(db_pool)
         .fallback(notfound_404);
 
     router = router.nest("/api", api_router);
