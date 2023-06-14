@@ -5,10 +5,10 @@ use diesel::prelude::*;
 /// App model
 pub struct App {
     pub id: i32,
-    pub owner_id: i32,
+    pub cid: Option<String>,
 
     pub inserted_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 
-    pub cid: String,
+    pub owner_id: i32,
 }

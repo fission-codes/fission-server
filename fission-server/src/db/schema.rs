@@ -6,6 +6,7 @@ diesel::table! {
         did -> Text,
         username -> Text,
         email -> Text,
+        app_id -> Int4,
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
     }
@@ -31,7 +32,5 @@ diesel::table! {
         code_hash -> Text,
     }
 }
-
-diesel::joinable!(apps -> accounts (owner_id));
 
 diesel::allow_tables_to_appear_in_same_query!(accounts, apps, email_verifications,);
