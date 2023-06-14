@@ -34,7 +34,9 @@ pub struct Account {
     /// Email address associated with the account
     pub email: String,
 
-    // pub app_id: i32,
+    /// App ID associated with the account
+    pub app_id: i32,
+
     pub inserted_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
