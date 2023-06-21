@@ -41,6 +41,7 @@
           cargo-sort
           cargo-udeps
           cargo-watch
+          diesel-cli
         ];
       in rec
       {
@@ -69,6 +70,37 @@
 
           shellHook = ''
             [ -e .git/hooks/pre-commit ] || pre-commit install --install-hooks && pre-commit install --hook-type commit-msg
+
+            PGDATA="./.pg";
+
+            # Initialize a local database if necessary.
+            if [ ! -e $PGDATA ]; then
+              echo -e "\nInitializing PostgreSQL in $PGDATA\n"
+              initdb $PGDATA --no-instructions -A trust
+              if pg_ctl -D $PGDATA start; then
+                cd fission-server
+                diesel database setup --database-url postgres://localhost:5432/fission-server
+                cd ..
+                pg_ctl -D $PGDATA stop
+              else
+                echo "Unable to start PostgreSQL server on default port (:5432). Maybe a local database is already running?"
+              fi
+            fi
+
+            # Give instructions on how to start postgresql if it's not already running.
+            if [ ! -e $PGDATA/postmaster.pid ]; then
+              echo -e "\nPostgreSQL not running. To start, use the following command:"
+              echo -e "  pg_ctl -D $PGDATA -l postgres.log start\n\n"
+            else
+              echo -e "\nPostgreSQL is running. To stop, use the following command:"
+              echo -e "  pg_ctl -D $PGDATA stop\n\n"
+
+              echo -e "\nRunning pending Diesel Migrations..."
+              cd fission-server
+              diesel migration run --database-url postgres://localhost:5432/fission-server
+              cd ..
+              echo
+            fi
           '';
         };
 

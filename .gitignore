@@ -15,3 +15,5 @@ private
 *.tmp
 .history
 .DS_Store
+.pg
+postgres.log

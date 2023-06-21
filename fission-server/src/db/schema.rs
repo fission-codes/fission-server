@@ -6,6 +6,7 @@ diesel::table! {
         did -> Text,
         username -> Text,
         email -> Text,
+        app_id -> Int4,
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         volume_id -> Nullable<Int4>,
