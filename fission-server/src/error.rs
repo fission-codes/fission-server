@@ -108,6 +108,31 @@ impl From<anyhow::Error> for AppError {
     }
 }
 
+impl From<diesel::result::Error> for AppError {
+    fn from(err: diesel::result::Error) -> Self {
+        match err {
+            diesel::result::Error::NotFound => {
+                Self::new(StatusCode::NOT_FOUND, Some("Resource Not Found"))
+            }
+            _ => {
+                warn!(
+                    subject = "app_error",
+                    category = "app_error",
+                    "encountered unexpected error {:#}",
+                    err,
+                );
+                Self {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    title: StatusCode::INTERNAL_SERVER_ERROR
+                        .canonical_reason()
+                        .map(|r| r.to_string()),
+                    detail: Some(err.to_string()),
+                }
+            }
+        }
+    }
+}
+
 /// Serialize/Deserializer for status codes.
 ///
 /// This is needed because status code according to JSON API spec must

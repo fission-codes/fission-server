@@ -96,44 +96,20 @@ pub async fn request_token(
     }
 
     let mut request = payload.clone();
-    if request.compute_code_hash().is_err() {
-        return Err(AppError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Some("Failed to send request token.".to_string()),
-        ));
-    }
+    request.compute_code_hash()?;
 
     log::debug!(
         "Successfully computed code hash {}",
         request.code_hash.clone().unwrap()
     );
 
-    let conn = db::connect(&state.db_pool).await;
+    let mut conn = db::connect(&state.db_pool).await?;
 
-    let insert_result = EmailVerification::new(conn.unwrap(), request.clone()).await;
-    if insert_result.is_err() {
-        log::error!(
-            "Failed to insert request token into database. {:?}",
-            insert_result.unwrap()
-        );
-        return Err(AppError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Some("Failed to create request token.".to_string()),
-        ));
-    }
+    EmailVerification::new(&mut conn, request.clone()).await?;
 
-    log::debug!("Successfully inserted email verification record.");
-
-    let email_response = request.send_code().await;
-    if email_response.is_ok() {
-        Ok((
-            StatusCode::OK,
-            Json(Response::new("Successfully sent request token".to_string())),
-        ))
-    } else {
-        Err(AppError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Some("Failed to send request token".to_string()),
-        ))
-    }
+    request.send_code().await?;
+    Ok((
+        StatusCode::OK,
+        Json(Response::new("Successfully sent request token".to_string())),
+    ))
 }

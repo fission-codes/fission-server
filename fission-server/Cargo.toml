@@ -34,7 +34,7 @@ bench = false
 ansi_term = { version = "0.12", optional = true, default-features = false }
 anyhow = { workspace = true }
 async-trait = "0.1"
-axum = { version = "0.6", workspace = true, features = ["headers"] }
+axum = { workspace = true, features = ["headers"] }
 axum-macros = "0.3.7"
 axum-tracing-opentelemetry = { version = "0.10", features = ["otlp"] }
 base64 = "0.21"

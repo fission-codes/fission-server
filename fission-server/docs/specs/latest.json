@@ -73,7 +73,7 @@
         ]
       }
     },
-    "/api/account/{name}": {
+    "/api/account/{username}": {
       "get": {
         "tags": [
           "account"
@@ -98,6 +98,179 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NewAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      }
+    },
+    "/api/account/{username}/did": {
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Handler to update the DID associated with an account",
+        "description": "Handler to update the DID associated with an account",
+        "operationId": "update_did",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully updated DID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/{username}/volume/cid": {
+      "get": {
+        "tags": [
+          "volume"
+        ],
+        "summary": "GET handler to retrieve account volume CID",
+        "description": "GET handler to retrieve account volume CID",
+        "operationId": "get_cid",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found volume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "volume"
+        ],
+        "summary": "Handler to update the CID associated with an account's volume",
+        "description": "Handler to update the CID associated with an account's volume",
+        "operationId": "update_cid",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully updated Volume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewVolume"
                 }
               }
             }
@@ -295,13 +468,29 @@
         ],
         "properties": {
           "did": {
-            "type": "string"
+            "type": "string",
+            "description": "DID associated with the account"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Email address associated with the account"
           },
           "username": {
-            "type": "string"
+            "type": "string",
+            "description": "Username associated with the account"
+          }
+        }
+      },
+      "NewVolumeRecord": {
+        "type": "object",
+        "description": "New Volume Struct (for creating new volumes)",
+        "required": [
+          "cid"
+        ],
+        "properties": {
+          "cid": {
+            "type": "string",
+            "description": "Content ID of the volume"
           }
         }
       },
@@ -336,18 +525,6 @@
         ],
         "properties": {
           "msg": {
-            "type": "string"
-          }
-        }
-      },
-      "Volume": {
-        "type": "object",
-        "description": "Volume Struct",
-        "required": [
-          "cid"
-        ],
-        "properties": {
-          "cid": {
             "type": "string"
           }
         }

@@ -21,20 +21,28 @@ use diesel_async::RunQueryDsl;
 
 use crate::db::schema::email_verifications;
 
+/// Email Verification Request
 #[derive(Insertable, Debug)]
 #[diesel(table_name = email_verifications)]
 pub struct NewEmailVerification {
+    /// Email address associated with the account
     pub email: String,
+    /// The (pre-generated) did of the client application.
     pub did: String,
+    /// The hash of the code, so that it can only be used by the intended recipient.
     pub code_hash: String,
 }
 
+/// Email Verification Record
 #[derive(Debug, Queryable, Selectable, Insertable, Clone)]
 #[diesel(table_name = email_verifications)]
 pub struct EmailVerification {
+    /// Internal Database Identifier
     pub id: i32,
 
+    /// Inserted at timestamp
     pub inserted_at: NaiveDateTime,
+    /// Updated at timestamp
     pub updated_at: NaiveDateTime,
 
     /// Email address associated with the account
@@ -51,7 +59,7 @@ pub struct EmailVerification {
 
 impl EmailVerification {
     /// Create a new instance of [EmailVerification]
-    pub async fn new(mut conn: Conn<'_>, request: Request) -> Result<Self, diesel::result::Error> {
+    pub async fn new(conn: &mut Conn<'_>, request: Request) -> Result<Self, diesel::result::Error> {
         let new_request = NewEmailVerification {
             email: request.email,
             did: request.did,
@@ -62,11 +70,17 @@ impl EmailVerification {
 
         diesel::insert_into(email_verifications::table)
             .values(&new_request)
-            .get_result(&mut conn)
+            .get_result(conn)
             .await
     }
 
-    pub async fn find_token(mut conn: Conn<'_>, email: &str, did: &str, code: u64) -> Result<Self> {
+    /// Find a token by email, did, and code.
+    pub async fn find_token(
+        conn: &mut Conn<'_>,
+        email: &str,
+        did: &str,
+        code: u64,
+    ) -> Result<Self> {
         let code_hash = hash_code(email, did, code);
 
         log::debug!(
@@ -80,7 +94,7 @@ impl EmailVerification {
             .filter(email_verifications::email.eq(email))
             .filter(email_verifications::did.eq(did))
             .filter(email_verifications::code_hash.eq(&code_hash))
-            .first(&mut conn)
+            .first(conn)
             .await?;
 
         Ok(result)
