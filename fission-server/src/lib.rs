@@ -6,6 +6,7 @@
 
 pub mod authority;
 pub mod db;
+pub mod dns;
 pub mod docs;
 pub mod error;
 pub mod extract;

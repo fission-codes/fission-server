@@ -6,6 +6,7 @@ use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
     db,
+    dns::handler::Handler,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
@@ -23,12 +24,15 @@ use http::header;
 use std::{
     future::ready,
     io,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::Duration,
 };
-use tokio::signal::{
-    self,
-    unix::{signal, SignalKind},
+use tokio::{
+    net::{TcpListener, UdpSocket},
+    signal::{
+        self,
+        unix::{signal, SignalKind},
+    },
 };
 use tower::ServiceBuilder;
 use tower_http::{
@@ -41,6 +45,7 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
+use trust_dns_server::ServerFuture;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -113,7 +118,21 @@ async fn main() -> Result<()> {
         serve("Application", router, settings.server().port).await
     };
 
-    tokio::try_join!(app, app_metrics)?;
+    let dns_server = async {
+        let mut server = ServerFuture::new(Handler::new());
+        let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
+        let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
+        server.register_socket(UdpSocket::bind(sock_addr).await?);
+        server.register_listener(
+            TcpListener::bind(sock_addr).await?,
+            Duration::from_millis(settings.server().timeout_ms),
+        );
+        server.block_until_done().await?;
+
+        Ok(())
+    };
+
+    tokio::try_join!(app, app_metrics, dns_server)?;
     Ok(())
 }
 
