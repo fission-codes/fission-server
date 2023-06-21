@@ -3,10 +3,10 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, fallback::notfound_404, health, ping},
+    routes::{account, auth, fallback::notfound_404, health, ping, volume},
 };
 use axum::{
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 
@@ -21,7 +21,9 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
-        // .route("/account/:name/did", put(account::update_did))
+        .route("/account/:name/did", put(account::update_did))
+        .route("/account/:name/volume/cid", get(volume::get_cid))
+        .route("/account/:name/volume/cid", put(volume::update_cid))
         .with_state(db_pool)
         .fallback(notfound_404);
 

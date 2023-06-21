@@ -1,7 +1,8 @@
 //! Email Verification Model
 use openssl::sha::Sha256;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::log;
 use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
@@ -21,20 +22,28 @@ use diesel_async::RunQueryDsl;
 
 use crate::db::schema::email_verifications;
 
+/// Email Verification Request
 #[derive(Insertable, Debug)]
 #[diesel(table_name = email_verifications)]
 pub struct NewEmailVerification {
+    /// Email address associated with the account
     pub email: String,
+    /// The (pre-generated) did of the client application.
     pub did: String,
+    /// The hash of the code, so that it can only be used by the intended recipient.
     pub code_hash: String,
 }
 
+/// Email Verification Record
 #[derive(Debug, Queryable, Selectable, Insertable, Clone)]
 #[diesel(table_name = email_verifications)]
 pub struct EmailVerification {
+    /// Internal Database Identifier
     pub id: i32,
 
+    /// Inserted at timestamp
     pub inserted_at: NaiveDateTime,
+    /// Updated at timestamp
     pub updated_at: NaiveDateTime,
 
     /// Email address associated with the account
@@ -51,12 +60,17 @@ pub struct EmailVerification {
 
 impl EmailVerification {
     /// Create a new instance of [EmailVerification]
-    pub async fn new(mut conn: Conn<'_>, request: Request) -> Result<Self, diesel::result::Error> {
+    pub async fn new(
+        conn: Arc<Mutex<Conn<'_>>>,
+        request: Request,
+    ) -> Result<Self, diesel::result::Error> {
         let new_request = NewEmailVerification {
             email: request.email,
             did: request.did,
             code_hash: request.code_hash.unwrap(),
         };
+
+        let mut conn = conn.lock().await;
 
         log::debug!("Creating new email verification request: {:?}", new_request);
 
@@ -66,7 +80,13 @@ impl EmailVerification {
             .await
     }
 
-    pub async fn find_token(mut conn: Conn<'_>, email: &str, did: &str, code: u64) -> Result<Self> {
+    /// Find a token by email, did, and code.
+    pub async fn find_token(
+        conn: Arc<Mutex<Conn<'_>>>,
+        email: &str,
+        did: &str,
+        code: u64,
+    ) -> Result<Self> {
         let code_hash = hash_code(email, did, code);
 
         log::debug!(
@@ -75,6 +95,8 @@ impl EmailVerification {
             did,
             code
         );
+
+        let mut conn = conn.lock().await;
 
         let result = email_verifications::dsl::email_verifications
             .filter(email_verifications::email.eq(email))

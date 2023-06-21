@@ -1,5 +1,7 @@
 //! Account routes
 
+use std::sync::Arc;
+
 use crate::{
     authority::Authority,
     db::{self, Pool},
@@ -16,7 +18,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use tracing::log;
+use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
 /// POST handler for creating a new account
@@ -53,47 +55,34 @@ pub async fn create_account(
         })
         .next();
 
-    if let Some(code) = code {
-        let request = EmailVerification::find_token(
-            db::connect(&pool).await?,
-            &payload.email,
-            &payload.did,
-            code,
-        )
-        .await;
-        if request.is_err() {
-            return Err(AppError::new(
-                StatusCode::BAD_REQUEST,
-                Some("Invalid validation token".to_string()),
-            ));
-        }
-    } else {
+    if code.is_none() {
         return Err(AppError::new(
             StatusCode::BAD_REQUEST,
             Some("Missing validation token".to_string()),
         ));
     }
 
-    let account = Account::new(
-        db::connect(&pool).await?,
-        payload.username,
-        payload.email,
-        payload.did,
-    )
-    .await;
+    let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    let account_response = NewAccount {
-        username: account.username,
-        email: account.email,
-        did: account.did,
-    };
+    // let verification_token =
+    EmailVerification::find_token(conn.clone(), &payload.email, &payload.did, code.unwrap())
+        .await?;
 
-    Ok((StatusCode::OK, Json(account_response)))
+    // FIXME do something with the verification token here.
+
+    Ok((
+        StatusCode::OK,
+        Json(
+            Account::new(conn.clone(), payload.username, payload.email, payload.did)
+                .await?
+                .into(),
+        ),
+    ))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/account/{name}",
+    path = "/api/account/{username}",
     security(
         ("ucan_bearer" = []),
     ),
@@ -111,31 +100,14 @@ pub async fn get_account(
     authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    if let Err(err) = authority.validate().await {
-        log::debug!("Error validating authority: {}", err);
-        return Err(AppError::new(
-            StatusCode::UNAUTHORIZED,
-            Some("Unauthorized".to_string()),
-        ));
-    };
-
-    let account = Account::find_by_username_and_did(
-        db::connect(&pool).await?,
+    let account = Account::find_by_username(
+        Arc::new(Mutex::new(db::connect(&pool).await?)),
+        authority.ucan,
         username.clone(),
-        authority.ucan.issuer().to_string(),
     )
-    .await;
+    .await?;
 
-    log::debug!("Got user: {}", username.clone());
-
-    if account.is_ok() {
-        Ok((StatusCode::OK, Json(account.unwrap().into())))
-    } else {
-        Err(AppError::new(
-            StatusCode::NOT_FOUND,
-            Some("Account not found".to_string()),
-        ))
-    }
+    Ok((StatusCode::OK, Json(account.into())))
 }
 
 /// DID Struct
@@ -160,23 +132,13 @@ pub struct Did {
 pub async fn update_did(
     State(pool): State<Pool>,
     authority: Authority,
-    Path(name): Path<String>,
+    Path(username): Path<String>,
     Json(payload): Json<Did>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    let account = Account::update_did(
-        db::connect(&pool).await?,
-        name,
-        authority.ucan.issuer().to_string(),
-        payload.did,
-    )
-    .await;
+    let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    if account.is_ok() {
-        Ok((StatusCode::OK, Json(account.unwrap().into())))
-    } else {
-        Err(AppError::new(
-            StatusCode::NOT_FOUND,
-            Some("Account not found".to_string()),
-        ))
-    }
+    let account = Account::find_by_username(Arc::clone(&conn), authority.ucan, username).await?;
+
+    let result = account.update_did(Arc::clone(&conn), payload.did).await?;
+    Ok((StatusCode::OK, Json(result.into())))
 }
