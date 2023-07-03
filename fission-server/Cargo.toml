@@ -74,7 +74,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_path_to_error = "0.1"
 serde_with = "2.3"
-sysinfo = "0.28"
+sysinfo = "0.29"
 task-local-extensions = "0.1"
 thiserror = "1.0"
 time = { version = "0.3", features = ["serde-well-known", "serde-human-readable"] }
