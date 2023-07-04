@@ -6,6 +6,7 @@ diesel::table! {
         did -> Text,
         username -> Text,
         email -> Text,
+        app_id -> Nullable<Int4>,
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         volume_id -> Nullable<Int4>,
@@ -44,12 +45,6 @@ diesel::table! {
 }
 
 diesel::joinable!(accounts -> volumes (volume_id));
-diesel::joinable!(apps -> accounts (owner_id));
 diesel::joinable!(apps -> volumes (volume_id));
 
-diesel::allow_tables_to_appear_in_same_query!(
-    accounts,
-    apps,
-    email_verifications,
-    volumes,
-);
+diesel::allow_tables_to_appear_in_same_query!(accounts, apps, email_verifications, volumes,);
