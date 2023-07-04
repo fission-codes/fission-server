@@ -99,7 +99,7 @@ pub async fn get_account(
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
     let account = Account::find_by_username(
         &mut db::connect(&state.db_pool).await?,
-        authority.ucan,
+        Some(authority.ucan),
         username.clone(),
     )
     .await?;
@@ -134,7 +134,7 @@ pub async fn update_did(
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
     let mut conn = db::connect(&state.db_pool).await?;
 
-    let account = Account::find_by_username(&mut conn, authority.ucan, username).await?;
+    let account = Account::find_by_username(&mut conn, Some(authority.ucan), username).await?;
     let result = account.update_did(&mut conn, payload.did).await?;
 
     Ok((StatusCode::OK, Json(result.into())))
