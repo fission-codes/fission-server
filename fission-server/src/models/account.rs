@@ -42,7 +42,7 @@ pub struct Account {
     pub email: String,
 
     /// App ID associated with the account
-    pub app_id: i32,
+    pub app_id: Option<i32>,
 
     /// Inserted at timestamp
     pub inserted_at: NaiveDateTime,
