@@ -5,8 +5,7 @@ use anyhow::Result;
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
-    db,
-    dns::handler::Handler,
+    db, dns,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, logging::Logger, request_ulid::MakeRequestUlid, runtime},
@@ -51,7 +50,6 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
-use trust_dns_server::ServerFuture;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -97,9 +95,10 @@ async fn main() -> Result<()> {
         .await
     };
 
+    let db_pool = db::pool().await?;
+
     let app = async {
         let req_id = HeaderName::from_static(REQUEST_ID);
-        let db_pool = db::pool().await?;
 
         let app_state = AppState {
             db_pool: db_pool.clone(),
@@ -143,7 +142,8 @@ async fn main() -> Result<()> {
     };
 
     let dns_server = async {
-        let mut server = ServerFuture::new(Handler::new());
+        let mut server =
+            trust_dns_server::ServerFuture::new(dns::handler::Handler::new(db_pool.clone()));
         let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
         let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
         server.register_socket(UdpSocket::bind(sock_addr).await?);
