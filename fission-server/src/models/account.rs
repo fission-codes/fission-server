@@ -79,24 +79,25 @@ impl Account {
     /// Find a Fission Account by username, validate that the UCAN has permission to access it
     pub async fn find_by_username(
         conn: Arc<Mutex<Conn<'_>>>,
-        ucan: ucan::Ucan,
+        _ucan: Option<ucan::Ucan>,
         username: String,
     ) -> Result<Self, diesel::result::Error> {
         let mut conn = conn.lock().await;
 
-        let account = accounts::dsl::accounts
+        //let account = accounts::dsl::accounts
+        accounts::dsl::accounts
             .filter(accounts::username.eq(username))
             .first::<Account>(&mut conn)
-            .await;
+            .await
 
         // FIXME this should actually validate that the UCAN has access, not just that the DID matches
-        if let Ok(account) = account {
-            if *ucan.issuer().to_string() == account.did {
-                return Ok(account);
-            }
-        }
+        // if let Ok(account) = account {
+        //     if *ucan.issuer().to_string() == account.did {
+        //         return Ok(account);
+        //     }
+        // }
 
-        Err(diesel::result::Error::NotFound)
+        // Err(diesel::result::Error::NotFound)
     }
 
     /// Update the controlling DID of a Fission Account

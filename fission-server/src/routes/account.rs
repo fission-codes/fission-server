@@ -102,7 +102,7 @@ pub async fn get_account(
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
     let account = Account::find_by_username(
         Arc::new(Mutex::new(db::connect(&pool).await?)),
-        authority.ucan,
+        Some(authority.ucan),
         username.clone(),
     )
     .await?;
@@ -137,7 +137,8 @@ pub async fn update_did(
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
     let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    let account = Account::find_by_username(Arc::clone(&conn), authority.ucan, username).await?;
+    let account =
+        Account::find_by_username(Arc::clone(&conn), Some(authority.ucan), username).await?;
 
     let result = account.update_did(Arc::clone(&conn), payload.did).await?;
     Ok((StatusCode::OK, Json(result.into())))

@@ -34,7 +34,7 @@ pub async fn get_cid(
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    let account = Account::find_by_username(conn.clone(), authority.ucan, username).await?;
+    let account = Account::find_by_username(conn.clone(), Some(authority.ucan), username).await?;
 
     let volume = account.get_volume(conn.clone()).await?;
     Ok((StatusCode::OK, Json(volume)))
@@ -63,7 +63,7 @@ pub async fn update_cid(
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    let account = Account::find_by_username(conn.clone(), authority.ucan, username).await?;
+    let account = Account::find_by_username(conn.clone(), Some(authority.ucan), username).await?;
 
     let volume = account.update_volume_cid(conn.clone(), payload.cid).await?;
     Ok((StatusCode::OK, Json(volume)))
