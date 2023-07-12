@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Clone, Debug)]
 /// Global application route state.
@@ -26,6 +27,18 @@ pub fn setup_app_router(app_state: AppState) -> Router {
         .fallback(notfound_404)
         .with_state(app_state.clone());
 
+    // I fucking hate CORS.
+    let cors = CorsLayer::new()
+        // allow `GET`, `POST`, and `PUT` when accessing the resource
+        .allow_methods([http::Method::GET, http::Method::POST, http::Method::PUT])
+        .allow_headers([
+            http::header::AUTHORIZATION,
+            http::header::CONTENT_TYPE,
+            http::header::ACCEPT,
+        ])
+        // allow requests from any origin
+        .allow_origin(Any);
+
     let api_router = Router::new()
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
@@ -33,6 +46,7 @@ pub fn setup_app_router(app_state: AppState) -> Router {
         .route("/account/:name/did", put(account::update_did))
         .route("/account/:name/volume/cid", get(volume::get_cid))
         .route("/account/:name/volume/cid", put(volume::update_cid))
+        .layer(cors)
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

@@ -1,4 +1,4 @@
-//! Account routes
+//! Fission Account Routes
 
 use crate::{
     authority::Authority,
