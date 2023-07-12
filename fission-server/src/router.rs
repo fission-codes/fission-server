@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 
 /// Setup main router for application.
 pub fn setup_app_router(db_pool: Pool) -> Router {
@@ -17,6 +18,18 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .fallback(notfound_404)
         .with_state(db_pool.clone());
 
+    // I fucking hate CORS.
+    let cors = CorsLayer::new()
+        // allow `GET`, `POST`, and `PUT` when accessing the resource
+        .allow_methods([http::Method::GET, http::Method::POST, http::Method::PUT])
+        .allow_headers([
+            http::header::AUTHORIZATION,
+            http::header::CONTENT_TYPE,
+            http::header::ACCEPT,
+        ])
+        // allow requests from any origin
+        .allow_origin(Any);
+
     let api_router = Router::new()
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
@@ -24,6 +37,7 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .route("/account/:name/did", put(account::update_did))
         .route("/account/:name/volume/cid", get(volume::get_cid))
         .route("/account/:name/volume/cid", put(volume::update_cid))
+        .layer(cors)
         .with_state(db_pool)
         .fallback(notfound_404);
 

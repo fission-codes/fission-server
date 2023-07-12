@@ -1,4 +1,4 @@
-//! Account routes
+//! Fission Account Routes
 
 use std::sync::Arc;
 
