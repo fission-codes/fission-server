@@ -43,41 +43,36 @@ pub async fn create_account(
     authority: Authority,
     Json(payload): Json<NewAccount>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
-    let code = authority
-        .ucan
-        .facts()
-        .iter()
-        .filter_map(|f| f.as_object())
-        .filter_map(|f| {
-            f.get("code")
-                .and_then(|c| c.as_str())
-                .and_then(|c| c.parse::<u64>().ok())
-        })
-        .next();
+    if let Some(facts) = authority.ucan.facts() {
+        let code = facts["code"].as_u64();
+        if code.is_none() {
+            return Err(AppError::new(
+                StatusCode::BAD_REQUEST,
+                Some("Missing validation token".to_string()),
+            ));
+        }
+        let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    if code.is_none() {
-        return Err(AppError::new(
+        // let verification_token =
+        EmailVerification::find_token(conn.clone(), &payload.email, &payload.did, code.unwrap())
+            .await?;
+
+        // FIXME do something with the verification token here.
+
+        Ok((
+            StatusCode::OK,
+            Json(
+                Account::new(conn.clone(), payload.username, payload.email, payload.did)
+                    .await?
+                    .into(),
+            ),
+        ))
+    } else {
+        Err(AppError::new(
             StatusCode::BAD_REQUEST,
             Some("Missing validation token".to_string()),
-        ));
+        ))
     }
-
-    let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
-
-    // let verification_token =
-    EmailVerification::find_token(conn.clone(), &payload.email, &payload.did, code.unwrap())
-        .await?;
-
-    // FIXME do something with the verification token here.
-
-    Ok((
-        StatusCode::OK,
-        Json(
-            Account::new(conn.clone(), payload.username, payload.email, payload.did)
-                .await?
-                .into(),
-        ),
-    ))
 }
 
 #[utoipa::path(

@@ -8,6 +8,7 @@ use axum::{
     RequestPartsExt,
 };
 
+use tracing::log;
 use ucan::ucan::Ucan;
 
 // 🧬
@@ -36,11 +37,15 @@ where
             .await
             .map_err(|_| MissingCredentials)?;
 
+        log::debug!("Bearer token: {}", bearer.token());
+
         // Decode the UCAN
         let token = bearer.token();
         let ucan = Ucan::try_from(token).map_err(|err| InvalidUcan {
             reason: err.to_string(),
         })?;
+
+        log::debug!("Made it past ucan trY_from UCAN");
 
         // Construct authority
         let authority = Authority { ucan };

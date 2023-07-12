@@ -1,7 +1,7 @@
 //! Delegation capabilities
 
 use anyhow::{anyhow, Result};
-use ucan::capability::{Action, CapabilitySemantics, Scope};
+use ucan::capability::{Ability as UcanAbility, CapabilitySemantics, Scope};
 use url::Url;
 
 //////////////
@@ -76,7 +76,7 @@ pub enum Ability {
     AllCapabilities,
 }
 
-impl Action for Ability {}
+impl UcanAbility for Ability {}
 
 impl ToString for Ability {
     fn to_string(&self) -> String {
