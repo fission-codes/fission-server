@@ -22,7 +22,7 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
         // .route("/account/:name/did", put(account::update_did))
-        .with_state(db_pool)
+        .with_state(db_pool.clone())
         .fallback(notfound_404);
 
     router = router.nest("/api", api_router);
@@ -31,7 +31,9 @@ pub fn setup_app_router(db_pool: Pool) -> Router {
     router = router.layer(axum::middleware::from_fn(log_request_response::<Logger>));
 
     // Healthcheck layer
-    let mut healthcheck_router = Router::new().route("/healthcheck", get(health::healthcheck));
+    let mut healthcheck_router = Router::new()
+        .route("/healthcheck", get(health::healthcheck))
+        .with_state(db_pool);
 
     healthcheck_router = healthcheck_router.layer(axum::middleware::from_fn(
         log_request_response::<DebugOnlyLogger>,
