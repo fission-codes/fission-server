@@ -41,9 +41,6 @@ pub struct Account {
     /// Email address associated with the account
     pub email: String,
 
-    /// App ID associated with the account
-    pub app_id: Option<i32>,
-
     /// Inserted at timestamp
     pub inserted_at: NaiveDateTime,
 
