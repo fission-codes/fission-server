@@ -19,7 +19,7 @@ use http::StatusCode;
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Found volume", body=NewAccount),
+        (status = 200, description = "Found volume", body=account::AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)

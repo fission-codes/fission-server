@@ -56,13 +56,6 @@ pub async fn request_token(
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
-    if payload.did != authority.ucan.issuer() {
-        Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some("`did` parameter must match the issuer of the UCAN presented in the Authorization header.".to_string()),
-        ))?;
-    }
-
     /*
 
     The age-old question, should this be an invocation, or is the REST endpoint enough here?
@@ -98,7 +91,8 @@ pub async fn request_token(
     }
 
     let mut request = payload.clone();
-    request.compute_code_hash()?;
+    let did = authority.ucan.issuer();
+    request.compute_code_hash(did)?;
 
     log::debug!(
         "Successfully computed code hash {}",
@@ -107,7 +101,7 @@ pub async fn request_token(
 
     let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
-    EmailVerification::new(conn, request.clone()).await?;
+    EmailVerification::new(conn, request.clone(), did).await?;
 
     request.send_code().await?;
     Ok((

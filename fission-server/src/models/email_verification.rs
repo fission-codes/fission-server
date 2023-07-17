@@ -63,10 +63,11 @@ impl EmailVerification {
     pub async fn new(
         conn: Arc<Mutex<Conn<'_>>>,
         request: Request,
+        did: &str,
     ) -> Result<Self, diesel::result::Error> {
         let new_request = NewEmailVerification {
             email: request.email,
-            did: request.did,
+            did: did.into(),
             code_hash: request.code_hash.unwrap(),
         };
 
@@ -132,9 +133,6 @@ pub struct Request {
     /// The email address of the user signing up
     #[validate(email)]
     pub email: String,
-    /// The (pre-generated) did of the client application.
-    /// Currently only did:key is supported.
-    pub did: String,
     #[serde(skip)]
     #[serde(default = "generate_code")]
     code: u64,
@@ -147,7 +145,7 @@ pub struct Request {
 impl Request {
     /// Computes a hash of the code (so that it can only be used by the intended
     /// recipient) and stores it in the struct.
-    pub fn compute_code_hash(&mut self) -> Result<()> {
+    pub fn compute_code_hash(&mut self, did: &str) -> Result<()> {
         if self.validate().is_err() {
             log::error!("ERROR: Failed to validate the request.");
             return Err(ValidationError::new("Failed to validate the request.").into());
@@ -156,11 +154,11 @@ impl Request {
         log::debug!(
             "Computing code hash for email: {} did: {} code: {}",
             self.email,
-            self.did,
+            did,
             self.code
         );
 
-        self.code_hash = Some(hash_code(&self.email, &self.did, self.code));
+        self.code_hash = Some(hash_code(&self.email, did, self.code));
         Ok(())
     }
 

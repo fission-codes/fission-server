@@ -7,7 +7,7 @@ use crate::{
     db::{self, Pool},
     error::{AppError, AppResult},
     models::{
-        account::{Account, NewAccount},
+        account::{Account, AccountRequest},
         email_verification::EmailVerification,
     },
 };
@@ -25,12 +25,12 @@ use utoipa::ToSchema;
 #[utoipa::path(
     post,
     path = "/api/account",
-    request_body = NewAccount,
+    request_body = AccountRequest,
     security(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully created account", body=NewAccount),
+        (status = 201, description = "Successfully created account", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
@@ -41,8 +41,8 @@ use utoipa::ToSchema;
 pub async fn create_account(
     State(pool): State<Pool>,
     authority: Authority,
-    Json(payload): Json<NewAccount>,
-) -> AppResult<(StatusCode, Json<NewAccount>)> {
+    Json(payload): Json<AccountRequest>,
+) -> AppResult<(StatusCode, Json<AccountRequest>)> {
     let code = authority
         .ucan
         .facts()
@@ -64,16 +64,17 @@ pub async fn create_account(
 
     let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
+    let did = authority.ucan.issuer().to_string();
+
     // let verification_token =
-    EmailVerification::find_token(conn.clone(), &payload.email, &payload.did, code.unwrap())
-        .await?;
+    EmailVerification::find_token(conn.clone(), &payload.email, &did, code.unwrap()).await?;
 
     // FIXME do something with the verification token here.
 
     Ok((
         StatusCode::OK,
         Json(
-            Account::new(conn.clone(), payload.username, payload.email, payload.did)
+            Account::new(conn.clone(), payload.username, payload.email, &did)
                 .await?
                 .into(),
         ),
@@ -87,7 +88,7 @@ pub async fn create_account(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Found account", body=NewAccount),
+        (status = 200, description = "Found account", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
@@ -99,7 +100,7 @@ pub async fn get_account(
     State(pool): State<Pool>,
     authority: Authority,
     Path(username): Path<String>,
-) -> AppResult<(StatusCode, Json<NewAccount>)> {
+) -> AppResult<(StatusCode, Json<AccountRequest>)> {
     let account = Account::find_by_username(
         Arc::new(Mutex::new(db::connect(&pool).await?)),
         Some(authority.ucan),
@@ -121,7 +122,7 @@ pub struct Did {
     put,
     path = "/api/account/{username}/did",
     responses(
-        (status = 200, description = "Successfully updated DID", body=NewAccount),
+        (status = 200, description = "Successfully updated DID", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
@@ -134,7 +135,7 @@ pub async fn update_did(
     authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<Did>,
-) -> AppResult<(StatusCode, Json<NewAccount>)> {
+) -> AppResult<(StatusCode, Json<AccountRequest>)> {
     let conn = Arc::new(Mutex::new(db::connect(&pool).await?));
 
     let account =
