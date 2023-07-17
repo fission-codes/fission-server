@@ -31,7 +31,6 @@ pub async fn pool() -> Result<Pool> {
 
 /// Establish a connection
 pub async fn connect(pool: &Pool) -> Result<Conn<'_>> {
-    log::error!("trying to connect");
     let conn = pool.get().await?;
     Ok(conn)
 }
