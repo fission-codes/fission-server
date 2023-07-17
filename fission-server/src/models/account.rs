@@ -57,10 +57,10 @@ impl Account {
         conn: &mut Conn<'_>,
         username: String,
         email: String,
-        did: String,
+        did: &String,
     ) -> Result<Self, diesel::result::Error> {
         let new_account = NewAccountRecord {
-            did,
+            did: did.to_string(),
             username,
             email,
         };
@@ -180,21 +180,18 @@ impl Account {
 
 /// Account Request Struct (for creating new accounts)
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct NewAccount {
+pub struct AccountRequest {
     /// Username associated with the account
     pub username: String,
     /// Email address associated with the account
     pub email: String,
-    /// DID associated with the account
-    pub did: String,
 }
 
-impl From<Account> for NewAccount {
+impl From<Account> for AccountRequest {
     fn from(account: Account) -> Self {
         Self {
             username: account.username,
             email: account.email,
-            did: account.did,
         }
     }
 }
