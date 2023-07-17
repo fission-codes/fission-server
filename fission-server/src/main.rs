@@ -9,7 +9,7 @@ use fission_server::{
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
-    router,
+    router::{self, AppState},
     routes::fallback::notfound_404,
     settings::{Otel, Settings},
     tracer::init_tracer,
@@ -83,7 +83,12 @@ async fn main() -> Result<()> {
         let req_id = HeaderName::from_static(REQUEST_ID);
         let db_pool = db::pool().await?;
 
-        let router = router::setup_app_router(db_pool)
+        let app_state = AppState {
+            db_pool: db_pool.clone(),
+            db_version: db::schema_version(&mut db::connect(&db_pool).await?).await?,
+        };
+
+        let router = router::setup_app_router(app_state)
             .route_layer(axum::middleware::from_fn(middleware::metrics::track))
             .layer(Extension(env))
             // Include trace context as header into the response.

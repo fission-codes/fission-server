@@ -4,12 +4,17 @@ use std::time::Duration;
 
 use anyhow::Result;
 use bb8::PooledConnection;
-use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
+use diesel::{ExpressionMethods, QueryDsl};
+use diesel_async::{
+    pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection, RunQueryDsl,
+};
 use tracing::log;
 
 // 🧬
 
 use crate::settings::Settings;
+
+use super::__diesel_schema_migrations;
 
 /// Type alias for the connection pool
 pub type Pool = bb8::Pool<AsyncDieselConnectionManager<AsyncPgConnection>>;
@@ -45,4 +50,14 @@ pub async fn connect(pool: &Pool) -> Result<Conn<'_>> {
     log::error!("trying to connect");
     let conn = pool.get().await?;
     Ok(conn)
+}
+
+/// Get the current schema version
+pub async fn schema_version(conn: &mut Conn<'_>) -> Result<String> {
+    __diesel_schema_migrations::table
+        .select(__diesel_schema_migrations::version)
+        .order(__diesel_schema_migrations::version.desc())
+        .first(conn)
+        .await
+        .map_err(Into::into)
 }

@@ -8,6 +8,7 @@ use crate::{
         account::{Account, NewAccount},
         email_verification::EmailVerification,
     },
+    router::AppState,
 };
 use axum::{
     self,
@@ -37,7 +38,7 @@ use utoipa::ToSchema;
 
 /// POST handler for creating a new account
 pub async fn create_account(
-    State(pool): State<Pool>,
+    State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<NewAccount>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
@@ -55,7 +56,7 @@ pub async fn create_account(
 
     if let Some(code) = code {
         let request = EmailVerification::find_token(
-            db::connect(&pool).await?,
+            db::connect(&state.db_pool).await?,
             &payload.email,
             &payload.did,
             code,
@@ -75,7 +76,7 @@ pub async fn create_account(
     }
 
     let account = Account::new(
-        db::connect(&pool).await?,
+        db::connect(&state.db_pool).await?,
         payload.username,
         payload.email,
         payload.did,
@@ -107,7 +108,7 @@ pub async fn create_account(
 
 /// GET handler to retrieve account details
 pub async fn get_account(
-    State(pool): State<Pool>,
+    State(state): State<AppState>,
     authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewAccount>)> {
@@ -120,7 +121,7 @@ pub async fn get_account(
     };
 
     let account = Account::find_by_username_and_did(
-        db::connect(&pool).await?,
+        db::connect(&state.db_pool).await?,
         username.clone(),
         authority.ucan.issuer().to_string(),
     )

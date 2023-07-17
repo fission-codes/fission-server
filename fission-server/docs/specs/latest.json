@@ -200,17 +200,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppError"
+                  "$ref": "#/components/schemas/HealthcheckResponse"
                 }
               }
             }
           },
-          "500": {
+          "503": {
             "description": "fission-server not healthy",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppError"
+                  "$ref": "#/components/schemas/HealthcheckResponse"
                 }
               }
             }
@@ -265,6 +265,22 @@
           },
           "title": {
             "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "HealthcheckResponse": {
+        "type": "object",
+        "description": "A healthcheck response containing diagnostic information for the service",
+        "required": [
+          "database_connected"
+        ],
+        "properties": {
+          "database_connected": {
+            "type": "boolean"
+          },
+          "database_up_to_date": {
+            "type": "boolean",
             "nullable": true
           }
         }

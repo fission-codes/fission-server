@@ -1,8 +1,9 @@
 //! Healthcheck route.
 
 use crate::{
-    db::{self, Pool},
+    db::{self},
     error::AppResult,
+    router::AppState,
 };
 use axum::{self, extract::State, http::StatusCode};
 use diesel_async::pooled_connection::PoolableConnection;
@@ -14,12 +15,14 @@ use utoipa::ToSchema;
 #[derive(ToSchema, Eq, PartialEq, Debug, Deserialize, Serialize)]
 pub struct HealthcheckResponse {
     database_connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    database_up_to_date: Option<bool>,
 }
 
 impl HealthcheckResponse {
     /// Whether the service is healthy
     pub fn is_healthy(&self) -> bool {
-        self.database_connected
+        self.database_connected && self.database_up_to_date.is_some_and(|v| v)
     }
 
     /// The status code for the healthcheck response
@@ -42,14 +45,25 @@ impl HealthcheckResponse {
     )
 )]
 pub async fn healthcheck(
-    State(pool): State<Pool>,
+    State(state): State<AppState>,
 ) -> AppResult<(StatusCode, axum::Json<serde_json::Value>)> {
-    let database_connected = db::connect(&pool)
-        .await
-        .map(move |mut conn| async move { conn.ping().await.ok() })
-        .is_ok();
+    let (database_connected, database_up_to_date) =
+        if let Ok(mut conn) = db::connect(&state.db_pool).await {
+            let database_connected = conn.ping().await.is_ok();
+            let database_up_to_date = db::schema_version(&mut conn)
+                .await
+                .map(|version| version == state.db_version)
+                .ok();
 
-    let response = HealthcheckResponse { database_connected };
+            (database_connected, database_up_to_date)
+        } else {
+            (false, None)
+        };
+
+    let response = HealthcheckResponse {
+        database_connected,
+        database_up_to_date,
+    };
 
     Ok((response.status_code(), axum::Json(json! { response})))
 }
