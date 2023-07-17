@@ -1,5 +1,6 @@
 [database]
 url = "postgres://postgres:postgres@localhost:5432/fission-server"
+connect_timeout = 3
 
 [monitoring]
 process_collector_interval = 10

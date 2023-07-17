@@ -34,6 +34,8 @@ impl std::fmt::Display for AppEnvironment {
 pub struct Database {
     /// Database URL
     pub url: String,
+    /// Connect Timeout
+    pub connect_timeout: u64,
 }
 
 /// Server settings.

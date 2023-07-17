@@ -1,5 +1,7 @@
 //! Database configuration & connections
 
+use std::time::Duration;
+
 use anyhow::Result;
 use bb8::PooledConnection;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
@@ -20,11 +22,20 @@ pub async fn pool() -> Result<Pool> {
     let global_settings = Settings::load()?;
     let db_settings = global_settings.database();
 
-    log::info!("Connecting to database: {}", db_settings.url);
+    log::info!(
+        "Connecting to database: {}, connect_timeout={}",
+        db_settings.url,
+        db_settings.connect_timeout
+    );
 
     let config =
         AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(&db_settings.url);
-    let pool = bb8::Pool::builder().build(config).await.unwrap();
+
+    let pool = bb8::Pool::builder()
+        .connection_timeout(Duration::from_secs(db_settings.connect_timeout))
+        .build(config)
+        .await
+        .unwrap();
 
     Ok(pool)
 }
