@@ -1239,6 +1239,7 @@ dependencies = [
  "tracing-appender",
  "tracing-opentelemetry 0.18.0",
  "tracing-subscriber",
+ "trust-dns-proto",
  "trust-dns-server",
  "ucan",
  "ucan-key-support",
