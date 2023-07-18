@@ -22,7 +22,7 @@ pub struct HealthcheckResponse {
 impl HealthcheckResponse {
     /// Whether the service is healthy
     pub fn is_healthy(&self) -> bool {
-        self.database_connected && self.database_up_to_date.is_some_and(|v| v)
+        self.database_connected && self.database_up_to_date.unwrap_or_default()
     }
 
     /// The status code for the healthcheck response
