@@ -35,6 +35,7 @@ use std::{
     future::ready,
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    process::exit,
     time::Duration,
 };
 use tokio::{
@@ -95,7 +96,16 @@ async fn main() -> Result<()> {
 
     let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
 
-    tokio::spawn(handle_signals(cancellation_token));
+    tokio::spawn(async move {
+        capture_sigterm().await;
+
+        cancellation_token.cancel();
+        println!("\nCtrl+C received, shutting down. Press Ctrl+C again to force shutdown.");
+
+        capture_sigterm().await;
+
+        exit(130)
+    });
 
     let (metrics, app, dns) = tokio::try_join!(metrics_server, app_server, dns_server)?;
 
@@ -257,7 +267,7 @@ fn serve(
 }
 
 /// Captures and waits for system signals.
-async fn handle_signals(cancellation_token: CancellationToken) {
+async fn capture_sigterm() {
     #[cfg(unix)]
     let term = async {
         signal(SignalKind::terminate())
@@ -270,11 +280,9 @@ async fn handle_signals(cancellation_token: CancellationToken) {
     let term = std::future::pending::<()>();
 
     tokio::select! {
-        _ = signal::ctrl_c() => {}
+        _ = signal::ctrl_c() => {},
         _ = term => {}
-    }
-
-    cancellation_token.cancel();
+    };
 }
 
 /// Setup all [tracing][tracing] layers for storage, request/response tracing,
