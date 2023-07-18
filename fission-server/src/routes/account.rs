@@ -5,7 +5,7 @@ use crate::{
     db::{self},
     error::{AppError, AppResult},
     models::{
-        account::{Account, AccountRequest},
+        account::{Account, AccountRequest, RootAccount},
         email_verification::EmailVerification,
     },
     router::AppState,
@@ -28,7 +28,7 @@ use utoipa::ToSchema;
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully created account", body=AccountRequest),
+        (status = 201, description = "Successfully created account", body=RootAccount),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
@@ -40,7 +40,7 @@ pub async fn create_account(
     State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<AccountRequest>,
-) -> AppResult<(StatusCode, Json<AccountRequest>)> {
+) -> AppResult<(StatusCode, Json<RootAccount>)> {
     // Validate Code
     let code = authority
         .ucan
@@ -69,14 +69,15 @@ pub async fn create_account(
     EmailVerification::find_token(&mut conn, &payload.email, &did, code.unwrap()).await?;
 
     // FIXME do something with the verification token here.
+    //   - mark it as used
+    //   - also above, check expiry
+    //   - also above, check that it's not already used
+
+    // Now create the account!
 
     Ok((
         StatusCode::OK,
-        Json(
-            Account::new(&mut conn, payload.username, payload.email, &did)
-                .await?
-                .into(),
-        ),
+        Json(RootAccount::new(&mut conn, payload.username, payload.email, &did).await?),
     ))
 }
 
