@@ -1,61 +1,66 @@
 //! Volume routes
 
-use serde::{Deserialize, Serialize};
+use crate::{
+    authority::Authority,
+    db::{self},
+    error::AppResult,
+    models::{account::Account, volume::NewVolumeRecord},
+    router::AppState,
+};
+use axum::extract::{Json, Path, State};
+use http::StatusCode;
 
-use utoipa::ToSchema;
+#[utoipa::path(
+    get,
+    path = "/api/account/{username}/volume/cid",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Found volume", body=account::AccountRequest),
+        (status = 400, description = "Invalid request", body=AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error", body=AppError)
+    )
+)]
 
-/// Volume Struct
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct Volume {
-    cid: String,
+/// GET handler to retrieve account volume CID
+pub async fn get_cid(
+    State(state): State<AppState>,
+    authority: Authority,
+    Path(username): Path<String>,
+) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
+    let mut conn = db::connect(&state.db_pool).await?;
+    let account = Account::find_by_username(&mut conn, Some(authority.ucan), username).await?;
+    let volume = account.get_volume(&mut conn).await?;
+
+    Ok((StatusCode::OK, Json(volume)))
 }
 
-impl Volume {
-    /// Create a new instance of [Volume]
-    pub fn new(cid: String) -> Self {
-        Self { cid }
-    }
+#[utoipa::path(
+    put,
+    path = "/api/account/{username}/volume/cid",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Successfully updated Volume", body=NewVolume),
+        (status = 400, description = "Invalid request", body=AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error", body=AppError)
+    )
+)]
+
+/// Handler to update the CID associated with an account's volume
+pub async fn update_cid(
+    State(state): State<AppState>,
+    authority: Authority,
+    Path(username): Path<String>,
+    Json(payload): Json<NewVolumeRecord>,
+) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
+    let mut conn = db::connect(&state.db_pool).await?;
+    let account = Account::find_by_username(&mut conn, Some(authority.ucan), username).await?;
+    let volume = account.update_volume_cid(&mut conn, payload.cid).await?;
+
+    Ok((StatusCode::OK, Json(volume)))
 }
-
-// #[utoipa::path(
-//     get,
-//     path = "/api/account/{name}/volume",
-//     responses(
-//         (status = 200, description = "Volume Found", body=Volume),
-//         (status = 400, description = "Invalid request", body=Response),
-//         (status = 401, description = "Unauthorized"),
-//         (status = 500, description = "Internal Server Error", body=AppError)
-//     )
-// )]
-// /// GET handler for retreiving a volume CID
-// pub async fn get_cid(
-//     State(pool): State<Pool>,
-//     Path(name): Path<String>,
-// ) -> AppResult<(StatusCode, Json<Volume>)> {
-//     let volumes = state.volumes.read().await;
-//     let volume = volumes.get(&name).unwrap();
-//     Ok((StatusCode::OK, Json(volume.clone())))
-// }
-
-// #[utoipa::path(
-//     put,
-//     path = "/api/account/{name}/volume",
-//     request_body = Volume,
-//     responses(
-//         (status = 200, description = "Updated Volume CID", body=Volume),
-//         (status = 400, description = "Invalid request", body=Response),
-//         (status = 401, description = "Unauthorized"),
-//         (status = 500, description = "Internal Server Error", body=AppError)
-//     )
-// )]
-// /// PUT handler for updating a volume CID
-// pub async fn update_cid(
-//     Path(name): Path<String>,
-//     Json(payload): Json<Volume>,
-//     State(pool): State<Pool>,
-// ) -> AppResult<(StatusCode, Json<Volume>)> {
-//     let mut volumes = state.volumes.write().await;
-//     let volume = volumes.get_mut(&name).unwrap();
-//     volume.cid = payload.cid.clone();
-//     Ok((StatusCode::OK, Json(volume.clone())))
-// }

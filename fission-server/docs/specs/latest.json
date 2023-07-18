@@ -25,7 +25,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewAccount"
+                "$ref": "#/components/schemas/AccountRequest"
               }
             }
           },
@@ -37,7 +37,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NewAccount"
+                  "$ref": "#/components/schemas/AccountRequest"
                 }
               }
             }
@@ -73,7 +73,7 @@
         ]
       }
     },
-    "/api/account/{name}": {
+    "/api/account/{username}": {
       "get": {
         "tags": [
           "account"
@@ -97,7 +97,180 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NewAccount"
+                  "$ref": "#/components/schemas/AccountRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      }
+    },
+    "/api/account/{username}/did": {
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Handler to update the DID associated with an account",
+        "description": "Handler to update the DID associated with an account",
+        "operationId": "update_did",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully updated DID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/{username}/volume/cid": {
+      "get": {
+        "tags": [
+          "volume"
+        ],
+        "summary": "GET handler to retrieve account volume CID",
+        "description": "GET handler to retrieve account volume CID",
+        "operationId": "get_cid",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found volume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/account.AccountRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "volume"
+        ],
+        "summary": "Handler to update the CID associated with an account's volume",
+        "description": "Handler to update the CID associated with an account's volume",
+        "operationId": "update_cid",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully updated Volume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewVolume"
                 }
               }
             }
@@ -246,6 +419,24 @@
   },
   "components": {
     "schemas": {
+      "AccountRequest": {
+        "type": "object",
+        "description": "Account Request Struct (for creating new accounts)",
+        "required": [
+          "username",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email address associated with the account"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username associated with the account"
+          }
+        }
+      },
       "AppError": {
         "type": "object",
         "description": "Encodes [JSONAPI error object responses](https://jsonapi.org/examples/#error-objects).\n\nJSONAPI error object -  ALL Fields are technically optional.\n\nThis struct uses the following guidelines:\n\n1. Always encode the StatusCode of the response\n2. Set the title to the `canonical_reason` of the status code.\nAccording to spec, this should NOT change over time.\n3. For unrecoverable errors, encode the detail as the to_string of the error\n\nOther fields not currently captured (but can be added)\n\n- id - a unique identifier for the problem\n- links - a link object with further information about the problem\n- source - a JSON pointer indicating a problem in the request json OR\na parameter specifying a problematic query parameter\n- meta - a meta object containing arbitrary information about the error",
@@ -285,23 +476,16 @@
           }
         }
       },
-      "NewAccount": {
+      "NewVolumeRecord": {
         "type": "object",
-        "description": "Account Request Struct (for creating new accounts)",
+        "description": "New Volume Struct (for creating new volumes)",
         "required": [
-          "username",
-          "email",
-          "did"
+          "cid"
         ],
         "properties": {
-          "did": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
+          "cid": {
+            "type": "string",
+            "description": "Content ID of the volume"
           }
         }
       },
@@ -309,18 +493,13 @@
         "type": "object",
         "description": "[Request] Parameters",
         "required": [
-          "email",
-          "did"
+          "email"
         ],
         "properties": {
           "code_hash": {
             "type": "string",
             "description": "The hash of the code, so that it can only be used by the intended recipient.\nWe only store the hash, not the code itself.",
             "nullable": true
-          },
-          "did": {
-            "type": "string",
-            "description": "The (pre-generated) did of the client application.\nCurrently only did:key is supported."
           },
           "email": {
             "type": "string",
@@ -336,18 +515,6 @@
         ],
         "properties": {
           "msg": {
-            "type": "string"
-          }
-        }
-      },
-      "Volume": {
-        "type": "object",
-        "description": "Volume Struct",
-        "required": [
-          "cid"
-        ],
-        "properties": {
-          "cid": {
             "type": "string"
           }
         }

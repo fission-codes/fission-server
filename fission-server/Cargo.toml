@@ -34,7 +34,7 @@ bench = false
 ansi_term = { version = "0.12", optional = true, default-features = false }
 anyhow = { workspace = true }
 async-trait = "0.1"
-axum = { version = "0.6", workspace = true, features = ["headers"] }
+axum = { workspace = true, features = ["headers"] }
 axum-macros = "0.3.7"
 axum-tracing-opentelemetry = { version = "0.10", features = ["otlp"] }
 base64 = "0.21"
@@ -43,6 +43,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 config = "0.13"
 console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
+did-key = "0.2.1"
 diesel = { version = "2.0.4", features = ["postgres", "chrono"] }
 diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
 fission-core = { path = "../fission-core", version = "0.1" }
@@ -82,11 +83,13 @@ tokio = { version = "1.26", features = ["full", "parking_lot"] }
 ## Tied to opentelemetry-otlp dependency
 tonic = { version = "0.8" }
 tower = "0.4"
-tower-http = { version = "0.4", features = ["catch-panic", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
+tower-http = { version = "0.4", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.18"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
+trust-dns-proto = "0.22.0"
+trust-dns-server = "0.22.1"
 ucan = { workspace = true }
 ucan-key-support = { workspace = true }
 ulid = { version = "1.0", features = ["serde"] }

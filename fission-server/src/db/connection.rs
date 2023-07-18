@@ -47,8 +47,7 @@ pub async fn pool() -> Result<Pool> {
 
 /// Establish a connection
 pub async fn connect(pool: &Pool) -> Result<Conn<'_>> {
-    log::error!("trying to connect");
-
+    log::debug!("Connecting to the database");
     pool.get()
         .await
         .map_err(|_| anyhow::anyhow!("Failed to connect to database"))
