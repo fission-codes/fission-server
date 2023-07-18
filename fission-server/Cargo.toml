@@ -80,6 +80,7 @@ task-local-extensions = "0.1"
 thiserror = "1.0"
 time = { version = "0.3", features = ["serde-well-known", "serde-human-readable"] }
 tokio = { version = "1.26", features = ["full", "parking_lot"] }
+tokio-util = "0.7.8"
 ## Tied to opentelemetry-otlp dependency
 tonic = { version = "0.8" }
 tower = "0.4"

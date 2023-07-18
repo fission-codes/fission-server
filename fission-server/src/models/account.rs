@@ -1,8 +1,6 @@
 //! Fission Account Model
 
 use did_key::{generate, Ed25519KeyPair, Fingerprint};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -142,18 +140,18 @@ impl Account {
     /// Create a volume record and update the account to point to it.
     pub async fn set_volume_cid(
         &self,
-        conn: Arc<Mutex<Conn<'_>>>,
+        conn: &mut Conn<'_>,
         cid: String,
     ) -> Result<NewVolumeRecord, diesel::result::Error> {
-        let volume = Volume::new(conn.clone(), cid).await?;
+        let volume = Volume::new(conn, cid).await?;
         let volume_id = volume.id;
 
-        let mut conn = conn.lock().await;
         diesel::update(accounts::dsl::accounts)
             .filter(accounts::id.eq(self.id))
             .set(accounts::volume_id.eq(volume_id))
-            .execute(&mut conn)
+            .execute(conn)
             .await?;
+
         Ok(volume.into())
     }
 
