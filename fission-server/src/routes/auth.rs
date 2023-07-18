@@ -2,9 +2,10 @@
 
 use crate::{
     authority::Authority,
-    db::{self, Pool},
+    db::{self},
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
+    router::AppState,
     settings::Settings,
 };
 use axum::{
@@ -49,7 +50,7 @@ impl Response {
 
 /// POST handler for requesting a new token by email
 pub async fn request_token(
-    State(pool): State<Pool>,
+    State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<Response>)> {
@@ -107,7 +108,7 @@ pub async fn request_token(
         request.code_hash.clone().unwrap()
     );
 
-    let conn = db::connect(&pool).await;
+    let conn = db::connect(&state.db_pool).await;
 
     let insert_result = EmailVerification::new(conn.unwrap(), request.clone()).await;
     if insert_result.is_err() {

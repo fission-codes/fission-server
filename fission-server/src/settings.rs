@@ -34,6 +34,8 @@ impl std::fmt::Display for AppEnvironment {
 pub struct Database {
     /// Database URL
     pub url: String,
+    /// Connect Timeout
+    pub connect_timeout: u64,
 }
 
 /// Server settings.
@@ -95,6 +97,18 @@ pub struct Mailgun {
     pub template: String,
 }
 
+/// Background healthcheck settings
+#[derive(Clone, Debug, Deserialize)]
+pub struct Healthcheck {
+    /// Is background healthcheck enabled?
+    #[serde(rename = "enabled")]
+    pub is_enabled: bool,
+    /// Healthcheck interval in milliseconds.
+    pub interval_ms: u64,
+    /// Healthcheck max retries.
+    pub max_retries: u32,
+}
+
 #[derive(Debug, Deserialize)]
 /// Application settings.
 pub struct Settings {
@@ -103,6 +117,7 @@ pub struct Settings {
     server: Server,
     otel: Otel,
     mailgun: Mailgun,
+    healthcheck: Healthcheck,
 }
 
 impl Settings {
@@ -134,6 +149,11 @@ impl Settings {
     /// Mailgun settings getter.
     pub fn mailgun(&self) -> &Mailgun {
         &self.mailgun
+    }
+
+    /// Healthcheck settings getter.
+    pub fn healthcheck(&self) -> &Healthcheck {
+        &self.healthcheck
     }
 }
 

@@ -4,8 +4,8 @@
     "title": "fission-server",
     "description": "",
     "contact": {
-      "name": "Zeeshan Lakhani",
-      "email": "zeeshan.lakhani@gmail.com"
+      "name": "Steven Vandevelde",
+      "email": "icid.asset@gmail.com"
     },
     "license": {
       "name": "Apache-2.0"
@@ -13,6 +13,179 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/account": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "POST handler for creating a new account",
+        "description": "POST handler for creating a new account\nPOST handler for creating a new account",
+        "operationId": "create_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewAccount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successfully created account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      }
+    },
+    "/api/account/{name}": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "GET handler to retrieve account details",
+        "description": "GET handler to retrieve account details",
+        "operationId": "get_account",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Found account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      }
+    },
+    "/api/auth/email/verify": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST handler for requesting a new token by email",
+        "description": "POST handler for requesting a new token by email\nPOST handler for requesting a new token by email",
+        "operationId": "request_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/email_verification.Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully sent request token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "429": {
+            "description": "Too many requests"
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ucan_bearer": []
+          }
+        ]
+      }
+    },
     "/healthcheck": {
       "get": {
         "tags": [
@@ -23,20 +196,26 @@
         "operationId": "healthcheck",
         "responses": {
           "200": {
-            "description": "fission-server healthy"
+            "description": "fission-server healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthcheckResponse"
+                }
+              }
+            }
           },
-          "500": {
+          "503": {
             "description": "fission-server not healthy",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppError"
+                  "$ref": "#/components/schemas/HealthcheckResponse"
                 }
               }
             }
           }
-        },
-        "deprecated": false
+        }
       }
     },
     "/ping": {
@@ -61,8 +240,7 @@
               }
             }
           }
-        },
-        "deprecated": false
+        }
       }
     }
   },
@@ -76,17 +254,110 @@
         ],
         "properties": {
           "detail": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "status": {
             "type": "integer",
             "format": "int32",
-            "example": 200
+            "example": 200,
+            "minimum": 0.0
           },
           "title": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "HealthcheckResponse": {
+        "type": "object",
+        "description": "A healthcheck response containing diagnostic information for the service",
+        "required": [
+          "database_connected"
+        ],
+        "properties": {
+          "database_connected": {
+            "type": "boolean"
+          },
+          "database_up_to_date": {
+            "type": "boolean",
+            "nullable": true
+          }
+        }
+      },
+      "NewAccount": {
+        "type": "object",
+        "description": "Account Request Struct (for creating new accounts)",
+        "required": [
+          "username",
+          "email",
+          "did"
+        ],
+        "properties": {
+          "did": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "username": {
             "type": "string"
           }
         }
+      },
+      "Request": {
+        "type": "object",
+        "description": "[Request] Parameters",
+        "required": [
+          "email",
+          "did"
+        ],
+        "properties": {
+          "code_hash": {
+            "type": "string",
+            "description": "The hash of the code, so that it can only be used by the intended recipient.\nWe only store the hash, not the code itself.",
+            "nullable": true
+          },
+          "did": {
+            "type": "string",
+            "description": "The (pre-generated) did of the client application.\nCurrently only did:key is supported."
+          },
+          "email": {
+            "type": "string",
+            "description": "The email address of the user signing up"
+          }
+        }
+      },
+      "Response": {
+        "type": "object",
+        "description": "Response for Request Token",
+        "required": [
+          "msg"
+        ],
+        "properties": {
+          "msg": {
+            "type": "string"
+          }
+        }
+      },
+      "Volume": {
+        "type": "object",
+        "description": "Volume Struct",
+        "required": [
+          "cid"
+        ],
+        "properties": {
+          "cid": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ucan_bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     }
   },
