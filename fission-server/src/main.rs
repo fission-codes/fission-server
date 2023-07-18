@@ -8,7 +8,7 @@ use fission_server::{
     db,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
-    middleware::{self, request_ulid::MakeRequestUlid, runtime},
+    middleware::{self, logging::Logger, request_ulid::MakeRequestUlid, runtime},
     router::{self, AppState},
     routes::fallback::notfound_404,
     settings::{Otel, Settings},
@@ -21,6 +21,10 @@ use fission_server::{
 };
 use futures::Future;
 use http::header;
+use reqwest_middleware::ClientBuilder;
+use reqwest_retry::RetryTransientMiddleware;
+use reqwest_tracing::TracingMiddleware;
+use retry_policies::policies::ExponentialBackoffBuilder;
 use std::{
     future::ready,
     io,
@@ -188,13 +192,22 @@ async fn shutdown_with_healthcheck(shutdown_tx: broadcast::Sender<()>, port: u16
     tokio::task::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(5));
 
-        let client = reqwest::Client::new();
-        let url = format!("http://localhost:{}/healthcheck", port);
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with(TracingMiddleware::default())
+            .with(Logger)
+            .with(RetryTransientMiddleware::new_with_policy(
+                ExponentialBackoffBuilder::default().build_with_max_retries(3),
+            ))
+            .build();
 
         loop {
             interval.tick().await;
 
-            if let Ok(response) = client.get(&url).send().await {
+            if let Ok(response) = client
+                .get(&format!("http://localhost:{}/healthcheck", port))
+                .send()
+                .await
+            {
                 if !response.status().is_success() {
                     break;
                 }
