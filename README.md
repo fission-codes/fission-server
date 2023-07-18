@@ -35,5 +35,5 @@
 To start-up the fission server, run:
 
 ```console
-cargo run
+APP__MAILGUN__API_KEY=::ask-blaine:: cargo watch -c -s "cargo run --features ansi-logs"
 ```
