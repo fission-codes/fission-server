@@ -24,3 +24,8 @@ subject = "Your Fission Verification Code"
 from_address = "noreply@mail.fission.codes"
 from_name = "Fission"
 template = "test-email-verification"
+
+[healthcheck]
+enabled = true
+interval_ms = 5000
+max_retries = 3

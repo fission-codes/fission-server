@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
             "Application",
             router,
             settings.server().port,
-            shutdown_with_healthcheck(shutdown_tx, settings.server().port),
+            shutdown_with_healthcheck(shutdown_tx, &settings),
         )
         .await
     };
@@ -184,44 +184,54 @@ async fn shutdown(mut shutdown_rx: broadcast::Receiver<()>) {
     }
 }
 
-async fn shutdown_with_healthcheck(shutdown_tx: broadcast::Sender<()>, port: u16) {
+async fn shutdown_with_healthcheck(shutdown_tx: broadcast::Sender<()>, settings: &Settings) {
     let shutdown_rx = shutdown_tx.subscribe();
     let shutdown = async { shutdown(shutdown_rx).await };
     let (health_tx, health_rx) = oneshot::channel::<()>();
 
-    tokio::task::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
+    tokio::task::spawn({
+        let port = settings.server().port;
+        let settings = settings.healthcheck().clone();
 
-        let client = ClientBuilder::new(reqwest::Client::new())
-            .with(TracingMiddleware::default())
-            .with(Logger)
-            .with(RetryTransientMiddleware::new_with_policy(
-                ExponentialBackoffBuilder::default().build_with_max_retries(3),
-            ))
-            .build();
+        async move {
+            if !settings.is_enabled {
+                return;
+            }
 
-        loop {
-            interval.tick().await;
+            let mut interval = tokio::time::interval(Duration::from_millis(settings.interval_ms));
 
-            if let Ok(response) = client
-                .get(&format!("http://localhost:{}/healthcheck", port))
-                .send()
-                .await
-            {
-                if !response.status().is_success() {
+            let client = ClientBuilder::new(reqwest::Client::new())
+                .with(TracingMiddleware::default())
+                .with(Logger)
+                .with(RetryTransientMiddleware::new_with_policy(
+                    ExponentialBackoffBuilder::default()
+                        .build_with_max_retries(settings.max_retries),
+                ))
+                .build();
+
+            loop {
+                interval.tick().await;
+
+                if let Ok(response) = client
+                    .get(&format!("http://localhost:{}/healthcheck", port))
+                    .send()
+                    .await
+                {
+                    if !response.status().is_success() {
+                        break;
+                    }
+                } else {
                     break;
                 }
-            } else {
-                break;
             }
-        }
 
-        health_tx.send(()).unwrap();
+            health_tx.send(()).unwrap();
+        }
     });
 
     tokio::select! {
         _ = shutdown => {}
-        _ = health_rx => {
+        Ok(()) = health_rx => {
             log::error!("Healthcheck failed, shutting down");
 
             shutdown_tx.send(()).unwrap();
