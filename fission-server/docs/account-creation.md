@@ -10,7 +10,7 @@ sequenceDiagram
     Note right of ODD: UCAN delegated to ODD's did w/{email address} in fct ("verification UCAN")
 
     ODD->>{email address}: Obtain code
-    {email address}->>ODD:
+    {email address}->>ODD: Code
 
     ODD->>+Server: Create account
     Note right of ODD: Request Params: email, username<br/>Authorization: UCAN w/code in fct, verification UCAN in prf
