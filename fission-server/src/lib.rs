@@ -5,6 +5,7 @@
 //! fission-server
 
 pub mod authority;
+pub mod crypto;
 pub mod db;
 pub mod dns;
 pub mod docs;

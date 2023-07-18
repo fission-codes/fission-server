@@ -43,6 +43,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 config = "0.13"
 console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
+did-key = "0.2.1"
 diesel = { version = "2.0.4", features = ["postgres", "chrono"] }
 diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
 fission-core = { path = "../fission-core", version = "0.1" }
