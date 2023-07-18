@@ -10,7 +10,8 @@ use axum::{
 };
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
-    db, dns,
+    db::{self, Pool},
+    dns,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
@@ -26,6 +27,7 @@ use fission_server::{
 };
 use http::header;
 use hyper::server::conn::AddrIncoming;
+use metrics_exporter_prometheus::PrometheusHandle;
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::RetryTransientMiddleware;
 use retry_policies::policies::ExponentialBackoffBuilder;
@@ -76,151 +78,163 @@ async fn main() -> Result<()> {
         settings,
     );
 
-    let env = settings.environment();
     let recorder_handle = setup_metrics_recorder()?;
-
     let cancellation_token = CancellationToken::new();
 
-    let metrics_server = {
-        let cancellation_token = cancellation_token.clone();
-        let settings = settings.clone();
-        async move {
-            let metrics_router = Router::new()
-                .route("/metrics", get(move || ready(recorder_handle.render())))
-                .fallback(notfound_404);
+    let metrics_server = tokio::spawn(serve_metrics(
+        recorder_handle,
+        settings.clone(),
+        cancellation_token.clone(),
+    ));
 
-            let router = metrics_router.layer(CatchPanicLayer::custom(runtime::catch_panic));
+    let app_server = tokio::spawn(serve_app(
+        settings.clone(),
+        db_pool.clone(),
+        cancellation_token.clone(),
+    ));
 
-            // Spawn tick-driven process collection task
-            tokio::spawn(process::collect_metrics(
-                settings.monitoring().process_collector_interval,
-            ));
-
-            serve("Metrics", router, settings.server().metrics_port)
-                .with_graceful_shutdown(cancellation_token.cancelled())
-                .await?;
-
-            Ok::<(), anyhow::Error>(())
-        }
-    };
-
-    let app_server = {
-        let cancellation_token = cancellation_token.clone();
-        let settings = settings.clone();
-        let db_pool = db_pool.clone();
-        async move {
-            let req_id = HeaderName::from_static(REQUEST_ID);
-
-            let app_state = AppState {
-                db_pool: db_pool.clone(),
-                db_version: db::schema_version(&mut db::connect(&db_pool).await?).await?,
-            };
-
-            let router = router::setup_app_router(app_state)
-                .route_layer(axum::middleware::from_fn(middleware::metrics::track))
-                .layer(Extension(env))
-                // Include trace context as header into the response.
-                .layer(response_with_trace_layer())
-                // Opentelemetry tracing middleware.
-                // This returns a `TraceLayer` configured to use
-                // OpenTelemetry’s conventional span field names.
-                .layer(opentelemetry_tracing_layer())
-                // Set and propagate "request_id" (as a ulid) per request.
-                .layer(
-                    ServiceBuilder::new()
-                        .set_request_id(req_id.clone(), MakeRequestUlid)
-                        .propagate_request_id(req_id),
-                )
-                // Applies the `tower_http::timeout::Timeout` middleware which
-                // applies a timeout to requests.
-                .layer(TimeoutLayer::new(Duration::from_millis(
-                    settings.server().timeout_ms,
-                )))
-                // Catches runtime panics and converts them into
-                // `500 Internal Server` responses.
-                .layer(CatchPanicLayer::custom(runtime::catch_panic))
-                // Mark headers as sensitive on both requests and responses.
-                .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
-                .merge(
-                    SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()),
-                );
-
-            let server = serve("Application", router, settings.server().port);
-
-            if settings.healthcheck().is_enabled {
-                tokio::spawn({
-                    let cancellation_token = cancellation_token.clone();
-                    let settings = settings.healthcheck().clone();
-                    let local_addr = server.local_addr();
-
-                    async move {
-                        let mut interval =
-                            tokio::time::interval(Duration::from_millis(settings.interval_ms));
-
-                        let client = ClientBuilder::new(reqwest::Client::new())
-                            .with(RetryTransientMiddleware::new_with_policy(
-                                ExponentialBackoffBuilder::default()
-                                    .build_with_max_retries(settings.max_retries),
-                            ))
-                            .build();
-
-                        loop {
-                            interval.tick().await;
-
-                            if let Ok(response) = client
-                                .get(&format!("http://{}/healthcheck", local_addr))
-                                .send()
-                                .await
-                            {
-                                if !response.status().is_success() {
-                                    break;
-                                }
-                            } else {
-                                break;
-                            }
-                        }
-
-                        cancellation_token.cancel();
-
-                        log::error!("Healthcheck failed, shutting down");
-                    }
-                });
-            }
-
-            server
-                .with_graceful_shutdown(cancellation_token.cancelled())
-                .await?;
-
-            Ok::<(), anyhow::Error>(())
-        }
-    };
-
-    let dns_server = {
-        let cancellation_token = cancellation_token.clone();
-        let settings = settings.clone();
-        let db_pool = db_pool.clone();
-        async move {
-            let mut server =
-                trust_dns_server::ServerFuture::new(dns::handler::Handler::new(db_pool.clone()));
-            let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
-            let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
-            server.register_socket(UdpSocket::bind(sock_addr).await?);
-            server.register_listener(
-                TcpListener::bind(sock_addr).await?,
-                Duration::from_millis(settings.server().timeout_ms),
-            );
-
-            tokio::select! {
-                _ = server.block_until_done() => {},
-                _ = cancellation_token.cancelled() => {},
-            };
-
-            Ok::<(), anyhow::Error>(())
-        }
-    };
+    let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
 
     tokio::spawn(handle_signals(cancellation_token));
-    tokio::try_join!(metrics_server, app_server, dns_server)?;
+
+    let (metrics, app, dns) = tokio::try_join!(metrics_server, app_server, dns_server)?;
+
+    if let Err(e) = metrics {
+        log::error!("metrics server crashed: {}", e);
+    }
+
+    if let Err(e) = app {
+        log::error!("app server crashed: {}", e);
+    }
+
+    if let Err(e) = dns {
+        log::error!("dns server crashed: {}", e);
+    }
+
+    Ok(())
+}
+
+async fn serve_metrics(
+    recorder_handle: PrometheusHandle,
+    settings: Settings,
+    token: CancellationToken,
+) -> Result<()> {
+    let metrics_router = Router::new()
+        .route("/metrics", get(move || ready(recorder_handle.render())))
+        .fallback(notfound_404);
+
+    let router = metrics_router.layer(CatchPanicLayer::custom(runtime::catch_panic));
+
+    // Spawn tick-driven process collection task
+    tokio::spawn(process::collect_metrics(
+        settings.monitoring().process_collector_interval,
+    ));
+
+    serve("Metrics", router, settings.server().metrics_port)
+        .with_graceful_shutdown(token.cancelled())
+        .await?;
+
+    Ok(())
+}
+
+async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
+    let req_id = HeaderName::from_static(REQUEST_ID);
+
+    let app_state = AppState {
+        db_pool: db_pool.clone(),
+        db_version: db::schema_version(&mut db::connect(&db_pool).await?).await?,
+    };
+
+    let router = router::setup_app_router(app_state)
+        .route_layer(axum::middleware::from_fn(middleware::metrics::track))
+        .layer(Extension(settings.environment()))
+        // Include trace context as header into the response.
+        .layer(response_with_trace_layer())
+        // Opentelemetry tracing middleware.
+        // This returns a `TraceLayer` configured to use
+        // OpenTelemetry’s conventional span field names.
+        .layer(opentelemetry_tracing_layer())
+        // Set and propagate "request_id" (as a ulid) per request.
+        .layer(
+            ServiceBuilder::new()
+                .set_request_id(req_id.clone(), MakeRequestUlid)
+                .propagate_request_id(req_id),
+        )
+        // Applies the `tower_http::timeout::Timeout` middleware which
+        // applies a timeout to requests.
+        .layer(TimeoutLayer::new(Duration::from_millis(
+            settings.server().timeout_ms,
+        )))
+        // Catches runtime panics and converts them into
+        // `500 Internal Server` responses.
+        .layer(CatchPanicLayer::custom(runtime::catch_panic))
+        // Mark headers as sensitive on both requests and responses.
+        .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
+
+    let server = serve("Application", router, settings.server().port);
+
+    if settings.healthcheck().is_enabled {
+        tokio::spawn({
+            let cancellation_token = token.clone();
+            let settings = settings.healthcheck().clone();
+            let local_addr = server.local_addr();
+
+            async move {
+                let mut interval =
+                    tokio::time::interval(Duration::from_millis(settings.interval_ms));
+
+                let client = ClientBuilder::new(reqwest::Client::new())
+                    .with(RetryTransientMiddleware::new_with_policy(
+                        ExponentialBackoffBuilder::default()
+                            .build_with_max_retries(settings.max_retries),
+                    ))
+                    .build();
+
+                loop {
+                    interval.tick().await;
+
+                    if let Ok(response) = client
+                        .get(&format!("http://{}/healthcheck", local_addr))
+                        .send()
+                        .await
+                    {
+                        if !response.status().is_success() {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                cancellation_token.cancel();
+
+                log::error!("Healthcheck failed, shutting down");
+            }
+        });
+    }
+
+    server.with_graceful_shutdown(token.cancelled()).await?;
+
+    Ok(())
+}
+
+async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
+    let mut server = trust_dns_server::ServerFuture::new(dns::handler::Handler::new(db_pool));
+
+    let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
+    let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
+
+    server.register_socket(UdpSocket::bind(sock_addr).await?);
+    server.register_listener(
+        TcpListener::bind(sock_addr).await?,
+        Duration::from_millis(settings.server().timeout_ms),
+    );
+
+    tokio::select! {
+        _ = server.block_until_done() => {},
+        _ = token.cancelled() => {},
+    };
 
     Ok(())
 }
