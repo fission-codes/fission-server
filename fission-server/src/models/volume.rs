@@ -1,8 +1,6 @@
 //! Volume model
 
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -44,16 +42,12 @@ impl From<Volume> for NewVolumeRecord {
 
 impl Volume {
     /// Create a new Volume. Inserts the volume into the database.
-    pub async fn new(
-        conn: Arc<Mutex<Conn<'_>>>,
-        cid: String,
-    ) -> Result<Self, diesel::result::Error> {
-        let mut conn = conn.lock().await;
+    pub async fn new(conn: &mut Conn<'_>, cid: String) -> Result<Self, diesel::result::Error> {
         let new_volume = NewVolumeRecord { cid };
 
         diesel::insert_into(volumes::table)
             .values(new_volume)
-            .get_result(&mut conn)
+            .get_result(conn)
             .await
     }
 
