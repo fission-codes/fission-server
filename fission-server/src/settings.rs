@@ -30,7 +30,7 @@ impl std::fmt::Display for AppEnvironment {
 }
 
 /// Database settings.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Database {
     /// Database URL
     pub url: String,
@@ -39,7 +39,7 @@ pub struct Database {
 }
 
 /// Server settings.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Server {
     /// Server [AppEnvironment].
     pub environment: AppEnvironment,
@@ -54,7 +54,7 @@ pub struct Server {
 }
 
 /// Process monitoring settings.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Monitoring {
     /// Monitoring collection interval.
     pub process_collector_interval: u64,
@@ -64,7 +64,7 @@ pub struct Monitoring {
 ///
 /// [Opentelemetry]: https://opentelemetry.io/
 #[serde_as]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Otel {
     /// Exporter [Uri] for OTEL protocol.
     #[serde(with = "http_serde::uri")]
@@ -81,7 +81,7 @@ impl std::fmt::Debug for Otel {
 
 /// [Mailgun] settings.
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Mailgun {
     /// Mailgun API key.
     pub api_key: String,
@@ -109,7 +109,7 @@ pub struct Healthcheck {
     pub max_retries: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 /// Application settings.
 pub struct Settings {
     database: Database,
