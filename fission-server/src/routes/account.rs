@@ -41,6 +41,7 @@ pub async fn create_account(
     authority: Authority,
     Json(payload): Json<AccountRequest>,
 ) -> AppResult<(StatusCode, Json<AccountRequest>)> {
+    // Validate Code
     let code = authority
         .ucan
         .facts()

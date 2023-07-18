@@ -1,16 +1,19 @@
 //! Fission Account Model
 
+use did_key::{generate, Ed25519KeyPair, Fingerprint};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use ucan::builder::UcanBuilder;
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
 
 use crate::{
+    crypto::patchedkey::PatchedKeyPair,
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
 };
@@ -24,7 +27,9 @@ struct NewAccountRecord {
     email: String,
 }
 
-#[derive(Debug, Queryable, Selectable, Insertable, Clone, Identifiable, Associations)]
+#[derive(
+    Debug, Queryable, Selectable, Insertable, Clone, Identifiable, Associations, Serialize,
+)]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]
 /// Fission Account model
@@ -192,6 +197,67 @@ impl From<Account> for AccountRequest {
         Self {
             username: account.username,
             email: account.email,
+        }
+    }
+}
+
+/// Account with Root Authority (UCAN)
+#[derive(Clone, Debug)]
+pub struct RootAccount {
+    /// The Associated Account
+    pub account: Account,
+    /// A UCAN with Root Authority
+    pub ucan: ucan::Ucan,
+}
+
+/// Account with Root Authority (UCAN)
+impl RootAccount {
+    /// Create a new Account with a Root Authority (UCAN)
+    pub async fn new(
+        conn: &mut Conn<'_>,
+        username: String,
+        email: String,
+        audience_did: &str,
+    ) -> Result<Self, anyhow::Error> {
+        // FIXME did-key library should zeroize memory https://github.com/decentralized-identity/did-key.rs/issues/40
+        // Alt: we should switch to a different crate that does this.
+        let ephemeral_key = generate::<Ed25519KeyPair>(None);
+        let ephemeral_key = PatchedKeyPair(ephemeral_key);
+        let did = format!("did:key:{}", ephemeral_key.0.fingerprint());
+
+        let account = Account::new(conn, username, email, &did).await?;
+
+        let ucan = UcanBuilder::default()
+            .issued_by(&ephemeral_key)
+            .for_audience(audience_did)
+            // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
+            .with_lifetime(60 * 60 * 24 * 365)
+            // Need to implement capabilities here
+            // .claiming_capability(capability)
+            .build()?
+            .sign()
+            .await?;
+
+        Ok(Self { ucan, account })
+    }
+}
+
+impl Serialize for RootAccount {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // I don't know how to convert anyhow::Error to Serde's Error without
+        // doing a From<> Trait impl for anyhow::Error, so I'm just going to do
+        // it live. We'll just do it live. Also, Quinn is on it and figuring out the correct minimal incantation.
+        let encoded_ucan = self.ucan.encode();
+        if let Ok(encoded_ucan) = encoded_ucan {
+            let mut state = serializer.serialize_struct("RootAccount", 2)?;
+            state.serialize_field("account", &self.account)?;
+            state.serialize_field("ucan", &encoded_ucan)?;
+            state.end()
+        } else {
+            Err(serde::ser::Error::custom("Failed to encode UCAN"))
         }
     }
 }
