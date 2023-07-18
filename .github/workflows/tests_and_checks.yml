@@ -47,7 +47,7 @@ jobs:
       - name: Check Format
         uses: actions-rs/cargo@v1
         with:
-          args: --all -- --check
+          args: --all -- --check --config-path=.rustfmt.toml
           command: fmt
           toolchain: ${{ matrix.rust-toolchain }}
 
