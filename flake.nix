@@ -72,6 +72,7 @@
             [ -e .git/hooks/pre-commit ] || pre-commit install --install-hooks && pre-commit install --hook-type commit-msg
 
             PGDATA="./.pg";
+            PGURL=postgres://postgres@localhost:5432/fission-server
 
             # Initialize a local database if necessary.
             if [ ! -e $PGDATA ]; then
@@ -79,7 +80,7 @@
               initdb $PGDATA --no-instructions -A trust -U postgres
               if pg_ctl -D $PGDATA start; then
                 cd fission-server
-                diesel database setup --database-url postgres://postgres@localhost:5432/fission-server
+                diesel database setup --database-url $PGURL
                 cd ..
                 pg_ctl -D $PGDATA stop
               else
@@ -97,7 +98,7 @@
 
               echo -e "\nRunning pending Diesel Migrations..."
               cd fission-server
-              diesel migration run --database-url postgres://localhost:5432/fission-server
+              diesel migration run --database-url $PGURL
               cd ..
               echo
             fi
