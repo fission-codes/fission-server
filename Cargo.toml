@@ -1,5 +1,6 @@
 [workspace]
 members = ["fission-server"]
+resolver = "2"
 
 [workspace.dependencies]
 anyhow = { version = "1.0", features = ["backtrace"] }
