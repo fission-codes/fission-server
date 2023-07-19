@@ -77,7 +77,6 @@ impl Account {
     /// Find a Fission Account by username, validate that the UCAN has permission to access it
     pub async fn find_by_username(
         conn: &mut Conn<'_>,
-        _ucan: Option<ucan::Ucan>,
         username: String,
     ) -> Result<Self, diesel::result::Error> {
         //let account = accounts::dsl::accounts
@@ -235,6 +234,26 @@ impl RootAccount {
             .build()?
             .sign()
             .await?;
+
+        Ok(Self { ucan, account })
+    }
+
+    /// Update the DID associated with the account
+    pub async fn update(
+        conn: &mut Conn<'_>,
+        account: &Account,
+        audience_did: &str,
+    ) -> Result<Self, anyhow::Error> {
+        let ephemeral_key = PatchedKeyPair(generate::<Ed25519KeyPair>(None));
+        let did = format!("did:key:{}", ephemeral_key.0.fingerprint());
+        let ucan = UcanBuilder::default()
+            .issued_by(&ephemeral_key)
+            .for_audience(audience_did)
+            .with_lifetime(60 * 60 * 24 * 365)
+            .build()?
+            .sign()
+            .await?;
+        let account = account.update_did(conn, did).await?;
 
         Ok(Self { ucan, account })
     }

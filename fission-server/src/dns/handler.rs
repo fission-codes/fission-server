@@ -244,7 +244,7 @@ impl Handler {
         let mut conn = db::connect(&self.db_pool).await?;
 
         // FIXME this needs to fetch from apps, not users.
-        let account = Account::find_by_username(&mut conn, None, hostname.to_string()).await?;
+        let account = Account::find_by_username(&mut conn, hostname.to_string()).await?;
         let did = account.did;
 
         let rdata = RData::TXT(TXT::new(vec![did]));
