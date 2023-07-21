@@ -4,7 +4,7 @@ use did_key::{generate, Ed25519KeyPair, Fingerprint};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use ucan::builder::UcanBuilder;
 use utoipa::ToSchema;
 
@@ -199,12 +199,26 @@ impl From<Account> for AccountRequest {
 }
 
 /// Account with Root Authority (UCAN)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct RootAccount {
     /// The Associated Account
     pub account: Account,
     /// A UCAN with Root Authority
+    #[serde(serialize_with = "encode_ucan")]
     pub ucan: ucan::Ucan,
+}
+
+/// Serialize a UCAN to a string
+fn encode_ucan<S>(ucan: &ucan::Ucan, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let encoded_ucan = ucan.encode();
+    if let Ok(encoded_ucan) = encoded_ucan {
+        serializer.serialize_str(&encoded_ucan)
+    } else {
+        Err(serde::ser::Error::custom("Failed to encode UCAN"))
+    }
 }
 
 /// Account with Root Authority (UCAN)
@@ -256,25 +270,5 @@ impl RootAccount {
         let account = account.update_did(conn, did).await?;
 
         Ok(Self { ucan, account })
-    }
-}
-
-impl Serialize for RootAccount {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        // I don't know how to convert anyhow::Error to Serde's Error without
-        // doing a From<> Trait impl for anyhow::Error, so I'm just going to do
-        // it live. We'll just do it live. Also, Quinn is on it and figuring out the correct minimal incantation.
-        let encoded_ucan = self.ucan.encode();
-        if let Ok(encoded_ucan) = encoded_ucan {
-            let mut state = serializer.serialize_struct("RootAccount", 2)?;
-            state.serialize_field("account", &self.account)?;
-            state.serialize_field("ucan", &encoded_ucan)?;
-            state.end()
-        } else {
-            Err(serde::ser::Error::custom("Failed to encode UCAN"))
-        }
     }
 }
