@@ -2,12 +2,8 @@
 
 use anyhow::Result;
 
-use axum::{
-    extract::{connect_info::IntoMakeServiceWithConnectInfo, Extension},
-    headers::HeaderName,
-    routing::get,
-    Router,
-};
+use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
+use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
     db::{self, Pool},
@@ -26,7 +22,6 @@ use fission_server::{
     },
 };
 use http::header;
-use hyper::server::conn::AddrIncoming;
 use metrics_exporter_prometheus::PrometheusHandle;
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::RetryTransientMiddleware;
@@ -93,7 +88,6 @@ async fn main() -> Result<()> {
         db_pool.clone(),
         cancellation_token.clone(),
     ));
-
     let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
 
     tokio::spawn(async move {
@@ -140,9 +134,10 @@ async fn serve_metrics(
         settings.monitoring().process_collector_interval,
     ));
 
-    serve("Metrics", router, settings.server().metrics_port)
-        .with_graceful_shutdown(token.cancelled())
-        .await?;
+    let (server, _) = serve("Metrics", router, settings.server().metrics_port).await;
+
+    token.cancelled().await;
+    server.graceful_shutdown(None);
 
     Ok(())
 }
@@ -182,13 +177,12 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
         .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
 
-    let server = serve("Application", router, settings.server().port);
+    let (server, addr) = serve("Application", router, settings.server().port).await;
 
     if settings.healthcheck().is_enabled {
         tokio::spawn({
             let cancellation_token = token.clone();
             let settings = settings.healthcheck().clone();
-            let local_addr = server.local_addr();
 
             async move {
                 let mut interval =
@@ -205,7 +199,7 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
                     interval.tick().await;
 
                     if let Ok(response) = client
-                        .get(&format!("http://{}/healthcheck", local_addr))
+                        .get(&format!("http://{}/healthcheck", addr))
                         .send()
                         .await
                     {
@@ -224,7 +218,8 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
         });
     }
 
-    server.with_graceful_shutdown(token.cancelled()).await?;
+    token.cancelled().await;
+    server.graceful_shutdown(None);
 
     Ok(())
 }
@@ -249,11 +244,7 @@ async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) 
     Ok(())
 }
 
-fn serve(
-    name: &str,
-    app: Router,
-    port: u16,
-) -> axum::Server<AddrIncoming, IntoMakeServiceWithConnectInfo<Router, std::net::SocketAddr>> {
+async fn serve(name: &str, app: Router, port: u16) -> (Handle, SocketAddr) {
     let bind_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
     info!(
         subject = "app_start",
@@ -263,7 +254,21 @@ fn serve(
         bind_addr
     );
 
-    axum::Server::bind(&bind_addr).serve(app.into_make_service_with_connect_info::<SocketAddr>())
+    let handle = Handle::new();
+
+    tokio::spawn({
+        let handle = handle.clone();
+        async move {
+            axum_server::bind(bind_addr)
+                .handle(handle)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                .await
+        }
+    });
+
+    let addr = handle.listening().await.unwrap();
+
+    (handle, addr)
 }
 
 /// Captures and waits for system signals.
