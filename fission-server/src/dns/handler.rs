@@ -1,24 +1,26 @@
 //! DNS Request Handler
 
+use async_trait::async_trait;
 use std::{
     borrow::Borrow,
     str,
     str::{FromStr, Utf8Error},
 };
-
-use trust_dns_proto::rr::rdata::SOA;
+use tracing::error;
 use trust_dns_server::{
     authority::MessageResponseBuilder,
-    client::rr::{LowerName, Name},
+    client::rr::LowerName,
     proto::{
         error::ProtoError,
         op::{Header, MessageType, OpCode, ResponseCode},
-        rr::{rdata::TXT, RData, Record, RecordType},
+        rr::{
+            rdata::{SOA, TXT},
+            RData, Record, RecordType,
+        },
     },
+    resolver::Name,
     server::{Request, RequestHandler, ResponseHandler, ResponseInfo},
 };
-
-use tracing::error;
 
 use crate::{
     db::{self, Pool},
@@ -263,7 +265,7 @@ impl Handler {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl RequestHandler for Handler {
     async fn handle_request<R: ResponseHandler>(
         &self,
