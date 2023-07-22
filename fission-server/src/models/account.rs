@@ -69,11 +69,12 @@ impl Account {
     }
 
     /// Find a Fission Account by username, validate that the UCAN has permission to access it
-    pub async fn find_by_username(
+    pub async fn find_by_username<U: AsRef<str>>(
         conn: &mut Conn<'_>,
         _ucan: Option<ucan::Ucan>,
-        username: String,
+        username: U,
     ) -> Result<Self, diesel::result::Error> {
+        let username = username.as_ref();
         //let account = accounts::dsl::accounts
         accounts::dsl::accounts
             .filter(accounts::username.eq(username))

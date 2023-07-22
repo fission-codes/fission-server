@@ -225,8 +225,7 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
 }
 
 async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
-    let mut server =
-        trust_dns_server::ServerFuture::new(dns::request_handler::Handler::new(db_pool));
+    let mut server = trust_dns_server::ServerFuture::new(dns::DBBackedAuthority::new(db_pool));
 
     let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
     let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
