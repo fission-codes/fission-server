@@ -49,6 +49,7 @@ const_format = "0.2"
 did-key = "0.2.1"
 diesel = { version = "2.0.4", features = ["postgres", "chrono"] }
 diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
+diesel_migrations = "2.1"
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
 headers = "0.3"
@@ -107,6 +108,7 @@ validator = { version = "0.16.0", features = ["derive"] }
 assert-json-diff = "2.0"
 rsa = { version = "0.9" }
 tokio-test = "0.4"
+uuid = "1.4.1"
 wiremock = "0.5"
 
 [features]

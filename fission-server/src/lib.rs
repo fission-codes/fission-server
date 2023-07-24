@@ -4,6 +4,9 @@
 
 //! fission-server
 
+#[macro_use]
+extern crate diesel_migrations;
+
 pub mod authority;
 pub mod crypto;
 pub mod db;
@@ -20,3 +23,6 @@ pub mod routes;
 pub mod settings;
 pub mod tracer;
 pub mod tracing_layers;
+
+#[cfg(test)]
+mod test_utils;

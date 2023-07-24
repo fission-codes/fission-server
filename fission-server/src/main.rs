@@ -63,7 +63,11 @@ async fn main() -> Result<()> {
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
 
     let settings = Settings::load()?;
-    let db_pool = db::pool().await?;
+    let db_pool = db::pool(
+        &settings.database().url,
+        settings.database().connect_timeout,
+    )
+    .await?;
 
     setup_tracing(stdout_writer, settings.otel())?;
 
@@ -147,7 +151,6 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
 
     let app_state = AppState {
         db_pool: db_pool.clone(),
-        db_version: db::schema_version(&mut db::connect(&db_pool).await?).await?,
     };
 
     let router = router::setup_app_router(app_state)

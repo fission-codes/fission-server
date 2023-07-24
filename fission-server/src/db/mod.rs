@@ -6,6 +6,10 @@ pub mod connection;
 pub mod schema;
 
 pub use connection::{connect, pool, schema_version, Conn, Pool};
+use diesel_migrations::EmbeddedMigrations;
+
+/// The migrations available at compile-time
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/");
 
 diesel::table! {
     /// Redefine the Diesel schema migrations table for use in healthchecks,

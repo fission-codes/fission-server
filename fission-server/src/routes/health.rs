@@ -1,11 +1,15 @@
 //! Healthcheck route.
 
 use crate::{
-    db::{self},
+    db::{self, MIGRATIONS},
     error::AppResult,
     router::AppState,
 };
 use axum::{self, extract::State, http::StatusCode};
+use diesel::{
+    migration::{Migration, MigrationSource},
+    pg::Pg,
+};
 use diesel_async::pooled_connection::PoolableConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -52,7 +56,7 @@ pub async fn healthcheck(
             let database_connected = conn.ping().await.is_ok();
             let database_up_to_date = db::schema_version(&mut conn)
                 .await
-                .map(|version| version == state.db_version)
+                .map(|version| version == latest_embedded_migration_version())
                 .ok();
 
             (database_connected, database_up_to_date)
@@ -66,4 +70,16 @@ pub async fn healthcheck(
     };
 
     Ok((response.status_code(), axum::Json(json! { response})))
+}
+
+fn latest_embedded_migration_version() -> Option<String> {
+    if let Some(migration) = MIGRATIONS.migrations().unwrap().iter().last() {
+        let version = <dyn Migration<Pg> as Migration<Pg>>::name(migration)
+            .version()
+            .to_string();
+
+        Some(version)
+    } else {
+        None
+    }
 }

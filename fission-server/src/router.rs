@@ -16,8 +16,6 @@ use tower_http::cors::{Any, CorsLayer};
 pub struct AppState {
     /// The database pool
     pub db_pool: Pool,
-    /// The version of the latest database migration at time of application start
-    pub db_version: String,
 }
 
 /// Setup main router for application.
