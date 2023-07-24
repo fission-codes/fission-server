@@ -234,7 +234,7 @@ mod tests {
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
         let body_text = std::str::from_utf8(&body[..]).unwrap();
-        dbg!(body_text);
+
         assert_eq!(body_text, "bar");
     }
 
@@ -263,8 +263,6 @@ mod tests {
     #[tokio::test]
     async fn json_content_types() {
         async fn valid_json_content_type(content_type: &str) -> bool {
-            dbg!(content_type);
-
             let app = Router::new().route(
                 "/",
                 get(|input: Json<Input>| async { (StatusCode::OK, input.0.foo) }),
