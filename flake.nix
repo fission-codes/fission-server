@@ -59,6 +59,7 @@
               postgresql
               direnv
               self.packages.${system}.irust
+              kubo
             ]
             ++ format-pkgs
             ++ cargo-installs
@@ -102,6 +103,16 @@
               cd ..
               echo
             fi
+
+            # Setup local Kubo config
+            if [ ! -e ./.ipfs ]; then
+              ipfs --repo-dir ./.ipfs --offline init
+            fi
+
+            # Run Kubo
+            echo -e "To run Kubo as a local IPFS node, use the following command:"
+            echo -e " . ipfs --repo-dir ./.ipfs --offline daemon"
+            echo
           '';
         };
 
