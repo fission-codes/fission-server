@@ -5,6 +5,7 @@ use did_key::{generate, Ed25519KeyPair, Fingerprint};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize, Serializer};
+use serde_json::json;
 use ucan::builder::UcanBuilder;
 use utoipa::ToSchema;
 
@@ -246,6 +247,7 @@ impl RootAccount {
             .with_lifetime(60 * 60 * 24 * 365)
             // Need to implement capabilities here
             // .claiming_capability(capability)
+            .with_fact(json!({"username": account.username}))
             .build()?
             .sign()
             .await?;
