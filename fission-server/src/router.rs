@@ -3,7 +3,7 @@
 use crate::{
     db::connection::Pool,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, fallback::notfound_404, health, ping, volume},
+    routes::{account, auth, doh, fallback::notfound_404, health, ping, volume},
 };
 use axum::{
     routing::{get, post, put},
@@ -23,6 +23,7 @@ pub struct AppState {
 /// Setup main router for application.
 pub fn setup_app_router(app_state: AppState) -> Router {
     let mut router = Router::new()
+        .route("/dns-query", get(doh::get).post(doh::post))
         .route("/ping", get(ping::get))
         .fallback(notfound_404)
         .with_state(app_state.clone());
