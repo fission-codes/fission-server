@@ -92,19 +92,14 @@ mod tests {
     use http::StatusCode;
     use tower::ServiceExt;
 
-    use crate::{
-        db::__diesel_schema_migrations, router::setup_app_router,
-        test_utils::test_context::TestContext,
-    };
+    use crate::{db::__diesel_schema_migrations, test_utils::test_context::TestContext};
 
     #[tokio::test]
     async fn test_healthcheck_healthy() {
-        let ctx = TestContext::new();
-        let app_state = ctx.app_state().await;
+        let ctx = TestContext::new().await;
 
-        let app = setup_app_router(app_state);
-
-        let response = app
+        let response = ctx
+            .app()
             .oneshot(
                 Request::builder()
                     .uri("/healthcheck")
@@ -119,13 +114,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_healthcheck_db_unavailable() {
-        let ctx = TestContext::new();
-        let app_state = ctx.app_state().await;
+        let ctx = TestContext::new().await;
+        let app = ctx.app();
 
         // Drop the database
         drop(ctx);
-
-        let app = setup_app_router(app_state);
 
         let response = app
             .oneshot(
@@ -142,10 +135,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_healthcheck_db_out_of_date() {
-        let ctx = TestContext::new();
-        let app_state = ctx.app_state().await;
-
-        let mut conn = app_state.db_pool.get().await.unwrap();
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
 
         // Insert a new migration at the end of time
         diesel::insert_into(__diesel_schema_migrations::table)
@@ -154,9 +145,8 @@ mod tests {
             .await
             .unwrap();
 
-        let app = setup_app_router(app_state.clone());
-
-        let response = app
+        let response = ctx
+            .app()
             .oneshot(
                 Request::builder()
                     .uri("/healthcheck")

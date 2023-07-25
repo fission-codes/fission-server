@@ -156,6 +156,7 @@ async fn find_validation_token(
 
 #[cfg(test)]
 mod tests {
+
     use axum::{body::Body, http::Request, Router};
 
     use fission_core::authority::key_material::generate_ed25519_material;
@@ -166,9 +167,7 @@ mod tests {
     use ucan::{builder::UcanBuilder, crypto::KeyMaterial};
 
     use crate::{
-        app_state::AppState,
         models::account::RootAccount,
-        router::setup_app_router,
         settings::Settings,
         test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
     };
@@ -183,18 +182,17 @@ mod tests {
 
         let (tx, mut rx) = broadcast::channel(1);
 
-        let ctx = TestContext::new();
-        let app_state = AppState {
-            verification_code_sender: Box::new(BroadcastVerificationCodeSender(tx)),
-            ..ctx.app_state().await
-        };
+        let ctx = TestContext::new_with_state(|builder| {
+            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
+        })
+        .await;
 
-        let app = setup_app_router(app_state);
-
-        request_verification_code(app.clone(), email, &issuer, audience).await;
+        request_verification_code(ctx.app(), email, &issuer, audience).await;
 
         let (_, code) = rx.recv().await.unwrap();
-        let root_account = create_account(app, username, email, &code, &issuer, audience).await;
+
+        let root_account =
+            create_account(ctx.app(), username, email, &code, &issuer, audience).await;
 
         assert_eq!(root_account.account.username, username);
         assert_eq!(root_account.account.email, email);

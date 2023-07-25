@@ -65,14 +65,12 @@ pub async fn post(
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, extract::connect_info::MockConnectInfo, http::Request};
-    use axum_server::service::SendService;
+    use axum::{body::Body, http::Request};
     use http::StatusCode;
     use serde_json::{json, Value};
-    use std::net::SocketAddr;
     use tower::ServiceExt;
 
-    use crate::{router::setup_app_router, test_utils::test_context::TestContext};
+    use crate::test_utils::test_context::TestContext;
 
     use pretty_assertions::assert_eq;
 
@@ -143,14 +141,10 @@ mod tests {
     }
 
     async fn assert_dns_json(name: &str, typ: &str, expected: Value) {
-        let ctx = TestContext::new();
-        let app_state = ctx.app_state().await;
+        let ctx = TestContext::new().await;
 
-        let app = setup_app_router(app_state)
-            .layer(MockConnectInfo(SocketAddr::from(([0, 0, 0, 0], 3000))))
-            .into_service();
-
-        let response = app
+        let response = ctx
+            .app()
             .oneshot(
                 Request::builder()
                     .uri(format!("/dns-query?name={}&type={}", name, typ))

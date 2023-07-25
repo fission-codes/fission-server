@@ -6,7 +6,7 @@ use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
-    app_state::AppState,
+    app_state::AppStateBuilder,
     db::{self, Pool},
     dns,
     docs::ApiDoc,
@@ -151,12 +151,10 @@ async fn serve_metrics(
 async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
     let req_id = HeaderName::from_static(REQUEST_ID);
 
-    let app_state = AppState {
-        db_pool: db_pool.clone(),
-        verification_code_sender: Box::new(EmailVerificationCodeSender::new(
-            settings.mailgun().clone(),
-        )),
-    };
+    let app_state = AppStateBuilder::default()
+        .with_db_pool(db_pool)
+        .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun().clone()))
+        .finalize()?;
 
     let router = router::setup_app_router(app_state)
         .route_layer(axum::middleware::from_fn(middleware::metrics::track))

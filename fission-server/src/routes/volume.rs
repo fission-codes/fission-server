@@ -31,7 +31,7 @@ pub async fn get_cid(
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
 
-    let volume = Account::find_by_username(&mut conn, Some(authority.ucan), username)
+    let volume = Account::find_by_username(&mut conn, username)
         .await?
         .get_volume(&mut conn)
         .await?;

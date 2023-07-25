@@ -123,8 +123,6 @@ mod tests {
     use ucan::{builder::UcanBuilder, Ucan};
 
     use crate::{
-        app_state::AppState,
-        router::setup_app_router,
         routes::auth::Response,
         settings::Settings,
         test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
@@ -136,13 +134,10 @@ mod tests {
 
         let (tx, mut rx) = broadcast::channel(1);
 
-        let ctx = TestContext::new();
-        let app_state = AppState {
-            verification_code_sender: Box::new(BroadcastVerificationCodeSender(tx)),
-            ..ctx.app_state().await
-        };
-
-        let app = setup_app_router(app_state);
+        let ctx = TestContext::new_with_state(|builder| {
+            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
+        })
+        .await;
 
         let issuer = generate_ed25519_material();
         let ucan = UcanBuilder::default()
@@ -172,7 +167,7 @@ mod tests {
             ))
             .unwrap();
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = ctx.app().oneshot(request).await.unwrap();
 
         let (email, _) = rx.recv().await.unwrap();
 
@@ -207,9 +202,7 @@ mod tests {
     }
 
     async fn assert_request_code_err(ucan: Option<Ucan>, status_code: StatusCode) {
-        let ctx = TestContext::new();
-        let app_state = ctx.app_state().await;
-        let app = setup_app_router(app_state);
+        let ctx = TestContext::new().await;
 
         let builder = Request::builder()
             .method("POST")
@@ -235,7 +228,7 @@ mod tests {
             ))
             .unwrap();
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = ctx.app().oneshot(request).await.unwrap();
 
         assert_eq!(response.status(), status_code);
     }
