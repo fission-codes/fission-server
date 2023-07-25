@@ -1,6 +1,7 @@
 //! Fission Account Routes
 
 use crate::{
+    app_state::AppState,
     authority::Authority,
     db::{self, Pool},
     error::AppResult,
@@ -8,7 +9,6 @@ use crate::{
         account::{Account, AccountRequest, RootAccount},
         email_verification::EmailVerification,
     },
-    router::AppState,
 };
 use axum::{
     self,

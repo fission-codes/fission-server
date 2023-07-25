@@ -1,9 +1,9 @@
 //! Healthcheck route.
 
 use crate::{
+    app_state::AppState,
     db::{self, MIGRATIONS},
     error::AppResult,
-    router::AppState,
 };
 use axum::{self, extract::State, http::StatusCode};
 use diesel::{
@@ -93,17 +93,14 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::{
-        db::__diesel_schema_migrations,
-        router::{setup_app_router, AppState},
+        db::__diesel_schema_migrations, router::setup_app_router,
         test_utils::test_context::TestContext,
     };
 
     #[tokio::test]
     async fn test_healthcheck_healthy() {
         let ctx = TestContext::new();
-        let app_state = AppState {
-            db_pool: ctx.pool().await,
-        };
+        let app_state = ctx.app_state().await;
 
         let app = setup_app_router(app_state);
 
@@ -123,9 +120,7 @@ mod tests {
     #[tokio::test]
     async fn test_healthcheck_db_unavailable() {
         let ctx = TestContext::new();
-        let app_state = AppState {
-            db_pool: ctx.pool().await,
-        };
+        let app_state = ctx.app_state().await;
 
         // Drop the database
         drop(ctx);
@@ -148,9 +143,7 @@ mod tests {
     #[tokio::test]
     async fn test_healthcheck_db_out_of_date() {
         let ctx = TestContext::new();
-        let app_state = AppState {
-            db_pool: ctx.pool().await,
-        };
+        let app_state = ctx.app_state().await;
 
         let mut conn = app_state.db_pool.get().await.unwrap();
 

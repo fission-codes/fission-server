@@ -1,22 +1,16 @@
 //! Main [axum::Router] interface for webserver.
 
 use crate::{
-    db::connection::Pool,
+    app_state::AppState,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
     routes::{account, auth, doh, fallback::notfound_404, health, ping, volume},
 };
+
 use axum::{
     routing::{get, post, put},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
-
-#[derive(Clone, Debug)]
-/// Global application route state.
-pub struct AppState {
-    /// The database pool
-    pub db_pool: Pool,
-}
 
 /// Setup main router for application.
 pub fn setup_app_router(app_state: AppState) -> Router {

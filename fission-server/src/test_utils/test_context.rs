@@ -2,7 +2,11 @@ use diesel::{Connection, PgConnection, RunQueryDsl};
 use diesel_migrations::MigrationHarness;
 use uuid::Uuid;
 
-use crate::db::{self, Pool, MIGRATIONS};
+use crate::{
+    app_state::AppState,
+    db::{self, Pool, MIGRATIONS},
+    test_utils::MockVerificationCodeSender,
+};
 
 pub(crate) struct TestContext {
     base_url: String,
@@ -33,6 +37,13 @@ impl TestContext {
         Self {
             base_url: base_url.to_string(),
             db_name: db_name.to_string(),
+        }
+    }
+
+    pub(crate) async fn app_state(&self) -> AppState {
+        AppState {
+            db_pool: self.pool().await,
+            verification_code_sender: Box::new(MockVerificationCodeSender),
         }
     }
 

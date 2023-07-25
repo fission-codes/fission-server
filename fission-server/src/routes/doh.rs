@@ -9,9 +9,9 @@ use http::{header::CONTENT_TYPE, StatusCode};
 use trust_dns_server::proto::{self, serialize::binary::BinDecodable};
 
 use crate::{
+    app_state::AppState,
     dns,
     extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
-    router::AppState,
 };
 
 /// GET handler for resolving DoH queries
@@ -72,10 +72,7 @@ mod tests {
     use std::net::SocketAddr;
     use tower::ServiceExt;
 
-    use crate::{
-        router::{setup_app_router, AppState},
-        test_utils::test_context::TestContext,
-    };
+    use crate::{router::setup_app_router, test_utils::test_context::TestContext};
 
     use pretty_assertions::assert_eq;
 
@@ -147,9 +144,7 @@ mod tests {
 
     async fn assert_dns_json(name: &str, typ: &str, expected: Value) {
         let ctx = TestContext::new();
-        let app_state = AppState {
-            db_pool: ctx.pool().await,
-        };
+        let app_state = ctx.app_state().await;
 
         let app = setup_app_router(app_state)
             .layer(MockConnectInfo(SocketAddr::from(([0, 0, 0, 0], 3000))))

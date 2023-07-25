@@ -1,11 +1,11 @@
 //! Generic ping route.
 
 use crate::{
+    app_state::AppState,
     authority::Authority,
     db::{self},
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
-    router::AppState,
     settings::Settings,
 };
 use axum::{
@@ -43,8 +43,10 @@ impl Response {
     responses(
         (status = 200, description = "Successfully sent request token", body=Response),
         (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized"),
         (status = 429, description = "Too many requests"),
-        (status = 500, description = "Internal Server Error", body=AppError)
+        (status = 500, description = "Internal Server Error", body=AppError),
+        (status = 510, description = "Not extended")
     )
 )]
 
@@ -101,9 +103,80 @@ pub async fn request_token(
 
     EmailVerification::new(&mut conn, request.clone(), did).await?;
 
-    request.send_code().await?;
+    request.send_code(state.verification_code_sender).await?;
+
     Ok((
         StatusCode::OK,
         Json(Response::new("Successfully sent request token".to_string())),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{body::Body, http::Request};
+
+    use fission_core::authority::key_material::generate_ed25519_material;
+    use http::StatusCode;
+    use serde_json::json;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+    use ucan::builder::UcanBuilder;
+
+    use crate::{
+        app_state::AppState,
+        router::setup_app_router,
+        test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
+    };
+
+    #[tokio::test]
+    async fn test_post_auth_email_verify() {
+        let (tx, mut rx) = broadcast::channel(1);
+
+        let ctx = TestContext::new();
+        let app_state = AppState {
+            verification_code_sender: Box::new(BroadcastVerificationCodeSender(tx)),
+            ..ctx.app_state().await
+        };
+
+        let app = setup_app_router(app_state);
+
+        let issuer = generate_ed25519_material();
+
+        let ucan = UcanBuilder::default()
+            .issued_by(&issuer)
+            .for_audience("did:web:localhost:3000")
+            .with_lifetime(10)
+            .build()
+            .unwrap()
+            .sign()
+            .await
+            .unwrap();
+
+        let token = format!("Bearer {}", ucan.encode().unwrap());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/email/verify")
+                    .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                    .header(http::header::AUTHORIZATION, token)
+                    .body(Body::from(
+                        serde_json::to_vec(&json!(
+                            {
+                                "email": "oedipa@trystero.com"
+                            }
+                        ))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (email, _) = rx.recv().await.unwrap();
+
+        assert_eq!(email, "oedipa@trystero.com");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }

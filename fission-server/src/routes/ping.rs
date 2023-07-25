@@ -23,17 +23,12 @@ mod tests {
     use http::StatusCode;
     use tower::ServiceExt;
 
-    use crate::{
-        router::{setup_app_router, AppState},
-        test_utils::test_context::TestContext,
-    };
+    use crate::{router::setup_app_router, test_utils::test_context::TestContext};
 
     #[tokio::test]
     async fn test_ping() {
         let ctx = TestContext::new();
-        let app_state = AppState {
-            db_pool: ctx.pool().await,
-        };
+        let app_state = ctx.app_state().await;
 
         let app = setup_app_router(app_state);
 

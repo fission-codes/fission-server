@@ -1,11 +1,11 @@
 //! Volume routes
 
 use crate::{
+    app_state::AppState,
     authority::Authority,
     db::{self},
     error::AppResult,
     models::{account::Account, volume::NewVolumeRecord},
-    router::AppState,
 };
 use axum::extract::{Json, Path, State};
 use http::StatusCode;

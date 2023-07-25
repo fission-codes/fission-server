@@ -7,6 +7,7 @@
 #[macro_use]
 extern crate diesel_migrations;
 
+pub mod app_state;
 pub mod authority;
 pub mod crypto;
 pub mod db;

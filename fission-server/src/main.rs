@@ -6,12 +6,14 @@ use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
+    app_state::AppState,
     db::{self, Pool},
     dns,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
-    router::{self, AppState},
+    models::email_verification::EmailVerificationCodeSender,
+    router,
     routes::fallback::notfound_404,
     settings::{Otel, Settings},
     tracer::init_tracer,
@@ -151,6 +153,9 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
 
     let app_state = AppState {
         db_pool: db_pool.clone(),
+        verification_code_sender: Box::new(EmailVerificationCodeSender::new(
+            settings.mailgun().clone(),
+        )),
     };
 
     let router = router::setup_app_router(app_state)
