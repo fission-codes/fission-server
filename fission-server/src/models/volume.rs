@@ -8,6 +8,8 @@ use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
 
+use ipfs_api::IpfsApi;
+
 use crate::db::{schema::volumes, Conn};
 
 #[derive(Debug, Queryable, Insertable, Clone, Identifiable, Selectable, ToSchema)]
@@ -32,6 +34,15 @@ pub struct Volume {
 pub struct NewVolumeRecord {
     /// Content ID of the volume
     pub cid: String,
+}
+
+impl Default for NewVolumeRecord {
+    /// Return the null volume.
+    fn default() -> Self {
+        Self {
+            cid: "".to_string(),
+        }
+    }
 }
 
 impl From<Volume> for NewVolumeRecord {
@@ -63,8 +74,14 @@ impl Volume {
     pub async fn update_cid(
         &self,
         conn: &mut Conn<'_>,
-        cid: String,
+        cid: &str,
     ) -> Result<Self, diesel::result::Error> {
+        let ipfs = ipfs_api::IpfsClient::default();
+
+        if ipfs.pin_add(cid, true).await.is_err() {
+            return Err(diesel::result::Error::NotFound);
+        }
+
         diesel::update(volumes::table)
             .filter(volumes::id.eq(self.id))
             .set(volumes::cid.eq(cid))

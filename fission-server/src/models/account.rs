@@ -129,12 +129,12 @@ impl Account {
         // nb not including the ucan here, because in order to get the account,
         // we've already validated the UCAN. HOWEVER, we should probably validate
         // that the UCAN has access to the volume here.
-    ) -> Result<NewVolumeRecord, diesel::result::Error> {
+    ) -> Result<Option<NewVolumeRecord>, diesel::result::Error> {
         if let Some(volume_id) = self.volume_id {
             let volume = Volume::find_by_id(conn, volume_id).await?;
-            Ok(volume.into())
+            Ok(Some(volume.into()))
         } else {
-            Err(diesel::result::Error::NotFound)
+            Ok(None)
         }
     }
 
@@ -167,7 +167,7 @@ impl Account {
     pub async fn update_volume_cid(
         &self,
         conn: &mut Conn<'_>,
-        cid: String,
+        cid: &str,
     ) -> Result<NewVolumeRecord, diesel::result::Error> {
         if let Some(volume_id) = self.volume_id {
             let volume = Volume::find_by_id(conn, volume_id)
