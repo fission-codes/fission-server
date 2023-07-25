@@ -161,7 +161,7 @@ impl Account {
     pub async fn update_volume_cid(
         &self,
         conn: &mut Conn<'_>,
-        cid: String,
+        cid: &str,
     ) -> Result<NewVolumeRecord, diesel::result::Error> {
         if let Some(volume_id) = self.volume_id {
             let volume = Volume::find_by_id(conn, volume_id)
