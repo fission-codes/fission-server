@@ -205,7 +205,7 @@ impl Request {
         );
 
         // The mailgun library doesn't support async, so we have to spawn a blocking task.
-        if let Err(e) = tokio::task::spawn_blocking(move || client.send(&sender)).await? {
+        if let Err(e) = client.async_send(&sender).await {
             log::error!("ERROR: Failed to send the message to the recipient. {}.", e);
             return Err(e)?;
         };
