@@ -37,7 +37,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AccountRequest"
+                  "$ref": "#/components/schemas/RootAccount"
                 }
               }
             }
@@ -151,6 +151,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successfully updated DID",
@@ -264,6 +274,17 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewVolumeRecord"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successfully updated Volume",
@@ -338,6 +359,9 @@
           "400": {
             "description": "Invalid request"
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "429": {
             "description": "Too many requests"
           },
@@ -350,6 +374,9 @@
                 }
               }
             }
+          },
+          "510": {
+            "description": "Not extended"
           }
         },
         "security": [
@@ -452,7 +479,7 @@
             "type": "integer",
             "format": "int32",
             "example": 200,
-            "minimum": 0.0
+            "minimum": 0
           },
           "title": {
             "type": "string",
