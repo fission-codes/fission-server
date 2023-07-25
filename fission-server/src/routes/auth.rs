@@ -13,14 +13,14 @@ use axum::{
     extract::{Json, State},
     http::StatusCode,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
 
 use tracing::log;
 
 /// Response for Request Token
-#[derive(Serialize, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct Response {
     msg: String,
 }
@@ -125,6 +125,7 @@ mod tests {
     use crate::{
         app_state::AppState,
         router::setup_app_router,
+        routes::auth::Response,
         settings::Settings,
         test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
     };
@@ -177,6 +178,11 @@ mod tests {
 
         assert_eq!(email, "oedipa@trystero.com");
         assert_eq!(response.status(), StatusCode::OK);
+
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = serde_json::from_slice::<Response>(&body);
+
+        assert!(matches!(body, Ok(_)));
     }
 
     #[tokio::test]

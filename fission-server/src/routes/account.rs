@@ -49,11 +49,9 @@ pub async fn create_account(
 
     let mut conn = db::connect(&state.db_pool).await?;
     let did = authority.ucan.issuer().to_string();
+    let new_account = RootAccount::new(&mut conn, payload.username, payload.email, &did).await?;
 
-    Ok((
-        StatusCode::OK,
-        Json(RootAccount::new(&mut conn, payload.username, payload.email, &did).await?),
-    ))
+    Ok((StatusCode::CREATED, Json(new_account)))
 }
 
 #[utoipa::path(
@@ -154,4 +152,144 @@ async fn find_validation_token(
     //   - also above, check that it's not already used
 
     EmailVerification::find_token(&mut conn, email, &did, code.unwrap()).await
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{body::Body, http::Request, Router};
+
+    use fission_core::authority::key_material::generate_ed25519_material;
+    use http::StatusCode;
+    use serde_json::json;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+    use ucan::{builder::UcanBuilder, crypto::KeyMaterial};
+
+    use crate::{
+        app_state::AppState,
+        models::account::RootAccount,
+        router::setup_app_router,
+        settings::Settings,
+        test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
+    };
+
+    #[tokio::test]
+    async fn test_create_account_ok() {
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let settings = Settings::load().unwrap();
+        let issuer = generate_ed25519_material();
+        let audience = &settings.server().did;
+
+        let (tx, mut rx) = broadcast::channel(1);
+
+        let ctx = TestContext::new();
+        let app_state = AppState {
+            verification_code_sender: Box::new(BroadcastVerificationCodeSender(tx)),
+            ..ctx.app_state().await
+        };
+
+        let app = setup_app_router(app_state);
+
+        request_verification_code(app.clone(), email, &issuer, audience).await;
+
+        let (_, code) = rx.recv().await.unwrap();
+        let root_account = create_account(app, username, email, &code, &issuer, audience).await;
+
+        assert_eq!(root_account.account.username, username);
+        assert_eq!(root_account.account.email, email);
+
+        assert_eq!(
+            root_account.ucan.audience(),
+            issuer.get_did().await.unwrap()
+        );
+    }
+
+    async fn request_verification_code<K>(app: Router, email: &str, issuer: &K, audience: &str)
+    where
+        K: KeyMaterial,
+    {
+        let ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience(audience)
+            .with_lifetime(10)
+            .build()
+            .unwrap()
+            .sign()
+            .await
+            .unwrap();
+
+        let token = format!("Bearer {}", ucan.encode().unwrap());
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email/verify")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .header(http::header::AUTHORIZATION, token)
+            .body(Body::from(
+                serde_json::to_vec(&json!(
+                    {
+                        "email": email
+                    }
+                ))
+                .unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    async fn create_account<K>(
+        app: Router,
+        username: &str,
+        email: &str,
+        code: &str,
+        issuer: &K,
+        audience: &str,
+    ) -> RootAccount
+    where
+        K: KeyMaterial,
+    {
+        let ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience(audience)
+            .with_lifetime(10)
+            .with_fact(json!({ "code": code }))
+            .build()
+            .unwrap()
+            .sign()
+            .await
+            .unwrap();
+
+        let token = format!("Bearer {}", ucan.encode().unwrap());
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/account")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .header(http::header::AUTHORIZATION, token)
+            .body(Body::from(
+                serde_json::to_vec(&json!(
+                    {
+                        "username": username,
+                        "email": email
+                    }
+                ))
+                .unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = serde_json::from_slice(&body);
+
+        assert!(matches!(body, Ok(_)));
+
+        body.unwrap()
+    }
 }
