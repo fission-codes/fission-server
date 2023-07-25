@@ -151,7 +151,7 @@ impl DBBackedAuthority {
             return;
         };
 
-        let Ok(account) = Account::find_by_username(&mut conn, None, username).await else {
+        let Ok(account) = Account::find_by_username(&mut conn, username).await else {
             return;
         };
 

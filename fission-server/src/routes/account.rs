@@ -2,10 +2,10 @@
 
 use crate::{
     authority::Authority,
-    db::{self},
-    error::{AppError, AppResult},
+    db::{self, Pool},
+    error::AppResult,
     models::{
-        account::{Account, AccountRequest},
+        account::{Account, AccountRequest, RootAccount},
         email_verification::EmailVerification,
     },
     router::AppState,
@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
 
+use anyhow::anyhow;
+
 /// POST handler for creating a new account
 #[utoipa::path(
     post,
@@ -28,7 +30,7 @@ use utoipa::ToSchema;
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully created account", body=AccountRequest),
+        (status = 201, description = "Successfully created account", body=RootAccount),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal Server Error", body=AppError)
@@ -40,42 +42,17 @@ pub async fn create_account(
     State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<AccountRequest>,
-) -> AppResult<(StatusCode, Json<AccountRequest>)> {
-    let code = authority
-        .ucan
-        .facts()
-        .iter()
-        .filter_map(|f| f.as_object())
-        .filter_map(|f| {
-            f.get("code")
-                .and_then(|c| c.as_str())
-                .and_then(|c| c.parse::<u64>().ok())
-        })
-        .next();
+) -> AppResult<(StatusCode, Json<RootAccount>)> {
+    find_validation_token(&state.db_pool, &authority, &payload.email).await?;
 
-    if code.is_none() {
-        return Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some("Missing validation token".to_string()),
-        ));
-    }
+    // Now create the account!
 
     let mut conn = db::connect(&state.db_pool).await?;
-
     let did = authority.ucan.issuer().to_string();
-
-    // let verification_token =
-    EmailVerification::find_token(&mut conn, &payload.email, &did, code.unwrap()).await?;
-
-    // FIXME do something with the verification token here.
 
     Ok((
         StatusCode::OK,
-        Json(
-            Account::new(&mut conn, payload.username, payload.email, &did)
-                .await?
-                .into(),
-        ),
+        Json(RootAccount::new(&mut conn, payload.username, payload.email, &did).await?),
     ))
 }
 
@@ -96,29 +73,26 @@ pub async fn create_account(
 /// GET handler to retrieve account details
 pub async fn get_account(
     State(state): State<AppState>,
-    authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<AccountRequest>)> {
-    let account = Account::find_by_username(
-        &mut db::connect(&state.db_pool).await?,
-        Some(authority.ucan),
-        username.clone(),
-    )
-    .await?;
+    let account =
+        Account::find_by_username(&mut db::connect(&state.db_pool).await?, username.clone())
+            .await?;
 
     Ok((StatusCode::OK, Json(account.into())))
 }
 
-/// DID Struct
+/// AccountUpdateRequest Struct
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct Did {
-    name: String,
-    did: String,
+pub struct AccountUpdateRequest {
+    username: String,
+    email: String,
 }
 
 #[utoipa::path(
     put,
     path = "/api/account/{username}/did",
+    request_body = AccountUpdateRequest,
     responses(
         (status = 200, description = "Successfully updated DID", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
@@ -132,12 +106,52 @@ pub async fn update_did(
     State(state): State<AppState>,
     authority: Authority,
     Path(username): Path<String>,
-    Json(payload): Json<Did>,
-) -> AppResult<(StatusCode, Json<AccountRequest>)> {
+    Json(payload): Json<AccountUpdateRequest>,
+) -> AppResult<(StatusCode, Json<RootAccount>)> {
+    find_validation_token(&state.db_pool, &authority, &payload.email).await?;
+
+    // Now update the account!
+
     let mut conn = db::connect(&state.db_pool).await?;
 
-    let account = Account::find_by_username(&mut conn, Some(authority.ucan), username).await?;
-    let result = account.update_did(&mut conn, payload.did).await?;
+    let account = Account::find_by_username(&mut conn, username).await?;
+    let did = authority.ucan.issuer().to_string();
 
-    Ok((StatusCode::OK, Json(result.into())))
+    Ok((
+        StatusCode::OK,
+        Json(RootAccount::update(&mut conn, &account, &did).await?),
+    ))
+}
+
+async fn find_validation_token(
+    db_pool: &Pool,
+    authority: &Authority,
+    email: &str,
+) -> Result<EmailVerification, anyhow::Error> {
+    // Validate Code
+    let code = authority
+        .ucan
+        .facts()
+        .iter()
+        .filter_map(|f| f.as_object())
+        .filter_map(|f| {
+            f.get("code")
+                .and_then(|c| c.as_str())
+                .and_then(|c| c.parse::<u64>().ok())
+        })
+        .next();
+
+    if code.is_none() {
+        return Err(anyhow!("Missing validation token"));
+    }
+
+    let did = authority.ucan.issuer().to_string();
+
+    let mut conn = db::connect(db_pool).await?;
+    // FIXME do something with the verification token here.
+    //   - mark it as used
+    //   - also above, check expiry
+    //   - also above, check that it's not already used
+
+    EmailVerification::find_token(&mut conn, email, &did, code.unwrap()).await
 }

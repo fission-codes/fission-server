@@ -27,7 +27,6 @@ use http::StatusCode;
 /// GET handler to retrieve account volume CID
 pub async fn get_cid(
     State(state): State<AppState>,
-    authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
@@ -61,12 +60,12 @@ pub async fn get_cid(
 /// Handler to update the CID associated with an account's volume
 pub async fn update_cid(
     State(state): State<AppState>,
-    authority: Authority,
+    _authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
-    let account = Account::find_by_username(&mut conn, Some(authority.ucan), username).await?;
+    let account = Account::find_by_username(&mut conn, username).await?;
     let volume = account.update_volume_cid(&mut conn, &payload.cid).await?;
 
     Ok((StatusCode::OK, Json(volume)))

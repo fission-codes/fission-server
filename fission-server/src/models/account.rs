@@ -1,13 +1,18 @@
 //! Fission Account Model
 
+use did_key::{generate, Ed25519KeyPair, Fingerprint};
+
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::json;
+use ucan::builder::UcanBuilder;
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
 
 use crate::{
+    crypto::patchedkey::PatchedKeyPair,
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
 };
@@ -21,7 +26,9 @@ struct NewAccountRecord {
     email: String,
 }
 
-#[derive(Debug, Queryable, Selectable, Insertable, Clone, Identifiable, Associations)]
+#[derive(
+    Debug, Queryable, Selectable, Insertable, Clone, Identifiable, Associations, Serialize,
+)]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]
 /// Fission Account model
@@ -71,7 +78,6 @@ impl Account {
     /// Find a Fission Account by username, validate that the UCAN has permission to access it
     pub async fn find_by_username<U: AsRef<str>>(
         conn: &mut Conn<'_>,
-        _ucan: Option<ucan::Ucan>,
         username: U,
     ) -> Result<Self, diesel::result::Error> {
         let username = username.as_ref();
@@ -191,5 +197,81 @@ impl From<Account> for AccountRequest {
             username: account.username,
             email: account.email,
         }
+    }
+}
+
+/// Account with Root Authority (UCAN)
+#[derive(Clone, Debug, Serialize)]
+pub struct RootAccount {
+    /// The Associated Account
+    pub account: Account,
+    /// A UCAN with Root Authority
+    #[serde(serialize_with = "encode_ucan")]
+    pub ucan: ucan::Ucan,
+}
+
+/// Serialize a UCAN to a string
+fn encode_ucan<S>(ucan: &ucan::Ucan, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let encoded_ucan = ucan.encode();
+    if let Ok(encoded_ucan) = encoded_ucan {
+        serializer.serialize_str(&encoded_ucan)
+    } else {
+        Err(serde::ser::Error::custom("Failed to encode UCAN"))
+    }
+}
+
+/// Account with Root Authority (UCAN)
+impl RootAccount {
+    /// Create a new Account with a Root Authority (UCAN)
+    pub async fn new(
+        conn: &mut Conn<'_>,
+        username: String,
+        email: String,
+        audience_did: &str,
+    ) -> Result<Self, anyhow::Error> {
+        // FIXME did-key library should zeroize memory https://github.com/decentralized-identity/did-key.rs/issues/40
+        // Alt: we should switch to a different crate that does this.
+        let ephemeral_key = generate::<Ed25519KeyPair>(None);
+        let ephemeral_key = PatchedKeyPair(ephemeral_key);
+        let did = format!("did:key:{}", ephemeral_key.0.fingerprint());
+
+        let account = Account::new(conn, username, email, &did).await?;
+
+        let ucan = UcanBuilder::default()
+            .issued_by(&ephemeral_key)
+            .for_audience(audience_did)
+            // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
+            .with_lifetime(60 * 60 * 24 * 365)
+            // Need to implement capabilities here
+            // .claiming_capability(capability)
+            .with_fact(json!({"username": account.username}))
+            .build()?
+            .sign()
+            .await?;
+
+        Ok(Self { ucan, account })
+    }
+
+    /// Update the DID associated with the account
+    pub async fn update(
+        conn: &mut Conn<'_>,
+        account: &Account,
+        audience_did: &str,
+    ) -> Result<Self, anyhow::Error> {
+        let ephemeral_key = PatchedKeyPair(generate::<Ed25519KeyPair>(None));
+        let did = format!("did:key:{}", ephemeral_key.0.fingerprint());
+        let ucan = UcanBuilder::default()
+            .issued_by(&ephemeral_key)
+            .for_audience(audience_did)
+            .with_lifetime(60 * 60 * 24 * 365)
+            .build()?
+            .sign()
+            .await?;
+        let account = account.update_did(conn, did).await?;
+
+        Ok(Self { ucan, account })
     }
 }
