@@ -31,10 +31,17 @@ pub async fn get_cid(
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
-    let account = Account::find_by_username(&mut conn, Some(authority.ucan), username).await?;
-    let volume = account.get_volume(&mut conn).await?;
 
-    Ok((StatusCode::OK, Json(volume)))
+    let volume = Account::find_by_username(&mut conn, Some(authority.ucan), username)
+        .await?
+        .get_volume(&mut conn)
+        .await?;
+
+    if let Some(volume) = volume {
+        Ok((StatusCode::OK, Json(volume)))
+    } else {
+        Ok((StatusCode::NO_CONTENT, Json(NewVolumeRecord::default())))
+    }
 }
 
 #[utoipa::path(

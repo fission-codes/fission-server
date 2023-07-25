@@ -36,6 +36,15 @@ pub struct NewVolumeRecord {
     pub cid: String,
 }
 
+impl Default for NewVolumeRecord {
+    /// Return the null volume.
+    fn default() -> Self {
+        Self {
+            cid: "".to_string(),
+        }
+    }
+}
+
 impl From<Volume> for NewVolumeRecord {
     fn from(volume: Volume) -> Self {
         Self { cid: volume.cid }
@@ -69,7 +78,7 @@ impl Volume {
     ) -> Result<Self, diesel::result::Error> {
         let ipfs = ipfs_api::IpfsClient::default();
 
-        if let Err(_) = ipfs.pin_add(cid, true).await {
+        if ipfs.pin_add(cid, true).await.is_err() {
             return Err(diesel::result::Error::NotFound);
         }
 
