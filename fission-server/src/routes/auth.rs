@@ -120,16 +120,19 @@ mod tests {
     use serde_json::json;
     use tokio::sync::broadcast;
     use tower::ServiceExt;
-    use ucan::builder::UcanBuilder;
+    use ucan::{builder::UcanBuilder, Ucan};
 
     use crate::{
         app_state::AppState,
         router::setup_app_router,
+        settings::Settings,
         test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
     };
 
     #[tokio::test]
-    async fn test_post_auth_email_verify() {
+    async fn test_request_code_ok() {
+        let settings = Settings::load().unwrap();
+
         let (tx, mut rx) = broadcast::channel(1);
 
         let ctx = TestContext::new();
@@ -141,10 +144,9 @@ mod tests {
         let app = setup_app_router(app_state);
 
         let issuer = generate_ed25519_material();
-
         let ucan = UcanBuilder::default()
             .issued_by(&issuer)
-            .for_audience("did:web:localhost:3000")
+            .for_audience(&settings.server().did)
             .with_lifetime(10)
             .build()
             .unwrap()
@@ -154,29 +156,81 @@ mod tests {
 
         let token = format!("Bearer {}", ucan.encode().unwrap());
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/auth/email/verify")
-                    .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-                    .header(http::header::AUTHORIZATION, token)
-                    .body(Body::from(
-                        serde_json::to_vec(&json!(
-                            {
-                                "email": "oedipa@trystero.com"
-                            }
-                        ))
-                        .unwrap(),
-                    ))
-                    .unwrap(),
-            )
-            .await
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email/verify")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .header(http::header::AUTHORIZATION, token)
+            .body(Body::from(
+                serde_json::to_vec(&json!(
+                    {
+                        "email": "oedipa@trystero.com"
+                    }
+                ))
+                .unwrap(),
+            ))
             .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
 
         let (email, _) = rx.recv().await.unwrap();
 
         assert_eq!(email, "oedipa@trystero.com");
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_request_code_no_ucan() {
+        assert_request_code_err(None, StatusCode::UNAUTHORIZED).await;
+    }
+
+    #[tokio::test]
+    async fn test_request_code_wrong_aud() {
+        let issuer = generate_ed25519_material();
+        let ucan = UcanBuilder::default()
+            .issued_by(&issuer)
+            .for_audience("did:fission:1234")
+            .with_lifetime(10)
+            .build()
+            .unwrap()
+            .sign()
+            .await
+            .unwrap();
+
+        assert_request_code_err(Some(ucan), StatusCode::BAD_REQUEST).await;
+    }
+
+    async fn assert_request_code_err(ucan: Option<Ucan>, status_code: StatusCode) {
+        let ctx = TestContext::new();
+        let app_state = ctx.app_state().await;
+        let app = setup_app_router(app_state);
+
+        let builder = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email/verify")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref());
+
+        let builder = if let Some(ucan) = ucan {
+            let token = format!("Bearer {}", ucan.encode().unwrap());
+
+            builder.header(http::header::AUTHORIZATION, token)
+        } else {
+            builder
+        };
+
+        let request = builder
+            .body(Body::from(
+                serde_json::to_vec(&json!(
+                    {
+                        "email": "oedipa@trystero.com"
+                    }
+                ))
+                .unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), status_code);
     }
 }
