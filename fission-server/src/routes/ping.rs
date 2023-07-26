@@ -19,22 +19,19 @@ pub async fn get() -> AppResult<StatusCode> {
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
-    use http::StatusCode;
-    use tower::ServiceExt;
+    use http::{Method, StatusCode};
 
-    use crate::test_utils::test_context::TestContext;
+    use crate::test_utils::{test_context::TestContext, RouteBuilder};
 
     #[tokio::test]
     async fn test_ping() {
         let ctx = TestContext::new().await;
 
-        let response = ctx
-            .app()
-            .oneshot(Request::builder().uri("/ping").body(Body::empty()).unwrap())
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::GET, "/ping")
+            .into_raw_response()
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(status, StatusCode::OK);
     }
 }

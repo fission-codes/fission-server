@@ -113,125 +113,77 @@ pub async fn request_token(
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request, Router};
-
-    use fission_core::authority::key_material::generate_ed25519_material;
-    use http::StatusCode;
-    use serde::de::DeserializeOwned;
+    use anyhow::Result;
+    use http::{Method, StatusCode};
     use serde_json::json;
     use tokio::sync::broadcast;
-    use tower::ServiceExt;
-    use ucan::{builder::UcanBuilder, Ucan};
 
     use crate::{
         error::ErrorResponse,
         routes::auth::VerificationCodeResponse,
-        settings::Settings,
-        test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
+        test_utils::{
+            test_context::TestContext, BroadcastVerificationCodeSender, RouteBuilder, UcanBuilder,
+        },
     };
 
     #[tokio::test]
-    async fn test_request_code_ok() {
+    async fn test_request_code_ok() -> Result<()> {
         let (tx, mut rx) = broadcast::channel(1);
         let ctx = TestContext::new_with_state(|builder| {
             builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
         })
         .await;
 
-        let settings = Settings::load().unwrap();
         let email = "oedipa@trystero.com";
+        let (ucan, _) = UcanBuilder::default().finalize().await?;
 
-        let issuer = generate_ed25519_material();
-        let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(&settings.server().did)
-            .with_lifetime(10)
-            .build()
-            .unwrap()
-            .sign()
-            .await
-            .unwrap();
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_ucan(ucan)
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<VerificationCodeResponse>()
+            .await?;
 
-        let (status, _) =
-            request_verification_code::<VerificationCodeResponse>(ctx.app(), email, Some(ucan))
-                .await;
-
-        let (email, _) = rx.recv().await.unwrap();
+        let (email, _) = rx.recv().await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(email, "oedipa@trystero.com");
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_request_code_no_ucan() {
+    async fn test_request_code_no_ucan() -> Result<()> {
         let ctx = TestContext::new().await;
         let email = "oedipa@trystero.com";
 
-        let (status, _) = request_verification_code::<ErrorResponse>(ctx.app(), email, None).await;
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<ErrorResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_request_code_wrong_aud() {
+    async fn test_request_code_wrong_aud() -> Result<()> {
         let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";
+        let (ucan, _) = UcanBuilder::default()
+            .with_audience("did:fission:1234".to_string())
+            .finalize()
+            .await?;
 
-        let issuer = generate_ed25519_material();
-        let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience("did:fission:1234")
-            .with_lifetime(10)
-            .build()
-            .unwrap()
-            .sign()
-            .await
-            .unwrap();
-
-        let (status, _) =
-            request_verification_code::<ErrorResponse>(ctx.app(), email, Some(ucan)).await;
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_ucan(ucan)
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<ErrorResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
-    }
 
-    async fn request_verification_code<T>(
-        app: Router,
-        email: &str,
-        ucan: Option<Ucan>,
-    ) -> (StatusCode, T)
-    where
-        T: DeserializeOwned,
-    {
-        let builder = Request::builder()
-            .method("POST")
-            .uri("/api/auth/email/verify")
-            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref());
-
-        let builder = if let Some(ucan) = ucan {
-            let token = format!("Bearer {}", ucan.encode().unwrap());
-
-            builder.header(http::header::AUTHORIZATION, token)
-        } else {
-            builder
-        };
-
-        let request = builder
-            .body(Body::from(
-                serde_json::to_vec(&json!(
-                    {
-                        "email": email
-                    }
-                ))
-                .unwrap(),
-            ))
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
-        let status = response.status();
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body = serde_json::from_slice::<T>(&body).unwrap();
-
-        (status, body)
+        Ok(())
     }
 }
