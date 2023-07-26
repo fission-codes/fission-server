@@ -4,7 +4,7 @@ use crate::{
     app_state::AppState,
     authority::Authority,
     db::{self, Pool},
-    error::AppResult,
+    error::{AppError, AppResult},
     models::{
         account::{Account, AccountRequest, RootAccount},
         email_verification::EmailVerification,
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 
 /// POST handler for creating a new account
 #[utoipa::path(
@@ -31,9 +31,8 @@ use anyhow::anyhow;
     ),
     responses(
         (status = 201, description = "Successfully created account", body=RootAccount),
-        (status = 400, description = "Invalid request", body=AppError),
-        (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal Server Error", body=AppError)
+        (status = 400, description = "Bad Request"),
+        (status = 403, description = "Forbidden"),
     )
 )]
 
@@ -43,7 +42,9 @@ pub async fn create_account(
     authority: Authority,
     Json(payload): Json<AccountRequest>,
 ) -> AppResult<(StatusCode, Json<RootAccount>)> {
-    find_validation_token(&state.db_pool, &authority, &payload.email).await?;
+    if let Err(err) = find_validation_token(&state.db_pool, &authority, &payload.email).await {
+        return Err(AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())));
+    }
 
     // Now create the account!
 
@@ -132,26 +133,26 @@ async fn find_validation_token(
         .facts()
         .iter()
         .filter_map(|f| f.as_object())
-        .filter_map(|f| {
+        .find_map(|f| {
             f.get("code")
                 .and_then(|c| c.as_str())
                 .and_then(|c| c.parse::<u64>().ok())
-        })
-        .next();
+        });
 
-    if code.is_none() {
-        return Err(anyhow!("Missing validation token"));
+    match code {
+        None => Err(anyhow!("Missing validation token")),
+        Some(code) => {
+            let did = authority.ucan.issuer().to_string();
+
+            let mut conn = db::connect(db_pool).await?;
+            // FIXME do something with the verification token here.
+            //   - mark it as used
+            //   - also above, check expiry
+            //   - also above, check that it's not already used
+
+            EmailVerification::find_token(&mut conn, email, &did, code).await
+        }
     }
-
-    let did = authority.ucan.issuer().to_string();
-
-    let mut conn = db::connect(db_pool).await?;
-    // FIXME do something with the verification token here.
-    //   - mark it as used
-    //   - also above, check expiry
-    //   - also above, check that it's not already used
-
-    EmailVerification::find_token(&mut conn, email, &did, code.unwrap()).await
 }
 
 #[cfg(test)]
@@ -161,50 +162,128 @@ mod tests {
 
     use fission_core::authority::key_material::generate_ed25519_material;
     use http::StatusCode;
+    use serde::de::DeserializeOwned;
     use serde_json::json;
     use tokio::sync::broadcast;
     use tower::ServiceExt;
     use ucan::{builder::UcanBuilder, crypto::KeyMaterial};
 
     use crate::{
+        error::ErrorResponse,
         models::account::RootAccount,
+        routes::auth::VerificationCodeResponse,
         settings::Settings,
         test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
     };
 
     #[tokio::test]
     async fn test_create_account_ok() {
+        let (tx, mut rx) = broadcast::channel(1);
+        let ctx = TestContext::new_with_state(|builder| {
+            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
+        })
+        .await;
+
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let settings = Settings::load().unwrap();
         let issuer = generate_ed25519_material();
         let audience = &settings.server().did;
 
-        let (tx, mut rx) = broadcast::channel(1);
-
-        let ctx = TestContext::new_with_state(|builder| {
-            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
-        })
+        let (status, _) = request_verification_code::<VerificationCodeResponse, _>(
+            ctx.app(),
+            email,
+            &issuer,
+            audience,
+        )
         .await;
 
-        request_verification_code(ctx.app(), email, &issuer, audience).await;
+        assert_eq!(status, StatusCode::OK);
 
         let (_, code) = rx.recv().await.unwrap();
+        let (status, root_account) =
+            create_account::<RootAccount, _>(ctx.app(), username, email, &code, &issuer, audience)
+                .await;
 
-        let root_account =
-            create_account(ctx.app(), username, email, &code, &issuer, audience).await;
-
+        assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, username);
         assert_eq!(root_account.account.email, email);
-
         assert_eq!(
             root_account.ucan.audience(),
             issuer.get_did().await.unwrap()
         );
     }
 
-    async fn request_verification_code<K>(app: Router, email: &str, issuer: &K, audience: &str)
+    #[tokio::test]
+    async fn test_create_account_err_wrong_code() {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let settings = Settings::load().unwrap();
+        let issuer = generate_ed25519_material();
+        let audience = &settings.server().did;
+
+        let (status, _) = create_account::<ErrorResponse, _>(
+            ctx.app(),
+            username,
+            email,
+            "code",
+            &issuer,
+            audience,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_create_account_err_wrong_issuer() {
+        let (tx, mut rx) = broadcast::channel(1);
+        let ctx = TestContext::new_with_state(|builder| {
+            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
+        })
+        .await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let settings = Settings::load().unwrap();
+        let issuer1 = generate_ed25519_material();
+        let issuer2 = generate_ed25519_material();
+        let audience = &settings.server().did;
+
+        let (status, _) = request_verification_code::<VerificationCodeResponse, _>(
+            ctx.app(),
+            email,
+            &issuer1,
+            audience,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+
+        let (_, code) = rx.recv().await.unwrap();
+        let (status, _) = create_account::<ErrorResponse, _>(
+            ctx.app(),
+            username,
+            email,
+            &code,
+            &issuer2,
+            audience,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    async fn request_verification_code<T, K>(
+        app: Router,
+        email: &str,
+        issuer: &K,
+        audience: &str,
+    ) -> (StatusCode, T)
     where
+        T: DeserializeOwned,
         K: KeyMaterial,
     {
         let ucan = UcanBuilder::default()
@@ -235,19 +314,23 @@ mod tests {
             .unwrap();
 
         let response = app.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = serde_json::from_slice::<T>(&body).unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        (status, body)
     }
 
-    async fn create_account<K>(
+    async fn create_account<T, K>(
         app: Router,
         username: &str,
         email: &str,
         code: &str,
         issuer: &K,
         audience: &str,
-    ) -> RootAccount
+    ) -> (StatusCode, T)
     where
+        T: DeserializeOwned,
         K: KeyMaterial,
     {
         let ucan = UcanBuilder::default()
@@ -280,14 +363,10 @@ mod tests {
             .unwrap();
 
         let response = app.clone().oneshot(request).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-
+        let status = response.status();
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body = serde_json::from_slice(&body);
+        let body = serde_json::from_slice::<T>(&body).unwrap();
 
-        assert!(matches!(body, Ok(_)));
-
-        body.unwrap()
+        (status, body)
     }
 }

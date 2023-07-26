@@ -1,13 +1,5 @@
 //! Authority error type and implementations
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
-
-use serde_json::json;
-
 ///////////
 // TYPES //
 ///////////
@@ -32,34 +24,4 @@ pub enum Error {
         /// The CIDs of the proofs that are missing
         proofs_needed: Vec<String>,
     },
-}
-
-/////////////////////
-// IMPLEMENTATIONS //
-/////////////////////
-
-impl IntoResponse for Error {
-    fn into_response(self) -> Response {
-        let (status, json_value) = match self {
-            Error::InsufficientCapabilityScope => (
-                StatusCode::FORBIDDEN,
-                json!({ "error": "Insufficient capability scope" }),
-            ),
-
-            Error::InvalidUcan { reason } => (
-                StatusCode::UNAUTHORIZED,
-                json!({ "error": format!("Invalid UCAN: {}", reason) }),
-            ),
-            Error::MissingCredentials => (
-                StatusCode::UNAUTHORIZED,
-                json!({ "error": "Missing credentials" }),
-            ),
-            Error::MissingProofs { proofs_needed } => {
-                (StatusCode::NOT_EXTENDED, json!({ "prf": proofs_needed }))
-            }
-        };
-
-        let body = Json(json_value);
-        (status, body).into_response()
-    }
 }

@@ -1385,7 +1385,6 @@ name = "fission-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum",
  "ed25519-zebra",
  "rand 0.8.5",
  "serde",

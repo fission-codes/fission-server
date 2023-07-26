@@ -1,4 +1,4 @@
-//! Generic ping route.
+//! Routes for authn/authz
 
 use crate::{
     app_state::AppState,
@@ -21,11 +21,11 @@ use tracing::log;
 
 /// Response for Request Token
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
-pub struct Response {
+pub struct VerificationCodeResponse {
     msg: String,
 }
 
-impl Response {
+impl VerificationCodeResponse {
     /// Create a new Response
     pub fn new(msg: String) -> Self {
         Self { msg }
@@ -44,8 +44,6 @@ impl Response {
         (status = 200, description = "Successfully sent request token", body=Response),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 429, description = "Too many requests"),
-        (status = 500, description = "Internal Server Error", body=AppError),
         (status = 510, description = "Not extended")
     )
 )]
@@ -55,7 +53,7 @@ pub async fn request_token(
     State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
-) -> AppResult<(StatusCode, Json<Response>)> {
+) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
     /*
 
     The age-old question, should this be an invocation, or is the REST endpoint enough here?
@@ -107,37 +105,41 @@ pub async fn request_token(
 
     Ok((
         StatusCode::OK,
-        Json(Response::new("Successfully sent request token".to_string())),
+        Json(VerificationCodeResponse::new(
+            "Successfully sent request token".to_string(),
+        )),
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
+    use axum::{body::Body, http::Request, Router};
 
     use fission_core::authority::key_material::generate_ed25519_material;
     use http::StatusCode;
+    use serde::de::DeserializeOwned;
     use serde_json::json;
     use tokio::sync::broadcast;
     use tower::ServiceExt;
     use ucan::{builder::UcanBuilder, Ucan};
 
     use crate::{
-        routes::auth::Response,
+        error::ErrorResponse,
+        routes::auth::VerificationCodeResponse,
         settings::Settings,
         test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
     };
 
     #[tokio::test]
     async fn test_request_code_ok() {
-        let settings = Settings::load().unwrap();
-
         let (tx, mut rx) = broadcast::channel(1);
-
         let ctx = TestContext::new_with_state(|builder| {
             builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
         })
         .await;
+
+        let settings = Settings::load().unwrap();
+        let email = "oedipa@trystero.com";
 
         let issuer = generate_ed25519_material();
         let ucan = UcanBuilder::default()
@@ -150,43 +152,32 @@ mod tests {
             .await
             .unwrap();
 
-        let token = format!("Bearer {}", ucan.encode().unwrap());
-
-        let request = Request::builder()
-            .method("POST")
-            .uri("/api/auth/email/verify")
-            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .header(http::header::AUTHORIZATION, token)
-            .body(Body::from(
-                serde_json::to_vec(&json!(
-                    {
-                        "email": "oedipa@trystero.com"
-                    }
-                ))
-                .unwrap(),
-            ))
-            .unwrap();
-
-        let response = ctx.app().oneshot(request).await.unwrap();
+        let (status, _) =
+            request_verification_code::<VerificationCodeResponse>(ctx.app(), email, Some(ucan))
+                .await;
 
         let (email, _) = rx.recv().await.unwrap();
 
+        assert_eq!(status, StatusCode::OK);
         assert_eq!(email, "oedipa@trystero.com");
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body = serde_json::from_slice::<Response>(&body);
-
-        assert!(matches!(body, Ok(_)));
     }
 
     #[tokio::test]
     async fn test_request_code_no_ucan() {
-        assert_request_code_err(None, StatusCode::UNAUTHORIZED).await;
+        let ctx = TestContext::new().await;
+        let email = "oedipa@trystero.com";
+
+        let (status, _) = request_verification_code::<ErrorResponse>(ctx.app(), email, None).await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
     async fn test_request_code_wrong_aud() {
+        let ctx = TestContext::new().await;
+
+        let email = "oedipa@trystero.com";
+
         let issuer = generate_ed25519_material();
         let ucan = UcanBuilder::default()
             .issued_by(&issuer)
@@ -198,12 +189,20 @@ mod tests {
             .await
             .unwrap();
 
-        assert_request_code_err(Some(ucan), StatusCode::BAD_REQUEST).await;
+        let (status, _) =
+            request_verification_code::<ErrorResponse>(ctx.app(), email, Some(ucan)).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
-    async fn assert_request_code_err(ucan: Option<Ucan>, status_code: StatusCode) {
-        let ctx = TestContext::new().await;
-
+    async fn request_verification_code<T>(
+        app: Router,
+        email: &str,
+        ucan: Option<Ucan>,
+    ) -> (StatusCode, T)
+    where
+        T: DeserializeOwned,
+    {
         let builder = Request::builder()
             .method("POST")
             .uri("/api/auth/email/verify")
@@ -221,15 +220,18 @@ mod tests {
             .body(Body::from(
                 serde_json::to_vec(&json!(
                     {
-                        "email": "oedipa@trystero.com"
+                        "email": email
                     }
                 ))
                 .unwrap(),
             ))
             .unwrap();
 
-        let response = ctx.app().oneshot(request).await.unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = serde_json::from_slice::<T>(&body).unwrap();
 
-        assert_eq!(response.status(), status_code);
+        (status, body)
     }
 }
