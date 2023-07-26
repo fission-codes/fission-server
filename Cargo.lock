@@ -1430,7 +1430,7 @@ dependencies = [
  "ipfs-api",
  "ipfs-api-backend-hyper",
  "mailgun-rs",
- "metrics 0.20.1",
+ "metrics 0.21.1",
  "metrics-exporter-prometheus",
  "metrics-util 0.15.1",
  "mime",
