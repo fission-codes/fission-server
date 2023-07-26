@@ -1,10 +1,12 @@
 //! Fission Account Model
 
+use std::str::FromStr;
+
 use did_key::{generate, Ed25519KeyPair, Fingerprint};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
 use ucan::builder::UcanBuilder;
 use utoipa::ToSchema;
@@ -27,7 +29,15 @@ struct NewAccountRecord {
 }
 
 #[derive(
-    Debug, Queryable, Selectable, Insertable, Clone, Identifiable, Associations, Serialize,
+    Debug,
+    Queryable,
+    Selectable,
+    Insertable,
+    Clone,
+    Identifiable,
+    Associations,
+    Serialize,
+    Deserialize,
 )]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]
@@ -201,12 +211,13 @@ impl From<Account> for AccountRequest {
 }
 
 /// Account with Root Authority (UCAN)
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RootAccount {
     /// The Associated Account
     pub account: Account,
     /// A UCAN with Root Authority
     #[serde(serialize_with = "encode_ucan")]
+    #[serde(deserialize_with = "decode_ucan")]
     pub ucan: ucan::Ucan,
 }
 
@@ -220,6 +231,19 @@ where
         serializer.serialize_str(&encoded_ucan)
     } else {
         Err(serde::ser::Error::custom("Failed to encode UCAN"))
+    }
+}
+
+fn decode_ucan<'de, D>(value: D) -> Result<ucan::Ucan, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let ucan = String::deserialize(value)?;
+    let ucan = ucan::Ucan::from_str(&ucan);
+    if let Ok(ucan) = ucan {
+        Ok(ucan)
+    } else {
+        Err(serde::de::Error::custom("Failed to decode UCAN"))
     }
 }
 

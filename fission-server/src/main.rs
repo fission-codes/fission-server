@@ -6,12 +6,14 @@ use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use fission_server::{
+    app_state::AppStateBuilder,
     db::{self, Pool},
     dns,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
-    router::{self, AppState},
+    models::email_verification::EmailVerificationCodeSender,
+    router,
     routes::fallback::notfound_404,
     settings::{Otel, Settings},
     tracer::init_tracer,
@@ -63,7 +65,11 @@ async fn main() -> Result<()> {
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
 
     let settings = Settings::load()?;
-    let db_pool = db::pool().await?;
+    let db_pool = db::pool(
+        &settings.database().url,
+        settings.database().connect_timeout,
+    )
+    .await?;
 
     setup_tracing(stdout_writer, settings.otel())?;
 
@@ -145,10 +151,10 @@ async fn serve_metrics(
 async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
     let req_id = HeaderName::from_static(REQUEST_ID);
 
-    let app_state = AppState {
-        db_pool: db_pool.clone(),
-        db_version: db::schema_version(&mut db::connect(&db_pool).await?).await?,
-    };
+    let app_state = AppStateBuilder::default()
+        .with_db_pool(db_pool)
+        .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun().clone()))
+        .finalize()?;
 
     let router = router::setup_app_router(app_state)
         .route_layer(axum::middleware::from_fn(middleware::metrics::track))

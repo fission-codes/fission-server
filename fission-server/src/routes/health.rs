@@ -1,11 +1,15 @@
 //! Healthcheck route.
 
 use crate::{
-    db::{self},
+    app_state::AppState,
+    db::{self, MIGRATIONS},
     error::AppResult,
-    router::AppState,
 };
 use axum::{self, extract::State, http::StatusCode};
+use diesel::{
+    migration::{Migration, MigrationSource},
+    pg::Pg,
+};
 use diesel_async::pooled_connection::PoolableConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -52,7 +56,7 @@ pub async fn healthcheck(
             let database_connected = conn.ping().await.is_ok();
             let database_up_to_date = db::schema_version(&mut conn)
                 .await
-                .map(|version| version == state.db_version)
+                .map(|version| version == latest_embedded_migration_version())
                 .ok();
 
             (database_connected, database_up_to_date)
@@ -66,4 +70,92 @@ pub async fn healthcheck(
     };
 
     Ok((response.status_code(), axum::Json(json! { response})))
+}
+
+fn latest_embedded_migration_version() -> Option<String> {
+    if let Some(migration) = MIGRATIONS.migrations().unwrap().iter().last() {
+        let version = <dyn Migration<Pg> as Migration<Pg>>::name(migration)
+            .version()
+            .to_string();
+
+        Some(version)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{body::Body, http::Request};
+    use diesel::ExpressionMethods;
+    use diesel_async::RunQueryDsl;
+    use http::StatusCode;
+    use tower::ServiceExt;
+
+    use crate::{db::__diesel_schema_migrations, test_utils::test_context::TestContext};
+
+    #[tokio::test]
+    async fn test_healthcheck_healthy() {
+        let ctx = TestContext::new().await;
+
+        let response = ctx
+            .app()
+            .oneshot(
+                Request::builder()
+                    .uri("/healthcheck")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_healthcheck_db_unavailable() {
+        let ctx = TestContext::new().await;
+        let app = ctx.app();
+
+        // Drop the database
+        drop(ctx);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/healthcheck")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_healthcheck_db_out_of_date() {
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
+        // Insert a new migration at the end of time
+        diesel::insert_into(__diesel_schema_migrations::table)
+            .values(__diesel_schema_migrations::version.eq("2239-09-30-desolation".to_string()))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+
+        let response = ctx
+            .app()
+            .oneshot(
+                Request::builder()
+                    .uri("/healthcheck")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

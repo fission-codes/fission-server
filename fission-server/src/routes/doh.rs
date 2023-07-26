@@ -9,9 +9,9 @@ use http::{header::CONTENT_TYPE, StatusCode};
 use trust_dns_server::proto::{self, serialize::binary::BinDecodable};
 
 use crate::{
+    app_state::AppState,
     dns,
     extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
-    router::AppState,
 };
 
 /// GET handler for resolving DoH queries
@@ -61,4 +61,105 @@ pub async fn post(
         response,
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{body::Body, http::Request};
+    use http::StatusCode;
+    use serde_json::{json, Value};
+    use tower::ServiceExt;
+
+    use crate::test_utils::test_context::TestContext;
+
+    use pretty_assertions::assert_eq;
+
+    #[tokio::test]
+    async fn test_dns_json() {
+        assert_dns_json(
+            "fission.app",
+            "soa",
+            json!(
+                {
+                  "Status": 0,
+                  "TC": false,
+                  "RD": false,
+                  "RA": false,
+                  "AD": false,
+                  "CD": false,
+                  "Question": [
+                    {
+                      "name": "fission.app.",
+                      "type": 6
+                    }
+                  ],
+                  "Answer": [
+                    {
+                      "name": "fission.app.",
+                      "type": 6,
+                      "TTL": 3600,
+                      "data": "dns1.fission.app. hostmaster.fission.codes. 2023000701 7200 3600 1209600 3600"
+                    }
+                  ],
+                  "Comment": null,
+                  "edns_client_subnet": null
+                }
+            ),
+        ).await;
+
+        assert_dns_json(
+            "gateway.fission.app",
+            "any",
+            json!(
+                {
+                  "Status": 0,
+                  "TC": false,
+                  "RD": false,
+                  "RA": false,
+                  "AD": false,
+                  "CD": false,
+                  "Question": [
+                    {
+                      "name": "gateway.fission.app.",
+                      "type": 255
+                    }
+                  ],
+                  "Answer": [
+                    {
+                      "name": "gateway.fission.app.",
+                      "type": 5,
+                      "TTL": 3600,
+                      "data": "prod-ipfs-gateway-1937066547.us-east-1.elb.amazonaws.com."
+                    }
+                  ],
+                  "Comment": null,
+                  "edns_client_subnet": null
+                }
+            ),
+        )
+        .await;
+    }
+
+    async fn assert_dns_json(name: &str, typ: &str, expected: Value) {
+        let ctx = TestContext::new().await;
+
+        let response = ctx
+            .app()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/dns-query?name={}&type={}", name, typ))
+                    .header("Accept", "application/dns-json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(body, expected);
+    }
 }

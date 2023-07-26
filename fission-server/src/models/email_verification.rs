@@ -1,25 +1,98 @@
 //! Email Verification Model
+use anyhow::Result;
+use async_trait::async_trait;
+use chrono::NaiveDateTime;
+use diesel::prelude::*;
+use diesel_async::RunQueryDsl;
+use mailgun_rs::{EmailAddress, Mailgun, Message};
 use openssl::sha::Sha256;
+use rand::Rng;
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::log;
 use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
-use anyhow::Result;
+use crate::{
+    app_state::VerificationCodeSender,
+    db::{schema::email_verifications, Conn},
+    settings,
+};
 
-use mailgun_rs::{EmailAddress, Mailgun, Message};
+#[derive(Debug, Clone)]
+/// Sends verification codes over email
+pub struct EmailVerificationCodeSender {
+    settings: settings::Mailgun,
+}
 
-use rand::Rng;
+impl EmailVerificationCodeSender {
+    /// Create a new EmailVerificationCodeSender
+    pub fn new(settings: settings::Mailgun) -> Self {
+        Self { settings }
+    }
 
-use crate::{db::Conn, settings::Settings};
+    fn sender(&self) -> EmailAddress {
+        EmailAddress::name_address(&self.settings.from_name, &self.settings.from_address)
+    }
 
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
+    fn subject(&self) -> &str {
+        self.settings.subject.as_str()
+    }
 
-use diesel_async::RunQueryDsl;
+    fn template(&self) -> &str {
+        self.settings.template.as_str()
+    }
 
-use crate::db::schema::email_verifications;
+    fn api_key(&self) -> &str {
+        self.settings.api_key.as_str()
+    }
+
+    fn domain(&self) -> &str {
+        self.settings.domain.as_str()
+    }
+
+    fn message(&self, email: &str, code: &str) -> Message {
+        let delivery_address = EmailAddress::address(email);
+        let template_vars = HashMap::from_iter([("code".to_string(), code.to_string())]);
+
+        Message {
+            to: vec![delivery_address],
+            subject: self.subject().to_string(),
+            template: self.template().to_string(),
+            template_vars: template_vars.clone(),
+            ..Default::default()
+        }
+    }
+}
+
+#[async_trait]
+impl VerificationCodeSender for EmailVerificationCodeSender {
+    /// Sends the code to the user
+    async fn send_code(&self, email: &str, code: &str) -> Result<()> {
+        let message = self.message(email, code);
+
+        log::debug!(
+            "Sending verification email:\nTo: {}\nSubject: {}\nTemplate: {}\nTemplate Vars: {:?}",
+            email,
+            message.subject,
+            message.template,
+            message.template_vars
+        );
+
+        let client = Mailgun {
+            message,
+            api_key: self.api_key().to_string(),
+            domain: self.domain().to_string(),
+        };
+
+        if let Err(e) = client.async_send(&self.sender()).await {
+            log::error!("ERROR: Failed to send the message to the recipient. {}.", e);
+            return Err(e)?;
+        };
+
+        Ok(())
+    }
+}
 
 /// Email Verification Request
 #[derive(Insertable, Debug)]
@@ -157,8 +230,11 @@ impl Request {
         Ok(())
     }
 
-    /// Sends the code to the user
-    pub async fn send_code(&self) -> Result<()> {
+    /// Send the verification code in the request
+    pub async fn send_code<T>(&self, verification_code_sender: T) -> Result<()>
+    where
+        T: VerificationCodeSender,
+    {
         if self.code_hash.is_none() {
             log::error!("ERROR: Code hash must be generated before sending code.");
             return Err(
@@ -166,50 +242,8 @@ impl Request {
             );
         }
 
-        let delivery_address = EmailAddress::address(&self.email.clone());
-
-        if self.validate().is_err() {
-            log::error!("ERROR: Failed to validate the request.");
-            return Err(ValidationError::new("Failed to validate the request.").into());
-        }
-
-        let server_settings = Settings::load()?;
-        let settings = server_settings.mailgun();
-
-        let mut template_vars = HashMap::new();
-        template_vars.insert("code".to_string(), self.code.to_string());
-
-        let message = Message {
-            to: vec![delivery_address],
-            subject: settings.subject.clone(),
-            template: settings.template.clone(),
-            template_vars: template_vars.clone(),
-            ..Default::default()
-        };
-
-        let client = Mailgun {
-            api_key: settings.api_key.clone(),
-            domain: settings.domain.clone(),
-            message,
-        };
-
-        let sender = EmailAddress::name_address(&settings.from_name, &settings.from_address);
-
-        log::debug!("Sending verification email; API Key: {}, domain: {}, Message:\nTo: {}\nSubject: {}\nTemplate: {}\nTemplate Vars: {:?}",
-            settings.api_key,
-            settings.domain,
-            self.email,
-            settings.subject.clone(),
-            settings.template.clone(),
-            template_vars.clone()
-        );
-
-        // The mailgun library doesn't support async, so we have to spawn a blocking task.
-        if let Err(e) = tokio::task::spawn_blocking(move || client.send(&sender)).await? {
-            log::error!("ERROR: Failed to send the message to the recipient. {}.", e);
-            return Err(e)?;
-        };
-
-        Ok(())
+        verification_code_sender
+            .send_code(&self.email, &self.code.to_string())
+            .await
     }
 }
