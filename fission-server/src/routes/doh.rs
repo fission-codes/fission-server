@@ -65,20 +65,38 @@ pub async fn post(
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
-    use http::StatusCode;
-    use serde_json::{json, Value};
-    use tower::ServiceExt;
+    use std::str::FromStr;
 
-    use crate::test_utils::test_context::TestContext;
+    use anyhow::Result;
+    use diesel::ExpressionMethods;
+    use diesel_async::RunQueryDsl;
+    use http::{Method, StatusCode};
+    use mime::Mime;
+    use serde_json::json;
+
+    use crate::{
+        db::schema::accounts,
+        test_utils::{test_context::TestContext, RouteBuilder},
+    };
 
     use pretty_assertions::assert_eq;
 
     #[tokio::test]
-    async fn test_dns_json() {
-        assert_dns_json(
-            "fission.app",
-            "soa",
+    async fn test_dns_json_soa() -> Result<()> {
+        let ctx = TestContext::new().await;
+
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::GET,
+            format!("/dns-query?name={}&type={}", "fission.app", "soa"),
+        )
+        .with_accept_mime(Mime::from_str("application/dns-json")?)
+        .into_json_response::<serde_json::Value>()
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
             json!(
                 {
                   "Status": 0,
@@ -105,11 +123,27 @@ mod tests {
                   "edns_client_subnet": null
                 }
             ),
-        ).await;
+        );
 
-        assert_dns_json(
-            "gateway.fission.app",
-            "any",
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_dns_json_gateway() -> Result<()> {
+        let ctx = TestContext::new().await;
+
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::GET,
+            format!("/dns-query?name={}&type={}", "gateway.fission.app", "any"),
+        )
+        .with_accept_mime(Mime::from_str("application/dns-json")?)
+        .into_json_response::<serde_json::Value>()
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
             json!(
                 {
                   "Status": 0,
@@ -136,30 +170,118 @@ mod tests {
                   "edns_client_subnet": null
                 }
             ),
-        )
-        .await;
+        );
+
+        Ok(())
     }
 
-    async fn assert_dns_json(name: &str, typ: &str, expected: Value) {
+    #[tokio::test]
+    async fn test_dns_json_dnslink_username_ok() -> Result<()> {
         let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
 
-        let response = ctx
-            .app()
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/dns-query?name={}&type={}", name, typ))
-                    .header("Accept", "application/dns-json")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let did = "did:28:06:42:12";
 
-        assert_eq!(response.status(), StatusCode::OK);
+        diesel::insert_into(accounts::table)
+            .values((
+                accounts::username.eq(username),
+                accounts::email.eq(email),
+                accounts::did.eq(did),
+            ))
+            .execute(&mut conn)
+            .await?;
 
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body: Value = serde_json::from_slice(&body).unwrap();
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::GET,
+            format!(
+                "/dns-query?name={}&type={}",
+                format!("_dnslink.{}.fission.app", username),
+                "txt"
+            ),
+        )
+        .with_accept_mime(Mime::from_str("application/dns-json")?)
+        .into_json_response::<serde_json::Value>()
+        .await?;
 
-        assert_eq!(body, expected);
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            json!(
+                {
+                  "Status": 0,
+                  "TC": false,
+                  "RD": false,
+                  "RA": false,
+                  "AD": false,
+                  "CD": false,
+                  "Question": [
+                    {
+                      "name": "_dnslink.donnie.fission.app.",
+                      "type": 16
+                    }
+                  ],
+                  "Answer": [
+                    {
+                      "name": "_dnslink.donnie.fission.app.",
+                      "type": 16,
+                      "TTL": 60,
+                      "data": "did:28:06:42:12"
+                    }
+                  ],
+                  "Comment": null,
+                  "edns_client_subnet": null
+                }
+            ),
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_dns_json_dnslink_username_err_not_found() -> Result<()> {
+        let ctx = TestContext::new().await;
+        let username = "donnie";
+
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::GET,
+            format!(
+                "/dns-query?name={}&type={}",
+                format!("_dnslink.{}.fission.app", username),
+                "txt"
+            ),
+        )
+        .with_accept_mime(Mime::from_str("application/dns-json")?)
+        .into_json_response::<serde_json::Value>()
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            json!(
+                {
+                  "Status": 3,
+                  "TC": false,
+                  "RD": false,
+                  "RA": false,
+                  "AD": false,
+                  "CD": false,
+                  "Question": [
+                    {
+                      "name": "_dnslink.donnie.fission.app.",
+                      "type": 16
+                    }
+                  ],
+                  "Answer": [],
+                  "Comment": null,
+                  "edns_client_subnet": null
+                }
+            ),
+        );
+
+        Ok(())
     }
 }

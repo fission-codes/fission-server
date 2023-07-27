@@ -83,6 +83,7 @@ pub(crate) struct RouteBuilder {
     path: Uri,
     body: Option<(Mime, Body)>,
     ucan: Option<ucan::Ucan>,
+    accept_mime: Option<Mime>,
 }
 
 impl RouteBuilder {
@@ -97,11 +98,17 @@ impl RouteBuilder {
             path: TryFrom::try_from(path).map_err(Into::into).unwrap(),
             body: Default::default(),
             ucan: Default::default(),
+            accept_mime: Default::default(),
         }
     }
 
     pub(crate) fn with_ucan(mut self, ucan: Ucan) -> Self {
         self.ucan = Some(ucan);
+        self
+    }
+
+    pub(crate) fn with_accept_mime(mut self, accept_mime: Mime) -> Self {
+        self.accept_mime = Some(accept_mime);
         self
     }
 
@@ -129,6 +136,8 @@ impl RouteBuilder {
     where
         T: DeserializeOwned,
     {
+        self.accept_mime = self.accept_mime.or(Some(APPLICATION_JSON));
+
         let request = self.build_request()?;
         let response = self.app.oneshot(request).await?;
         let status = response.status();
@@ -141,8 +150,13 @@ impl RouteBuilder {
     fn build_request(&mut self) -> Result<Request<Body>> {
         let builder = Request::builder()
             .method(self.method.clone())
-            .uri(self.path.clone())
-            .header(http::header::ACCEPT, mime::APPLICATION_JSON.as_ref());
+            .uri(self.path.clone());
+
+        let builder = if let Some(mime) = self.accept_mime.take() {
+            builder.header(http::header::ACCEPT, mime.as_ref())
+        } else {
+            builder
+        };
 
         let builder = if let Some(ucan) = self.ucan.take() {
             let token = format!("Bearer {}", ucan.encode()?);
