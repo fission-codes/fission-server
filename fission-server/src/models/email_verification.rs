@@ -59,7 +59,7 @@ impl EmailVerificationCodeSender {
             to: vec![delivery_address],
             subject: self.subject().to_string(),
             template: self.template().to_string(),
-            template_vars: template_vars.clone(),
+            template_vars,
             ..Default::default()
         }
     }
