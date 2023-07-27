@@ -86,55 +86,53 @@ fn latest_embedded_migration_version() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
+    use anyhow::Result;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
-    use http::StatusCode;
-    use tower::ServiceExt;
+    use http::{Method, StatusCode};
 
-    use crate::{db::__diesel_schema_migrations, test_utils::test_context::TestContext};
+    use crate::{
+        db::__diesel_schema_migrations,
+        routes::health::HealthcheckResponse,
+        test_utils::{test_context::TestContext, RouteBuilder},
+    };
 
     #[tokio::test]
-    async fn test_healthcheck_healthy() {
+    async fn test_healthcheck_healthy() -> Result<()> {
         let ctx = TestContext::new().await;
 
-        let response = ctx
-            .app()
-            .oneshot(
-                Request::builder()
-                    .uri("/healthcheck")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::GET, "/healthcheck")
+            .into_json_response::<HealthcheckResponse>()
+            .await?;
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.database_connected, true);
+        assert_eq!(body.database_up_to_date, Some(true));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_healthcheck_db_unavailable() {
+    async fn test_healthcheck_db_unavailable() -> Result<()> {
         let ctx = TestContext::new().await;
         let app = ctx.app();
 
         // Drop the database
         drop(ctx);
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/healthcheck")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let (status, body) = RouteBuilder::new(app, Method::GET, "/healthcheck")
+            .into_json_response::<HealthcheckResponse>()
+            .await?;
 
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body.database_connected, false);
+        assert_eq!(body.database_up_to_date, None);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_healthcheck_db_out_of_date() {
+    async fn test_healthcheck_db_out_of_date() -> Result<()> {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 
@@ -142,20 +140,16 @@ mod tests {
         diesel::insert_into(__diesel_schema_migrations::table)
             .values(__diesel_schema_migrations::version.eq("2239-09-30-desolation".to_string()))
             .execute(&mut conn)
-            .await
-            .unwrap();
+            .await?;
 
-        let response = ctx
-            .app()
-            .oneshot(
-                Request::builder()
-                    .uri("/healthcheck")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::GET, "/healthcheck")
+            .into_json_response::<HealthcheckResponse>()
+            .await?;
 
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body.database_connected, true);
+        assert_eq!(body.database_up_to_date, Some(false));
+
+        Ok(())
     }
 }

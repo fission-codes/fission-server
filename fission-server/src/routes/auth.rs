@@ -1,4 +1,4 @@
-//! Generic ping route.
+//! Routes for authn/authz
 
 use crate::{
     app_state::AppState,
@@ -21,11 +21,11 @@ use tracing::log;
 
 /// Response for Request Token
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
-pub struct Response {
+pub struct VerificationCodeResponse {
     msg: String,
 }
 
-impl Response {
+impl VerificationCodeResponse {
     /// Create a new Response
     pub fn new(msg: String) -> Self {
         Self { msg }
@@ -44,8 +44,6 @@ impl Response {
         (status = 200, description = "Successfully sent request token", body=Response),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 429, description = "Too many requests"),
-        (status = 500, description = "Internal Server Error", body=AppError),
         (status = 510, description = "Not extended")
     )
 )]
@@ -55,7 +53,7 @@ pub async fn request_token(
     State(state): State<AppState>,
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
-) -> AppResult<(StatusCode, Json<Response>)> {
+) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
     /*
 
     The age-old question, should this be an invocation, or is the REST endpoint enough here?
@@ -107,129 +105,101 @@ pub async fn request_token(
 
     Ok((
         StatusCode::OK,
-        Json(Response::new("Successfully sent request token".to_string())),
+        Json(VerificationCodeResponse::new(
+            "Successfully sent request token".to_string(),
+        )),
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::Request};
-
-    use fission_core::authority::key_material::generate_ed25519_material;
-    use http::StatusCode;
+    use anyhow::Result;
+    use http::{Method, StatusCode};
     use serde_json::json;
     use tokio::sync::broadcast;
-    use tower::ServiceExt;
-    use ucan::{builder::UcanBuilder, Ucan};
 
     use crate::{
-        routes::auth::Response,
-        settings::Settings,
-        test_utils::{test_context::TestContext, BroadcastVerificationCodeSender},
+        error::{AppError, ErrorResponse},
+        routes::auth::VerificationCodeResponse,
+        test_utils::{
+            test_context::TestContext, BroadcastVerificationCodeSender, RouteBuilder, UcanBuilder,
+        },
     };
 
     #[tokio::test]
-    async fn test_request_code_ok() {
-        let settings = Settings::load().unwrap();
-
+    async fn test_request_code_ok() -> Result<()> {
         let (tx, mut rx) = broadcast::channel(1);
-
         let ctx = TestContext::new_with_state(|builder| {
             builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
         })
         .await;
 
-        let issuer = generate_ed25519_material();
-        let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(&settings.server().did)
-            .with_lifetime(10)
-            .build()
-            .unwrap()
-            .sign()
-            .await
-            .unwrap();
+        let email = "oedipa@trystero.com";
+        let (ucan, _) = UcanBuilder::default().finalize().await?;
 
-        let token = format!("Bearer {}", ucan.encode().unwrap());
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_ucan(ucan)
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<VerificationCodeResponse>()
+            .await?;
 
-        let request = Request::builder()
-            .method("POST")
-            .uri("/api/auth/email/verify")
-            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .header(http::header::AUTHORIZATION, token)
-            .body(Body::from(
-                serde_json::to_vec(&json!(
-                    {
-                        "email": "oedipa@trystero.com"
-                    }
-                ))
-                .unwrap(),
-            ))
-            .unwrap();
+        let (email, _) = rx.recv().await?;
 
-        let response = ctx.app().oneshot(request).await.unwrap();
-
-        let (email, _) = rx.recv().await.unwrap();
-
+        assert_eq!(status, StatusCode::OK);
         assert_eq!(email, "oedipa@trystero.com");
-        assert_eq!(response.status(), StatusCode::OK);
 
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body = serde_json::from_slice::<Response>(&body);
-
-        assert!(matches!(body, Ok(_)));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_request_code_no_ucan() {
-        assert_request_code_err(None, StatusCode::UNAUTHORIZED).await;
+    async fn test_request_code_no_ucan() -> Result<()> {
+        let ctx = TestContext::new().await;
+        let email = "oedipa@trystero.com";
+
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<ErrorResponse>()
+            .await?;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::UNAUTHORIZED,
+                ..
+            }]
+        ));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_request_code_wrong_aud() {
-        let issuer = generate_ed25519_material();
-        let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience("did:fission:1234")
-            .with_lifetime(10)
-            .build()
-            .unwrap()
-            .sign()
-            .await
-            .unwrap();
-
-        assert_request_code_err(Some(ucan), StatusCode::BAD_REQUEST).await;
-    }
-
-    async fn assert_request_code_err(ucan: Option<Ucan>, status_code: StatusCode) {
+    async fn test_request_code_wrong_aud() -> Result<()> {
         let ctx = TestContext::new().await;
 
-        let builder = Request::builder()
-            .method("POST")
-            .uri("/api/auth/email/verify")
-            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref());
+        let email = "oedipa@trystero.com";
+        let (ucan, _) = UcanBuilder::default()
+            .with_audience("did:fission:1234".to_string())
+            .finalize()
+            .await?;
 
-        let builder = if let Some(ucan) = ucan {
-            let token = format!("Bearer {}", ucan.encode().unwrap());
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_ucan(ucan)
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<ErrorResponse>()
+            .await?;
 
-            builder.header(http::header::AUTHORIZATION, token)
-        } else {
-            builder
-        };
+        assert_eq!(status, StatusCode::BAD_REQUEST);
 
-        let request = builder
-            .body(Body::from(
-                serde_json::to_vec(&json!(
-                    {
-                        "email": "oedipa@trystero.com"
-                    }
-                ))
-                .unwrap(),
-            ))
-            .unwrap();
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::BAD_REQUEST,
+                ..
+            }]
+        ));
 
-        let response = ctx.app().oneshot(request).await.unwrap();
-
-        assert_eq!(response.status(), status_code);
+        Ok(())
     }
 }

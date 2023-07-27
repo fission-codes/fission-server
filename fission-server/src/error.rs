@@ -36,9 +36,9 @@ pub type AppResult<T> = std::result::Result<T, AppError>;
 pub struct AppError {
     #[schema(value_type = u16, example = 200)]
     #[serde(with = "crate::error::serde_status_code")]
-    status: StatusCode,
-    detail: Option<String>,
-    title: Option<String>,
+    pub(crate) status: StatusCode,
+    pub(crate) detail: Option<String>,
+    pub(crate) title: Option<String>,
 }
 
 impl AppError {
@@ -67,7 +67,7 @@ impl AppError {
 #[derive(Debug, Deserialize, Serialize)]
 /// Error in JSON API response format.
 pub struct ErrorResponse {
-    errors: Vec<AppError>,
+    pub(crate) errors: Vec<AppError>,
 }
 
 impl From<AppError> for ErrorResponse {

@@ -8,12 +8,14 @@ use axum::{
     RequestPartsExt,
 };
 
+use http::StatusCode;
+use serde_json::json;
 use tracing::log;
 use ucan::ucan::Ucan;
 
 // 🧬
 
-use crate::authority::Authority;
+use crate::{authority::Authority, error::AppError};
 use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
@@ -28,34 +30,53 @@ impl<S> FromRequestParts<S> for Authority
 where
     S: Send + Sync,
 {
-    type Rejection = authority::Error;
+    type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // Extract the token from the authorization header
-        let TypedHeader(Authorization(bearer)) = parts
-            .extract::<TypedHeader<Authorization<Bearer>>>()
-            .await
-            .map_err(|_| MissingCredentials)?;
-
-        // Decode the UCAN
-        let token = bearer.token();
-        let ucan = Ucan::try_from(token).map_err(|err| {
-            log::error!("Error decoding UCAN: {}", err);
-            InvalidUcan {
-                reason: err.to_string(),
+        do_extract_authority(parts).await.map_err(|err| match err {
+            authority::Error::InsufficientCapabilityScope { .. } => {
+                AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
             }
-        })?;
-
-        // Construct authority
-        let authority = Authority { ucan };
-
-        // Validate the authority
-        authority
-            .validate()
-            .await
-            .map(|_| authority)
-            .map_err(|reason| InvalidUcan { reason })
+            authority::Error::InvalidUcan { reason } => AppError::new(
+                StatusCode::UNAUTHORIZED,
+                Some(format!("Invalid UCAN: {}", reason)),
+            ),
+            authority::Error::MissingCredentials => {
+                AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
+            }
+            authority::Error::MissingProofs { proofs_needed } => AppError::new(
+                StatusCode::NOT_EXTENDED,
+                Some(json!({ "prf": proofs_needed })),
+            ),
+        })
     }
+}
+
+async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority::Error> {
+    // Extract the token from the authorization header
+    let TypedHeader(Authorization(bearer)) = parts
+        .extract::<TypedHeader<Authorization<Bearer>>>()
+        .await
+        .map_err(|_| MissingCredentials)?;
+
+    // Decode the UCAN
+    let token = bearer.token();
+    let ucan = Ucan::try_from(token).map_err(|err| {
+        log::error!("Error decoding UCAN: {}", err);
+        InvalidUcan {
+            reason: err.to_string(),
+        }
+    })?;
+
+    // Construct authority
+    let authority = Authority { ucan };
+
+    // Validate the authority
+    authority
+        .validate()
+        .await
+        .map(|_| authority)
+        .map_err(|reason| InvalidUcan { reason })
 }
 
 ///////////

@@ -61,8 +61,8 @@ hyper = "0.14"
 ipfs-api = { version="0.17.0", features = ["with-hyper"] }
 ipfs-api-backend-hyper = { version="0.6.0", features = ["with-send-sync"] }
 mailgun-rs = "0.1.5"
-metrics = "0.20"
-metrics-exporter-prometheus = "0.11"
+metrics = "0.21"
+metrics-exporter-prometheus = "0.12.1"
 metrics-util = { version = "0.15", default-features = true }
 mime = "0.3"
 num_cpus = "1.0"
@@ -82,8 +82,8 @@ retry-policies = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_path_to_error = "0.1"
-serde_with = "2.3"
-sysinfo = "0.28"
+serde_with = "3.1"
+sysinfo = "0.29"
 task-local-extensions = "0.1"
 thiserror = "1.0"
 time = { version = "0.3", features = ["serde-well-known", "serde-human-readable"] }
