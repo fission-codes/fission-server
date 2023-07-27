@@ -119,7 +119,7 @@ mod tests {
     use tokio::sync::broadcast;
 
     use crate::{
-        error::ErrorResponse,
+        error::{AppError, ErrorResponse},
         routes::auth::VerificationCodeResponse,
         test_utils::{
             test_context::TestContext, BroadcastVerificationCodeSender, RouteBuilder, UcanBuilder,
@@ -156,12 +156,20 @@ mod tests {
         let ctx = TestContext::new().await;
         let email = "oedipa@trystero.com";
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<ErrorResponse>()
             .await?;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::UNAUTHORIZED,
+                ..
+            }]
+        ));
 
         Ok(())
     }
@@ -176,13 +184,21 @@ mod tests {
             .finalize()
             .await?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
             .with_ucan(ucan)
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<ErrorResponse>()
             .await?;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::BAD_REQUEST,
+                ..
+            }]
+        ));
 
         Ok(())
     }

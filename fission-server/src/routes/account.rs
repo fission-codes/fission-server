@@ -168,7 +168,7 @@ mod tests {
 
     use crate::{
         db::schema::accounts,
-        error::ErrorResponse,
+        error::{AppError, ErrorResponse},
         models::account::{AccountRequest, RootAccount},
         routes::auth::VerificationCodeResponse,
         test_utils::{
@@ -230,13 +230,21 @@ mod tests {
             .finalize()
             .await?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
             .with_ucan(ucan)
             .with_json_body(json!({ "username": username, "email": email }))?
             .into_json_response::<ErrorResponse>()
             .await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::FORBIDDEN,
+                ..
+            }]
+        ));
 
         Ok(())
     }
@@ -269,13 +277,21 @@ mod tests {
             .finalize()
             .await?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
             .with_ucan(ucan)
             .with_json_body(json!({ "username": username, "email": email }))?
             .into_json_response::<ErrorResponse>()
             .await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::FORBIDDEN,
+                ..
+            }]
+        ));
 
         Ok(())
     }
@@ -315,12 +331,20 @@ mod tests {
         let ctx = TestContext::new().await;
         let username = "donnie";
 
-        let (status, _) =
+        let (status, body) =
             RouteBuilder::new(ctx.app(), Method::GET, format!("/api/account/{}", username))
                 .into_json_response::<ErrorResponse>()
                 .await?;
 
         assert_eq!(status, StatusCode::NOT_FOUND);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::NOT_FOUND,
+                ..
+            }]
+        ));
 
         Ok(())
     }
@@ -408,7 +432,7 @@ mod tests {
             .finalize()
             .await?;
 
-        let (status, _) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::new(
             ctx.app(),
             Method::PUT,
             format!("/api/account/{}/did", username),
@@ -419,6 +443,14 @@ mod tests {
         .await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
+
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::FORBIDDEN,
+                ..
+            }]
+        ));
 
         Ok(())
     }
