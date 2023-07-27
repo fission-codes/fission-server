@@ -20,7 +20,6 @@ use http::StatusCode;
         (status = 200, description = "Found volume", body=account::AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal Server Error", body=AppError)
     )
 )]
 
@@ -53,7 +52,6 @@ pub async fn get_cid(
         (status = 200, description = "Successfully updated Volume", body=NewVolume),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal Server Error", body=AppError)
     )
 )]
 

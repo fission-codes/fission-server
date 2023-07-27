@@ -211,7 +211,6 @@ An example of adding an OpenAPI specification is the following:
     path = "/ping",
     responses(
         (status = 200, description = "Ping successful"),
-        (status = 500, description = "Ping not successful", body=AppError)
     )
 )]
 pub async fn get() -> AppResult<StatusCode> {
