@@ -65,6 +65,7 @@ pub async fn create_account(
         (status = 200, description = "Found account", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
     )
 )]
 
@@ -94,7 +95,7 @@ pub struct AccountUpdateRequest {
     responses(
         (status = 200, description = "Successfully updated DID", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
-        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
     )
 )]
 
@@ -105,7 +106,9 @@ pub async fn update_did(
     Path(username): Path<String>,
     Json(payload): Json<AccountUpdateRequest>,
 ) -> AppResult<(StatusCode, Json<RootAccount>)> {
-    find_validation_token(&state.db_pool, &authority, &payload.email).await?;
+    if let Err(err) = find_validation_token(&state.db_pool, &authority, &payload.email).await {
+        return Err(AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())));
+    }
 
     // Now update the account!
 
@@ -377,6 +380,45 @@ mod tests {
         assert_eq!(body.account.username, username);
         assert_eq!(body.account.email, email);
         assert_eq!(body.ucan.audience(), issuer.get_did().await?);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_put_account_did_err_wrong_code() -> Result<()> {
+        let ctx = TestContext::new().await;
+
+        let mut conn = ctx.get_db_conn().await;
+
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let did = "did:28:06:42:12";
+
+        diesel::insert_into(accounts::table)
+            .values((
+                accounts::username.eq(username),
+                accounts::email.eq(email),
+                accounts::did.eq(did),
+            ))
+            .execute(&mut conn)
+            .await?;
+
+        let (ucan, _) = UcanBuilder::default()
+            .with_fact(json!({ "code": "wrong code" }))?
+            .finalize()
+            .await?;
+
+        let (status, _) = RouteBuilder::new(
+            ctx.app(),
+            Method::PUT,
+            format!("/api/account/{}/did", username),
+        )
+        .with_ucan(ucan)
+        .with_json_body(json!({ "username": username, "email": email }))?
+        .into_json_response::<ErrorResponse>()
+        .await?;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
 
         Ok(())
     }
