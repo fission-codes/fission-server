@@ -65,7 +65,6 @@ pub async fn create_account(
         (status = 200, description = "Found account", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal Server Error", body=AppError)
     )
 )]
 
@@ -96,7 +95,6 @@ pub struct AccountUpdateRequest {
         (status = 200, description = "Successfully updated DID", body=AccountRequest),
         (status = 400, description = "Invalid request", body=AppError),
         (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal Server Error", body=AppError)
     )
 )]
 
@@ -157,17 +155,18 @@ async fn find_validation_token(
 
 #[cfg(test)]
 mod tests {
-
     use anyhow::Result;
-
+    use diesel::ExpressionMethods;
+    use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use serde_json::json;
     use tokio::sync::broadcast;
     use ucan::crypto::KeyMaterial;
 
     use crate::{
+        db::schema::accounts,
         error::ErrorResponse,
-        models::account::RootAccount,
+        models::account::{AccountRequest, RootAccount},
         routes::auth::VerificationCodeResponse,
         test_utils::{
             test_context::TestContext, BroadcastVerificationCodeSender, RouteBuilder, UcanBuilder,
@@ -274,6 +273,110 @@ mod tests {
             .await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_account_ok() -> Result<()> {
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let did = "did:28:06:42:12";
+
+        diesel::insert_into(accounts::table)
+            .values((
+                accounts::username.eq(username),
+                accounts::email.eq(email),
+                accounts::did.eq(did),
+            ))
+            .execute(&mut conn)
+            .await?;
+
+        let (status, body) =
+            RouteBuilder::new(ctx.app(), Method::GET, format!("/api/account/{}", username))
+                .into_json_response::<AccountRequest>()
+                .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.username, username);
+        assert_eq!(body.email, email);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_account_err_not_found() -> Result<()> {
+        let ctx = TestContext::new().await;
+        let username = "donnie";
+
+        let (status, _) =
+            RouteBuilder::new(ctx.app(), Method::GET, format!("/api/account/{}", username))
+                .into_json_response::<ErrorResponse>()
+                .await?;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_put_account_did_ok() -> Result<()> {
+        let (tx, mut rx) = broadcast::channel(1);
+        let ctx = TestContext::new_with_state(|builder| {
+            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
+        })
+        .await;
+
+        let mut conn = ctx.get_db_conn().await;
+
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let did = "did:28:06:42:12";
+
+        diesel::insert_into(accounts::table)
+            .values((
+                accounts::username.eq(username),
+                accounts::email.eq(email),
+                accounts::did.eq(did),
+            ))
+            .execute(&mut conn)
+            .await?;
+
+        let (ucan, issuer) = UcanBuilder::default().finalize().await?;
+
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            .with_ucan(ucan)
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<VerificationCodeResponse>()
+            .await?;
+
+        assert_eq!(status, StatusCode::OK);
+
+        let (_, code) = rx.recv().await.unwrap();
+
+        let (ucan, issuer) = UcanBuilder::default()
+            .with_issuer(issuer)
+            .with_fact(json!({ "code": code }))?
+            .finalize()
+            .await?;
+
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::PUT,
+            format!("/api/account/{}/did", username),
+        )
+        .with_ucan(ucan)
+        .with_json_body(json!({ "username": username, "email": email }))?
+        .into_json_response::<RootAccount>()
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.account.username, username);
+        assert_eq!(body.account.email, email);
+        assert_eq!(body.ucan.audience(), issuer.get_did().await?);
 
         Ok(())
     }
