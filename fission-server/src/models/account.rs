@@ -8,7 +8,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
-use ucan::builder::UcanBuilder;
+use ucan::{builder::UcanBuilder, capability::{Capability, CapabilitySemantics}};
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
@@ -264,13 +264,15 @@ impl RootAccount {
 
         let account = Account::new(conn, username, email, &did).await?;
 
+        let capability = Capability::new(fission_core::capabilities::delegation::Resource::AllProofs, fission_core::capabilities::delegation::Ability::AllCapabilities);
+
         let ucan = UcanBuilder::default()
             .issued_by(&ephemeral_key)
             .for_audience(audience_did)
             // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
             .with_lifetime(60 * 60 * 24 * 365)
             // Need to implement capabilities here
-            // .claiming_capability(capability)
+            .claiming_capability(&capability)
             .with_fact(json!({"username": account.username}))
             .build()?
             .sign()

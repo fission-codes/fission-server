@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use axum::Router;
 use bytes::Bytes;
+use cid::Cid;
 use fission_core::authority::key_material::generate_ed25519_material;
 use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
@@ -9,6 +10,7 @@ use mime::{Mime, APPLICATION_JSON};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::broadcast;
 use tower::ServiceExt;
+use tracing::log;
 use ucan::Ucan;
 use ucan_key_support::ed25519::Ed25519KeyMaterial;
 
@@ -25,6 +27,7 @@ pub(crate) struct UcanBuilder {
     issuer: Option<Ed25519KeyMaterial>,
     audience: Option<String>,
     facts: Vec<serde_json::Value>,
+    proof: Option<ucan::Ucan>,
 }
 
 impl UcanBuilder {
@@ -47,6 +50,10 @@ impl UcanBuilder {
             .issued_by(&issuer)
             .for_audience(&audience)
             .with_lifetime(300);
+
+        if let Some(proof) = self.proof {
+            builder = builder.witnessed_by(&proof);
+        }
 
         for fact in self.facts {
             builder = builder.with_fact(fact);
@@ -75,6 +82,11 @@ impl UcanBuilder {
 
         Ok(self)
     }
+
+    pub(crate) fn with_proof(mut self, proof: ucan::Ucan) -> Self {
+        self.proof = Some(proof);
+        self
+    }
 }
 
 pub(crate) struct RouteBuilder {
@@ -83,6 +95,7 @@ pub(crate) struct RouteBuilder {
     path: Uri,
     body: Option<(Mime, Body)>,
     ucan: Option<ucan::Ucan>,
+    ucan_proof: Option<ucan::Ucan>,
     accept_mime: Option<Mime>,
 }
 
@@ -98,12 +111,18 @@ impl RouteBuilder {
             path: TryFrom::try_from(path).map_err(Into::into).unwrap(),
             body: Default::default(),
             ucan: Default::default(),
+            ucan_proof: Default::default(),
             accept_mime: Default::default(),
         }
     }
 
     pub(crate) fn with_ucan(mut self, ucan: Ucan) -> Self {
         self.ucan = Some(ucan);
+        self
+    }
+
+    pub(crate) fn with_ucan_proof(mut self, ucan: Ucan) -> Self {
+        self.ucan_proof = Some(ucan);
         self
     }
 
@@ -162,6 +181,14 @@ impl RouteBuilder {
             let token = format!("Bearer {}", ucan.encode()?);
 
             builder.header(http::header::AUTHORIZATION, token)
+        } else {
+            builder
+        };
+
+        let builder = if let Some(proof) = self.ucan_proof.take() {
+            let encoded_ucan = proof.encode()?;
+            let cid = Cid::try_from(proof)?;
+            builder.header("ucan", format!("{} {}", cid, encoded_ucan))
         } else {
             builder
         };

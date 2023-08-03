@@ -135,28 +135,36 @@ impl RequestResponseLogger for Logger {
                     authorization = parts
                         .headers
                         .get(header::AUTHORIZATION)
-                        .map(|h| h.to_str().unwrap_or(NULL))
+                        .map(|h| h.to_str().unwrap_or(NULL)),
+                ucan = parts
+                    .headers
+                    .get("ucan")
+                    .map(|h| h.to_str().unwrap_or(NULL))
                     .unwrap_or(NULL)),
             _ => {
                 info!(
-                    subject = "request",
-                    category="http.request",
-                    msg = "started processing request",
-                    request_id = parts
-                        .headers
-                        .get(REQUEST_ID)
-                        .map(|h| h.to_str().unwrap_or(NULL)),
-                    request_path = %path,
-                    query_string = parts.uri.query(),
-                    authorization= parts
-                        .headers
-                        .get(header::AUTHORIZATION)
-                        .map(|h| if h.is_sensitive() {
-                            "<redacted>"
-                        }  else {
-                            h.to_str().unwrap_or(NULL)
-                        })
-                    .unwrap_or(NULL))
+                subject = "request",
+                category="http.request",
+                msg = "started processing request",
+                request_id = parts
+                    .headers
+                    .get(REQUEST_ID)
+                    .map(|h| h.to_str().unwrap_or(NULL)),
+                request_path = %path,
+                query_string = parts.uri.query(),
+                authorization= parts
+                    .headers
+                    .get(header::AUTHORIZATION)
+                    .map(|h| if h.is_sensitive() {
+                        "<redacted>"
+                    }  else {
+                        h.to_str().unwrap_or(NULL)
+                    }),
+                ucan = parts
+                    .headers
+                    .get("ucan")
+                    .map(|h| h.to_str().unwrap_or(NULL))
+                )
             }
         };
 
