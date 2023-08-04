@@ -64,7 +64,12 @@ pub async fn update_cid(
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
     let account = Account::find_by_username(&mut conn, username).await?;
-    let volume = account.update_volume_cid(&mut conn, &payload.cid).await?;
+
+    let volume: NewVolumeRecord = if account.volume_id.is_some() {
+        account.update_volume_cid(&mut conn, &payload.cid).await?
+    } else {
+        account.set_volume_cid(&mut conn, payload.cid).await?
+    };
 
     Ok((StatusCode::OK, Json(volume)))
 }
