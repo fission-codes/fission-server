@@ -75,7 +75,7 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        db::schema::accounts,
+        db::schema::{accounts, volumes},
         test_utils::{test_context::TestContext, RouteBuilder},
     };
 
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_dns_json_dnslink_username_ok() -> Result<()> {
+    async fn test_dns_json_did_username_ok() -> Result<()> {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 
@@ -189,6 +189,124 @@ mod tests {
                 accounts::username.eq(username),
                 accounts::email.eq(email),
                 accounts::did.eq(did),
+            ))
+            .execute(&mut conn)
+            .await?;
+
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::GET,
+            format!(
+                "/dns-query?name={}&type={}",
+                format!("_did.{}.fission.app", username),
+                "txt"
+            ),
+        )
+        .with_accept_mime(Mime::from_str("application/dns-json")?)
+        .into_json_response::<serde_json::Value>()
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            json!(
+                {
+                  "Status": 0,
+                  "TC": false,
+                  "RD": false,
+                  "RA": false,
+                  "AD": false,
+                  "CD": false,
+                  "Question": [
+                    {
+                      "name": "_did.donnie.fission.app.",
+                      "type": 16
+                    }
+                  ],
+                  "Answer": [
+                    {
+                      "name": "_did.donnie.fission.app.",
+                      "type": 16,
+                      "TTL": 60,
+                      "data": "did:28:06:42:12"
+                    }
+                  ],
+                  "Comment": null,
+                  "edns_client_subnet": null
+                }
+            ),
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_dns_json_did_username_err_not_found() -> Result<()> {
+        let ctx = TestContext::new().await;
+        let username = "donnie";
+
+        let (status, body) = RouteBuilder::new(
+            ctx.app(),
+            Method::GET,
+            format!(
+                "/dns-query?name={}&type={}",
+                format!("_dnslink.{}.fission.app", username),
+                "txt"
+            ),
+        )
+        .with_accept_mime(Mime::from_str("application/dns-json")?)
+        .into_json_response::<serde_json::Value>()
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            json!(
+                {
+                  "Status": 3,
+                  "TC": false,
+                  "RD": false,
+                  "RA": false,
+                  "AD": false,
+                  "CD": false,
+                  "Question": [
+                    {
+                      "name": "_dnslink.donnie.fission.app.",
+                      "type": 16
+                    }
+                  ],
+                  "Answer": [],
+                  "Comment": null,
+                  "edns_client_subnet": null
+                }
+            ),
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_dns_json_dnslink_volume_ok() -> Result<()> {
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let did = "did:28:06:42:12";
+        let cid = "bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku";
+
+        let volume_id = diesel::insert_into(volumes::table)
+            .values(volumes::cid.eq(cid))
+            .returning(volumes::id)
+            .get_result::<i32>(&mut conn)
+            .await?;
+
+        diesel::insert_into(accounts::table)
+            .values((
+                accounts::username.eq(username),
+                accounts::email.eq(email),
+                accounts::did.eq(did),
+                accounts::volume_id.eq(volume_id),
             ))
             .execute(&mut conn)
             .await?;
@@ -228,7 +346,7 @@ mod tests {
                       "name": "_dnslink.donnie.fission.app.",
                       "type": 16,
                       "TTL": 60,
-                      "data": "did:28:06:42:12"
+                      "data": "dnslink=/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
                     }
                   ],
                   "Comment": null,
@@ -241,9 +359,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_dns_json_dnslink_username_err_not_found() -> Result<()> {
+    async fn test_dns_json_dnslink_volume_err_not_found() -> Result<()> {
         let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
         let username = "donnie";
+        let email = "donnie@example.com";
+        let did = "did:28:06:42:12";
+
+        diesel::insert_into(accounts::table)
+            .values((
+                accounts::username.eq(username),
+                accounts::email.eq(email),
+                accounts::did.eq(did),
+            ))
+            .execute(&mut conn)
+            .await?;
 
         let (status, body) = RouteBuilder::new(
             ctx.app(),

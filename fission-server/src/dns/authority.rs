@@ -102,6 +102,7 @@ impl DBBackedAuthority {
 
         if let Some(prefix) = prefix {
             match prefix {
+                b"_did" => self.insert_did_records(&mut authority, base).await,
                 b"_dnslink" => self.insert_dnslink_records(&mut authority, base).await,
                 b"_atproto" => self.insert_atproto_records(&mut authority, base).await,
                 _ => (),
@@ -140,6 +141,34 @@ impl DBBackedAuthority {
         }
     }
 
+    async fn insert_did_records(&self, authority: &mut InMemoryAuthority, base: Name) {
+        let mut conn = db::connect(&self.db_pool).await.unwrap();
+
+        let Some(Ok(username)) = ({
+            let mut iter = base.iter();
+
+            iter.next().map(std::str::from_utf8)
+        }) else {
+            return;
+        };
+
+        let Ok(account) = Account::find_by_username(&mut conn, username).await else {
+            return;
+        };
+
+        let name = Name::from_ascii("_did")
+            .expect("invalid record name")
+            .append_domain(&base)
+            .expect("invalid record name");
+
+        dbg!(&account.did);
+
+        authority.upsert_mut(
+            Record::from_rdata(name, 60, RData::TXT(TXT::new(vec![account.did]))),
+            0,
+        );
+    }
+
     async fn insert_dnslink_records(&self, authority: &mut InMemoryAuthority, base: Name) {
         let mut conn = db::connect(&self.db_pool).await.unwrap();
 
@@ -155,13 +184,21 @@ impl DBBackedAuthority {
             return;
         };
 
+        let Ok(Some(volume)) = account.get_volume(&mut conn).await else {
+            return;
+        };
+
         let name = Name::from_ascii("_dnslink")
             .expect("invalid record name")
             .append_domain(&base)
             .expect("invalid record name");
 
         authority.upsert_mut(
-            Record::from_rdata(name, 60, RData::TXT(TXT::new(vec![account.did]))),
+            Record::from_rdata(
+                name,
+                60,
+                RData::TXT(TXT::new(vec!["dnslink=/ipfs/".to_string(), volume.cid])),
+            ),
             0,
         );
     }
