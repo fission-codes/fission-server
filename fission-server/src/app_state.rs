@@ -2,10 +2,19 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use axum::extract::ws;
+use dashmap::DashMap;
 use dyn_clone::DynClone;
-use std::fmt;
+use futures::channel::mpsc::Sender;
+use std::{fmt, net::SocketAddr, sync::Arc};
 
 use crate::db::Pool;
+
+/// A channel for transmitting messages to a websocket peer
+pub type WsPeer = Sender<ws::Message>;
+
+/// A map of all websocket peers connected to each DID-specific channel
+pub type WsPeerMap = Arc<DashMap<String, DashMap<SocketAddr, WsPeer>>>;
 
 #[derive(Clone)]
 /// Global application route state.
@@ -14,6 +23,8 @@ pub struct AppState {
     pub db_pool: Pool,
     /// The service that sends account verification codes
     pub verification_code_sender: Box<dyn VerificationCodeSender>,
+    /// The currently connected websocket peers
+    pub ws_peer_map: WsPeerMap,
 }
 
 #[derive(Default)]
@@ -37,6 +48,7 @@ impl AppStateBuilder {
         Ok(AppState {
             db_pool,
             verification_code_sender,
+            ws_peer_map: Default::default(),
         })
     }
 

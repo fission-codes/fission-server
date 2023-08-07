@@ -3,7 +3,7 @@
 use crate::{
     app_state::AppState,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, doh, fallback::notfound_404, health, ping, volume},
+    routes::{account, auth, doh, fallback::notfound_404, health, ping, volume, ws},
 };
 
 use axum::{
@@ -35,6 +35,7 @@ pub fn setup_app_router(app_state: AppState) -> Router {
     let api_router = Router::new()
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
+        .route("/account/link/:did", get(ws::handler))
         .route("/account/:name", get(account::get_account))
         .route("/account/:name/did", put(account::update_did))
         .route("/account/:name/volume/cid", get(volume::get_cid))
