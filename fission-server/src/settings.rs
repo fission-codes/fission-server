@@ -38,6 +38,13 @@ pub struct Database {
     pub connect_timeout: u64,
 }
 
+/// IPFS settings.
+#[derive(Clone, Debug, Deserialize)]
+pub struct IPFS {
+    /// Multiaddrs of IPFS nodes
+    pub peers: Vec<String>,
+}
+
 /// Server settings.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Server {
@@ -113,6 +120,7 @@ pub struct Healthcheck {
 /// Application settings.
 pub struct Settings {
     database: Database,
+    ipfs: IPFS,
     monitoring: Monitoring,
     server: Server,
     otel: Otel,
@@ -129,6 +137,11 @@ impl Settings {
     /// Environment settings getter.
     pub fn environment(&self) -> AppEnvironment {
         self.server().environment
+    }
+
+    /// IPFS settings getter.
+    pub fn ipfs(&self) -> &IPFS {
+        &self.ipfs
     }
 
     /// Monitoring settings getter.

@@ -2,6 +2,28 @@
 url = "postgres://postgres:postgres@localhost:5432/fission-server"
 connect_timeout = 3
 
+[healthcheck]
+enabled = true
+interval_ms = 5000
+max_retries = 3
+
+[ipfs]
+peers = [
+  "/ip4/127.0.0.1/tcp/4001",
+  "/ip4/127.0.0.1/tcp/4002/ws",
+  "/ip4/127.0.0.1/udp/4001/quic-v1/webtransport/certhash/uEiC4_sAMUfcxEJtqIlVWRGlHrTSSYuyk5Ulqfl6CjRiOHw/certhash/uEiANUHX9dRBqphQzZINo5WzkStJ7qevCr_2ZAUzLEbqoFw/p2p/12D3KooWLXH5BFzscChpdjtotAvv94hDR6bVxMKLHBHrSnugCRWs"
+]
+
+[mailgun]
+api_key = 0
+sender_address = "noreply@mail.fission.codes"
+sender_name = "Fission"
+domain = "mail.fission.codes"
+subject = "Your Fission Verification Code"
+from_address = "noreply@mail.fission.codes"
+from_name = "Fission"
+template = "test-email-verification"
+
 [monitoring]
 process_collector_interval = 10
 
@@ -14,18 +36,3 @@ did = "did:web:localhost:3000"
 metrics_port = 4000
 port = 3000
 timeout_ms = 30000
-
-[mailgun]
-api_key = 0
-sender_address = "noreply@mail.fission.codes"
-sender_name = "Fission"
-domain = "mail.fission.codes"
-subject = "Your Fission Verification Code"
-from_address = "noreply@mail.fission.codes"
-from_name = "Fission"
-template = "test-email-verification"
-
-[healthcheck]
-enabled = true
-interval_ms = 5000
-max_retries = 3
