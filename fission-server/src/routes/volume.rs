@@ -57,62 +57,17 @@ pub async fn create_volume(
     headers: HeaderMap,
     Json(payload): Json<NewVolumeRecord>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
-    tracing::info!("Creating volume for {}", username);
 
     let mut conn = db::connect(&state.db_pool).await?;
     let account = Account::find_by_username(&mut conn, username).await?;
 
-    let mut store = MemoryStore::default();
-    let mut did_parser = ucan::crypto::did::DidParser::new(SUPPORTED_KEYS);
-
-    for proof in headers.get_all("ucan") {
-        let Some((_, ucan)) = proof.to_str()?.split_once(" ") else {
-            return Err(AppError::new(StatusCode::BAD_REQUEST, Some("Invalid UCAN")));
-        };
-        store.write_token(ucan).await?;
+    let allowed = authority.has_capability("ucan:*", "ucan/*", &account.did).await?;
+    if allowed {
+        let volume = account.set_volume_cid(&mut conn, payload.cid).await?;
+        return Ok((StatusCode::CREATED, Json(volume)))
+    } else {
+        Err(AppError::new(StatusCode::UNAUTHORIZED, Some("No valid UCAN found")))
     }
-
-    let now_time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()
-        .map(|t| t.as_secs());
-
-    let my_ucan = authority.ucan.clone();
-    let chain = ProofChain::from_ucan(my_ucan, now_time, &mut did_parser, &store).await?;
-
-    chain
-        .ucan()
-        .validate(now_time, &mut did_parser)
-        .await
-        .map_err(|error| {
-            log::error!("Error validating UCAN: {}", error);
-            AppError::new(StatusCode::UNAUTHORIZED, Some("Invalid UCAN"))
-        })?;
-
-    tracing::info!("chain: {:?}", chain);
-
-    let expected_capability = SEMANTICS.parse("ucan:*", "ucan/*").unwrap();
-
-
-
-    let capability_infos = chain.reduce_capabilities(&fission_core::capabilities::delegation::SEMANTICS);
-
-    tracing::info!("Capability infos: {:?}", capability_infos);
-    let allowed = authority.has_capability("ucan:*", "ucan/*", &account.did).await;
-    println!("Authority says {:?}", allowed);
-
-    for info in capability_infos {
-        tracing::info!("Capability: {:?} {}", info, &account.did);
-        if info.originators.contains(&account.did)
-            && info.capability.enables(&expected_capability)
-        {
-            let volume = account.set_volume_cid(&mut conn, payload.cid).await?;
-            return Ok((StatusCode::CREATED, Json(volume)))
-        }
-    }
-
-    return Err(AppError::new(StatusCode::UNAUTHORIZED, Some("No valid UCAN found")));
-
 }
 
 #[utoipa::path(

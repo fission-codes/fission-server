@@ -135,13 +135,25 @@ impl From<diesel::result::Error> for AppError {
 }
 
 impl From<ToStrError> for AppError {
-    fn from(err: ToStrError) -> Self {
+    fn from(_err: ToStrError) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
             title: StatusCode::BAD_REQUEST
                 .canonical_reason()
                 .map(|r| r.to_string()),
             detail: None,
+        }
+    }
+}
+
+impl From<String> for AppError {
+    fn from(_err: String) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            title: StatusCode::INTERNAL_SERVER_ERROR
+                .canonical_reason()
+                .map(|r| r.to_string()),
+            detail: None, //Some(err),
         }
     }
 }
