@@ -3,15 +3,14 @@ use async_trait::async_trait;
 use axum::Router;
 use bytes::Bytes;
 use cid::Cid;
-use fission_core::authority::key_material::generate_ed25519_material;
+use fission_core::{authority::key_material::generate_ed25519_material, capabilities::delegation::{SEMANTICS, Ability, Resource}};
 use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
 use mime::{Mime, APPLICATION_JSON};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::broadcast;
 use tower::ServiceExt;
-use tracing::log;
-use ucan::Ucan;
+use ucan::{Ucan, capability::{Capability, CapabilitySemantics}};
 use ucan_key_support::ed25519::Ed25519KeyMaterial;
 
 use crate::app_state::VerificationCodeSender;
@@ -28,6 +27,7 @@ pub(crate) struct UcanBuilder {
     audience: Option<String>,
     facts: Vec<serde_json::Value>,
     proof: Option<ucan::Ucan>,
+    capability: Option<Capability<Resource, Ability>>,
 }
 
 impl UcanBuilder {
@@ -59,6 +59,10 @@ impl UcanBuilder {
             builder = builder.with_fact(fact);
         }
 
+        if let Some(capability) = self.capability {
+            builder = builder.claiming_capability(&capability);
+        }
+
         let ucan = builder.build()?.sign().await?;
 
         Ok((ucan, issuer))
@@ -85,6 +89,11 @@ impl UcanBuilder {
 
     pub(crate) fn with_proof(mut self, proof: ucan::Ucan) -> Self {
         self.proof = Some(proof);
+        self
+    }
+
+    pub(crate) fn with_capability(mut self, with: &str, can: &str) -> Self {
+        self.capability = Some(SEMANTICS.parse(with, can).unwrap());
         self
     }
 }

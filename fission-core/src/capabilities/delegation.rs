@@ -48,6 +48,7 @@ impl TryFrom<Url> for Resource {
     type Error = anyhow::Error;
 
     fn try_from(value: Url) -> Result<Self> {
+        println!("in here!! parsing resource! {:?}", value);
         match value.scheme() {
             "ucan" => match value.path() {
                 "*" => Ok(Resource::AllProvableUCANs),
@@ -91,6 +92,7 @@ impl TryFrom<String> for Ability {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self> {
+        println!("in here!! parsing ability! {}", value);
         Ok(match value.as_str() {
             "ucan/*" => Ability::AllCapabilities,
             _ => return Err(anyhow!("Unrecognized ability: {:?}", value)),

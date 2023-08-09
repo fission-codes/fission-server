@@ -1,9 +1,11 @@
 //! Authority extractor
+//! 
+//! Todo: this should be extracted to a separate crate and made available as a generic Axum UCAN extractor.
 
 use axum::{
     async_trait,
-    extract::{FromRequestParts, TypedHeader},
-    headers::{authorization::Bearer, Authorization},
+    extract::{FromRequestParts, TypedHeader, self},
+    headers::{authorization::Bearer, Authorization, HeaderName, Header},
     http::request::Parts,
     RequestPartsExt,
 };
@@ -20,6 +22,63 @@ use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
 };
+
+/////////////////
+// UCAN header //
+/////////////////
+
+struct UcanHeader(Vec<Ucan>);
+
+impl Header for UcanHeader {
+    fn name() -> &'static HeaderName {
+        static UCAN_HEADER: HeaderName = HeaderName::from_static("ucan");
+        static UCAN_HEADER_NAME: &HeaderName = &UCAN_HEADER;
+        UCAN_HEADER_NAME
+    }
+
+    fn decode<'i, I>(values: &mut I) -> Result<UcanHeader, axum::headers::Error>
+    where
+        I: Iterator<Item = &'i http::HeaderValue>,
+    {
+        let mut ucans = Vec::<Ucan>::new();
+
+        let mut c = 0;
+
+        let ucans = values.map(|val| {
+            c += 1;
+
+            if let Ok(header_str) = val.to_str() {
+                if let Some((_, token_str)) = header_str.split_once(" ") {
+                    if let Ok(ucan) = Ucan::try_from(token_str) {
+                        return Some(ucan)
+                    }
+                }
+            }
+
+            None
+        });
+
+        let valid_headers: Vec<Ucan> = ucans.filter_map(|u| u).collect();
+
+        if valid_headers.len() != c {
+            Err(axum::headers::Error::invalid())
+        } else {
+            Ok(Self(valid_headers))
+        }
+
+    }
+
+    // Unimplemented!
+    // FIXME
+    fn encode<E>(&self, values: &mut E)
+    where
+        E: Extend<http::HeaderValue>,
+    {
+        // for ucan in &self.0 {
+        // }
+        ()
+    }
+}
 
 ////////////
 // TRAITS //
@@ -59,6 +118,14 @@ async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority:
         .await
         .map_err(|_| MissingCredentials)?;
 
+    let TypedHeader(UcanHeader(proofs)) = parts
+        .extract::<TypedHeader<UcanHeader>>()
+        .await
+        .map_err(|_| MissingCredentials)?;
+
+    println!("parts: {:?}", parts);
+    println!("proofs: {:?}", proofs);
+
     // Decode the UCAN
     let token = bearer.token();
     let ucan = Ucan::try_from(token).map_err(|err| {
@@ -69,7 +136,7 @@ async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority:
     })?;
 
     // Construct authority
-    let authority = Authority { ucan };
+    let authority = Authority { ucan, proofs };
 
     // Validate the authority
     authority
@@ -130,6 +197,17 @@ mod tests {
             .unwrap();
 
         assert_eq!(authed.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn extract_authority_invalid_ucan() {
+        let issuer = generate_ed25519_material();
+
+        // Test if request requires a valid UCAN
+        let app: Router<(), axum::body::Body> = Router::new().route(
+            "/",
+            get(|_authority: Authority| async { axum::body::Empty::new() }),
+        );
 
         // If an invalid UCAN is given
         let faulty_ucan = UcanBuilder::default()
@@ -156,6 +234,17 @@ mod tests {
             .unwrap();
 
         assert_eq!(invalid_auth.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn extract_authority_no_auth_header() {
+
+        // Test if request requires a valid UCAN
+        let app: Router<(), axum::body::Body> = Router::new().route(
+            "/",
+            get(|_authority: Authority| async { axum::body::Empty::new() }),
+        );
+
 
         // If no authorization header is provided
         let not_authed = app

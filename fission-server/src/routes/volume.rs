@@ -8,12 +8,13 @@ use crate::{
     models::{account::Account, volume::NewVolumeRecord},
 };
 use axum::extract::{Json, Path, State};
-use fission_core::authority::key_material::SUPPORTED_KEYS;
+use fission_core::{authority::key_material::SUPPORTED_KEYS, capabilities::delegation::{Resource, Ability, SEMANTICS}};
 use http::{HeaderMap, StatusCode};
 use tracing::log;
 use ucan::{
-    chain::ProofChain,
+    chain::{ProofChain, CapabilityInfo},
     store::{MemoryStore, UcanJwtStore, }, capability::Capability,
+    capability::CapabilitySemantics
 };
 
 #[utoipa::path(
@@ -68,7 +69,7 @@ pub async fn create_volume(
         let Some((_, ucan)) = proof.to_str()?.split_once(" ") else {
             return Err(AppError::new(StatusCode::BAD_REQUEST, Some("Invalid UCAN")));
         };
-        store.write_token(ucan).await?; //&ucan.encode().unwrap());
+        store.write_token(ucan).await?;
     }
 
     let now_time = std::time::SystemTime::now()
@@ -76,7 +77,8 @@ pub async fn create_volume(
         .ok()
         .map(|t| t.as_secs());
 
-    let chain = ProofChain::from_ucan(authority.ucan, now_time, &mut did_parser, &store).await?;
+    let my_ucan = authority.ucan.clone();
+    let chain = ProofChain::from_ucan(my_ucan, now_time, &mut did_parser, &store).await?;
 
     chain
         .ucan()
@@ -87,14 +89,22 @@ pub async fn create_volume(
             AppError::new(StatusCode::UNAUTHORIZED, Some("Invalid UCAN"))
         })?;
 
+    tracing::info!("chain: {:?}", chain);
+
+    let expected_capability = SEMANTICS.parse("ucan:*", "ucan/*").unwrap();
+
+
+
     let capability_infos = chain.reduce_capabilities(&fission_core::capabilities::delegation::SEMANTICS);
 
     tracing::info!("Capability infos: {:?}", capability_infos);
+    let allowed = authority.has_capability("ucan:*", "ucan/*", &account.did).await;
+    println!("Authority says {:?}", allowed);
 
     for info in capability_infos {
         tracing::info!("Capability: {:?} {}", info, &account.did);
         if info.originators.contains(&account.did)
-            // && info.capability.enables("ucan/*".into())
+            && info.capability.enables(&expected_capability)
         {
             let volume = account.set_volume_cid(&mut conn, payload.cid).await?;
             return Ok((StatusCode::CREATED, Json(volume)))
@@ -163,11 +173,11 @@ mod tests {
         let mut conn = ctx.get_db_conn().await;
 
         // Agent UCAN/DID
-        let (_, issuer) = UcanBuilder::default().finalize().await?;
+        let (_, agent_keypair) = UcanBuilder::default().finalize().await?;
 
         let username = "tuttle";
         let email = "tuttle@heating.engineer";
-        let agent_did = issuer.get_did().await?;
+        let agent_did = agent_keypair.get_did().await?;
 
         let root_account = RootAccount::new(
             &mut conn,
@@ -178,8 +188,9 @@ mod tests {
         .await?;
 
         let (ucan, _) = UcanBuilder::default()
-            .with_issuer(issuer)
+            .with_issuer(agent_keypair)
             .with_proof(root_account.ucan.clone())
+            .with_capability("ucan:*", "ucan/*")
             .finalize()
             .await?;
 
