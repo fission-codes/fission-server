@@ -71,8 +71,6 @@ impl VerificationCodeSender for EmailVerificationCodeSender {
     async fn send_code(&self, email: &str, code: &str) -> Result<()> {
         let message = self.message(email, code);
 
-        dbg!(&code);
-
         log::debug!(
             "Sending verification email:\nTo: {}\nSubject: {}\nTemplate: {}\nTemplate Vars: {:?}",
             email,
