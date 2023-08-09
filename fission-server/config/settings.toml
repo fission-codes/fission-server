@@ -9,8 +9,7 @@ max_retries = 3
 
 [ipfs]
 peers = [
-  "/ip4/127.0.0.1/tcp/4001",
-  "/ip4/127.0.0.1/tcp/4002/ws",
+  "/ip4/127.0.0.1/tcp/4002/ws/p2p/12D3KooWLXH5BFzscChpdjtotAvv94hDR6bVxMKLHBHrSnugCRWs",
   "/ip4/127.0.0.1/udp/4001/quic-v1/webtransport/certhash/uEiC4_sAMUfcxEJtqIlVWRGlHrTSSYuyk5Ulqfl6CjRiOHw/certhash/uEiANUHX9dRBqphQzZINo5WzkStJ7qevCr_2ZAUzLEbqoFw/p2p/12D3KooWLXH5BFzscChpdjtotAvv94hDR6bVxMKLHBHrSnugCRWs"
 ]
 
