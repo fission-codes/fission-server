@@ -153,6 +153,7 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
 
     let app_state = AppStateBuilder::default()
         .with_db_pool(db_pool)
+        .with_ipfs_peers(settings.ipfs().peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun().clone()))
         .finalize()?;
 
