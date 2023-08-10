@@ -33,9 +33,9 @@ pub fn setup_app_router(app_state: AppState) -> Router {
         .allow_origin(Any);
 
     let api_router = Router::new()
+        .route("/relay/:did", get(ws::handler))
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
-        .route("/account/link/:did", get(ws::handler))
         .route("/account/:name", get(account::get_account))
         .route("/account/:name/did", put(account::update_did))
         .route("/account/:name/volume/cid", get(volume::get_cid))

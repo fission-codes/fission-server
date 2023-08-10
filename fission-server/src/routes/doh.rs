@@ -275,7 +275,6 @@ mod tests {
                       "type": 16
                     }
                   ],
-                  "Answer": [],
                   "Comment": null,
                   "edns_client_subnet": null
                 }
@@ -406,7 +405,6 @@ mod tests {
                       "type": 16
                     }
                   ],
-                  "Answer": [],
                   "Comment": null,
                   "edns_client_subnet": null
                 }
