@@ -3,14 +3,20 @@ use async_trait::async_trait;
 use axum::Router;
 use bytes::Bytes;
 use cid::Cid;
-use fission_core::{authority::key_material::generate_ed25519_material, capabilities::delegation::{SEMANTICS, Ability, Resource}};
+use fission_core::{
+    authority::key_material::generate_ed25519_material,
+    capabilities::delegation::{Ability, Resource, SEMANTICS},
+};
 use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
 use mime::{Mime, APPLICATION_JSON};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::broadcast;
 use tower::ServiceExt;
-use ucan::{Ucan, capability::{Capability, CapabilitySemantics}};
+use ucan::{
+    capability::{Capability, CapabilitySemantics},
+    Ucan,
+};
 use ucan_key_support::ed25519::Ed25519KeyMaterial;
 
 use crate::app_state::VerificationCodeSender;

@@ -8,7 +8,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
-use ucan::{builder::UcanBuilder, capability::{Capability, CapabilitySemantics}};
+use ucan::{builder::UcanBuilder, capability::CapabilitySemantics};
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
@@ -157,6 +157,11 @@ impl Account {
         let volume = Volume::new(conn, cid).await?;
         let volume_id = volume.id;
 
+        println!(
+            "created volume, id: {:?} self id is {:?}",
+            volume_id, self.id
+        );
+
         diesel::update(accounts::dsl::accounts)
             .filter(accounts::id.eq(self.id))
             .set(accounts::volume_id.eq(volume_id))
@@ -180,12 +185,15 @@ impl Account {
         cid: &str,
     ) -> Result<NewVolumeRecord, diesel::result::Error> {
         if let Some(volume_id) = self.volume_id {
+            println!("ahem? {:?}", volume_id);
             let volume = Volume::find_by_id(conn, volume_id)
                 .await?
                 .update_cid(conn, cid)
                 .await?;
+            println!("volume: {:?}", volume);
             Ok(volume.into())
         } else {
+            println!("what the heck {:?}", self.volume_id);
             // FIXME wrong error type
             Err(diesel::result::Error::NotFound)
         }
@@ -265,7 +273,9 @@ impl RootAccount {
         let account = Account::new(conn, username, email, &did).await?;
 
         // let capability = Capability::new(fission_core::capabilities::delegation::Resource::AllProofs, fission_core::capabilities::delegation::Ability::AllCapabilities);
-        let capability = fission_core::capabilities::delegation::SEMANTICS.parse("ucan:*", "ucan/*").unwrap();
+        let capability = fission_core::capabilities::delegation::SEMANTICS
+            .parse("ucan:*", "ucan/*")
+            .unwrap();
         tracing::info!("Capability: {:?}", capability);
 
         let ucan = UcanBuilder::default()

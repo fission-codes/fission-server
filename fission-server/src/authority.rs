@@ -38,11 +38,16 @@ impl Authority {
             .await
             .map_err(|err| err.to_string())
     }
-    
+
     /// Validates whether or not the UCAN and proofs have the capability to
     /// perform the given action, with the given issuer as the root of that
     /// authority.
-    pub async fn has_capability(&self, with: &str, can: &str, issuer_did: &str) -> Result<bool, String> {
+    pub async fn has_capability(
+        &self,
+        with: &str,
+        can: &str,
+        issuer_did: &str,
+    ) -> Result<bool, String> {
         let mut did_parser = DidParser::new(SUPPORTED_KEYS);
         let mut store = MemoryStore::default();
         let current_time = SystemTime::now()
@@ -53,18 +58,25 @@ impl Authority {
         for proof in &self.proofs {
             if let Ok(ucan_str) = proof.encode() {
                 tracing::debug!("Adding proof: {}", ucan_str);
-                store.write_token(&ucan_str).await.map_err(|err| err.to_string())?;
+                store
+                    .write_token(&ucan_str)
+                    .await
+                    .map_err(|err| err.to_string())?;
             }
         }
 
         let my_ucan = self.ucan.clone();
-        let chain = ucan::chain::ProofChain::from_ucan(my_ucan, current_time, &mut did_parser, &store)
-            .await
-            .map_err(|err| err.to_string())?;
+        let chain =
+            ucan::chain::ProofChain::from_ucan(my_ucan, current_time, &mut did_parser, &store)
+                .await
+                .map_err(|err| err.to_string())?;
 
-        let capability_infos = chain.reduce_capabilities(&fission_core::capabilities::delegation::SEMANTICS);
+        let capability_infos =
+            chain.reduce_capabilities(&fission_core::capabilities::delegation::SEMANTICS);
 
-        let expected_capability = fission_core::capabilities::delegation::SEMANTICS.parse(with, can).unwrap();
+        let expected_capability = fission_core::capabilities::delegation::SEMANTICS
+            .parse(with, can)
+            .unwrap();
 
         for info in capability_infos {
             tracing::debug!("Checking capabilities: {:?} {}", info, issuer_did);
@@ -75,7 +87,7 @@ impl Authority {
             }
         }
 
-        return Ok(false);
+        Ok(false)
     }
 }
 
@@ -102,7 +114,10 @@ mod tests {
             .await
             .unwrap();
 
-        let authority = Authority { ucan, proofs: vec![] };
+        let authority = Authority {
+            ucan,
+            proofs: vec![],
+        };
 
         assert!(authority.validate().await.is_ok());
     }

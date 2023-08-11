@@ -1,11 +1,11 @@
 //! Authority extractor
-//! 
+//!
 //! Todo: this should be extracted to a separate crate and made available as a generic Axum UCAN extractor.
 
 use axum::{
     async_trait,
-    extract::{FromRequestParts, TypedHeader, self},
-    headers::{authorization::Bearer, Authorization, HeaderName, Header},
+    extract::{FromRequestParts, TypedHeader},
+    headers::{authorization::Bearer, Authorization, Header, HeaderName},
     http::request::Parts,
     RequestPartsExt,
 };
@@ -40,17 +40,15 @@ impl Header for UcanHeader {
     where
         I: Iterator<Item = &'i http::HeaderValue>,
     {
-        let mut ucans = Vec::<Ucan>::new();
-
         let mut c = 0;
 
         let ucans = values.map(|val| {
             c += 1;
 
             if let Ok(header_str) = val.to_str() {
-                if let Some((_, token_str)) = header_str.split_once(" ") {
+                if let Some((_, token_str)) = header_str.split_once(' ') {
                     if let Ok(ucan) = Ucan::try_from(token_str) {
-                        return Some(ucan)
+                        return Some(ucan);
                     }
                 }
             }
@@ -58,25 +56,23 @@ impl Header for UcanHeader {
             None
         });
 
-        let valid_headers: Vec<Ucan> = ucans.filter_map(|u| u).collect();
+        let valid_headers: Vec<Ucan> = ucans.flatten().collect();
 
         if valid_headers.len() != c {
             Err(axum::headers::Error::invalid())
         } else {
             Ok(Self(valid_headers))
         }
-
     }
 
     // Unimplemented!
     // FIXME
-    fn encode<E>(&self, values: &mut E)
+    fn encode<E>(&self, _values: &mut E)
     where
         E: Extend<http::HeaderValue>,
     {
         // for ucan in &self.0 {
         // }
-        ()
     }
 }
 
@@ -238,13 +234,11 @@ mod tests {
 
     #[tokio::test]
     async fn extract_authority_no_auth_header() {
-
         // Test if request requires a valid UCAN
         let app: Router<(), axum::body::Body> = Router::new().route(
             "/",
             get(|_authority: Authority| async { axum::body::Empty::new() }),
         );
-
 
         // If no authorization header is provided
         let not_authed = app
@@ -253,5 +247,25 @@ mod tests {
             .unwrap();
 
         assert_eq!(not_authed.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn extract_authority_ucan_header() {
+        // let app: Router<(), axum::body::Body> = Router::new().route(
+        //     "/",
+        //     get(|_authority: Authority| async { axum::body::Empty::new() }),
+        // );
+
+        // let ucan_header_check = app
+        //     .clone()
+        //     .oneshot(
+        //         Request::builder()
+        //             .uri("/")
+        //             .header("Authorization", format!("Bearer {}", faulty_ucan_string))
+        //             .body("".into())
+        //             .unwrap(),
+        //     )
+        //     .await
+        //     .unwrap();
     }
 }

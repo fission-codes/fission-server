@@ -78,7 +78,10 @@ impl Volume {
     ) -> Result<Self, diesel::result::Error> {
         let ipfs = ipfs_api::IpfsClient::default();
 
-        if ipfs.pin_add(cid, true).await.is_err() {
+        let result = ipfs.pin_add(cid, true).await;
+
+        if result.is_err() {
+            println!("oh right {:?}", result);
             return Err(diesel::result::Error::NotFound);
         }
 
