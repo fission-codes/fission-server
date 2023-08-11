@@ -33,7 +33,7 @@ pub struct AppState {
 /// Builder for [`AppState`]
 pub struct AppStateBuilder {
     db_pool: Option<Pool>,
-    ipfs_peers: Option<Vec<String>>,
+    ipfs_peers: Vec<String>,
     verification_code_sender: Option<Box<dyn VerificationCodeSender>>,
 }
 
@@ -44,9 +44,7 @@ impl AppStateBuilder {
             .db_pool
             .ok_or_else(|| anyhow::anyhow!("db_pool is required"))?;
 
-        let ipfs_peers = self
-            .ipfs_peers
-            .ok_or_else(|| anyhow::anyhow!("ipfs_peers is required"))?;
+        let ipfs_peers = self.ipfs_peers;
 
         let verification_code_sender = self
             .verification_code_sender
@@ -68,7 +66,7 @@ impl AppStateBuilder {
 
     /// Set the ipfs peers
     pub fn with_ipfs_peers(mut self, ipfs_peers: Vec<String>) -> Self {
-        self.ipfs_peers = Some(ipfs_peers);
+        self.ipfs_peers.extend(ipfs_peers);
         self
     }
 
