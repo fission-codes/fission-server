@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use did_key::{generate, Ed25519KeyPair, Fingerprint};
+use did_key::{generate, Ed25519KeyPair};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -71,7 +71,7 @@ impl Account {
         conn: &mut Conn<'_>,
         username: String,
         email: String,
-        did: &String,
+        did: &str,
     ) -> Result<Self, diesel::result::Error> {
         let new_account = NewAccountRecord {
             did: did.to_string(),
@@ -96,15 +96,6 @@ impl Account {
             .filter(accounts::username.eq(username))
             .first::<Account>(conn)
             .await
-
-        // FIXME this should actually validate that the UCAN has access, not just that the DID matches
-        // if let Ok(account) = account {
-        //     if *ucan.issuer().to_string() == account.did {
-        //         return Ok(account);
-        //     }
-        // }
-
-        // Err(diesel::result::Error::NotFound)
     }
 
     /// Update the controlling DID of a Fission Account
@@ -117,7 +108,7 @@ impl Account {
     pub async fn update_did(
         &self,
         conn: &mut Conn<'_>,
-        new_did: String,
+        new_did: &str,
     ) -> Result<Self, diesel::result::Error> {
         // FIXME this needs to account for delegation and check that the correct
         // capabilities have been delegated. Currently we only support using the root did.
@@ -135,10 +126,6 @@ impl Account {
     pub async fn get_volume(
         &self,
         conn: &mut Conn<'_>,
-        // ucan: ucan::Ucan,
-        // nb not including the ucan here, because in order to get the account,
-        // we've already validated the UCAN. HOWEVER, we should probably validate
-        // that the UCAN has access to the volume here.
     ) -> Result<Option<NewVolumeRecord>, diesel::result::Error> {
         if let Some(volume_id) = self.volume_id {
             let volume = Volume::find_by_id(conn, volume_id).await?;
@@ -155,16 +142,10 @@ impl Account {
         cid: String,
     ) -> Result<NewVolumeRecord, diesel::result::Error> {
         let volume = Volume::new(conn, cid).await?;
-        let volume_id = volume.id;
-
-        println!(
-            "created volume, id: {:?} self id is {:?}",
-            volume_id, self.id
-        );
 
         diesel::update(accounts::dsl::accounts)
             .filter(accounts::id.eq(self.id))
-            .set(accounts::volume_id.eq(volume_id))
+            .set(accounts::volume_id.eq(volume.id))
             .execute(conn)
             .await?;
 
@@ -255,60 +236,66 @@ where
     }
 }
 
-/// Account with Root Authority (UCAN)
+/// Account with Root Authority
 impl RootAccount {
-    /// Create a new Account with a Root Authority (UCAN)
+    /// Create a new Account with a Root Authority
+    ///
+    /// This creates an account and generates a keypair that has top-level
+    /// authority over the account. The private key is immediately discarded,
+    /// and authority is delegated via a UCAN to the DID provided in
+    /// `audience_did`
     pub async fn new(
         conn: &mut Conn<'_>,
         username: String,
         email: String,
         audience_did: &str,
     ) -> Result<Self, anyhow::Error> {
-        // FIXME did-key library should zeroize memory https://github.com/decentralized-identity/did-key.rs/issues/40
-        // Alt: we should switch to a different crate that does this.
-        let ephemeral_key = generate::<Ed25519KeyPair>(None);
-        let ephemeral_key = PatchedKeyPair(ephemeral_key);
-        let did = format!("did:key:{}", ephemeral_key.0.fingerprint());
-
-        let account = Account::new(conn, username, email, &did).await?;
-
-        // let capability = Capability::new(fission_core::capabilities::delegation::Resource::AllProofs, fission_core::capabilities::delegation::Ability::AllCapabilities);
-        let capability = fission_core::capabilities::delegation::SEMANTICS
-            .parse("ucan:*", "ucan/*")
-            .unwrap();
-        tracing::info!("Capability: {:?}", capability);
-
-        let ucan = UcanBuilder::default()
-            .issued_by(&ephemeral_key)
-            .for_audience(audience_did)
-            // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
-            .with_lifetime(60 * 60 * 24 * 365)
-            .claiming_capability(&capability)
-            .with_fact(json!({"username": account.username}))
-            .build()?
-            .sign()
-            .await?;
+        let ucan = Self::issue_root_ucan(audience_did, &username).await?;
+        let account = Account::new(conn, username, email, ucan.issuer()).await?;
 
         Ok(Self { ucan, account })
     }
 
     /// Update the DID associated with the account
+    ///
+    /// As with `new()` this generates an ephemeral key and delegates access to
+    /// the DID specified in `audience_did`.
     pub async fn update(
         conn: &mut Conn<'_>,
         account: &Account,
         audience_did: &str,
     ) -> Result<Self, anyhow::Error> {
-        let ephemeral_key = PatchedKeyPair(generate::<Ed25519KeyPair>(None));
-        let did = format!("did:key:{}", ephemeral_key.0.fingerprint());
-        let ucan = UcanBuilder::default()
-            .issued_by(&ephemeral_key)
-            .for_audience(audience_did)
-            .with_lifetime(60 * 60 * 24 * 365)
-            .build()?
-            .sign()
-            .await?;
-        let account = account.update_did(conn, did).await?;
+        let ucan = Self::issue_root_ucan(audience_did, &account.username).await?;
+        let account = account.update_did(conn, ucan.issuer()).await?;
 
         Ok(Self { ucan, account })
+    }
+
+    fn generate_ephemeral_keypair() -> PatchedKeyPair {
+        // FIXME did-key library should zeroize memory https://github.com/decentralized-identity/did-key.rs/issues/40
+        // Alt: we should switch to a different crate that does this.
+        PatchedKeyPair(generate::<Ed25519KeyPair>(None))
+    }
+
+    async fn issue_root_ucan(
+        audience_did: &str,
+        username: &str,
+    ) -> Result<ucan::Ucan, anyhow::Error> {
+        let ephemeral_key = Self::generate_ephemeral_keypair();
+
+        let capability = fission_core::capabilities::delegation::SEMANTICS
+            .parse("ucan:*", "ucan/*")
+            .unwrap();
+
+        UcanBuilder::default()
+            .issued_by(&ephemeral_key)
+            .for_audience(audience_did)
+            // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
+            .with_lifetime(60 * 60 * 24 * 365)
+            .claiming_capability(&capability)
+            .with_fact(json!({"username": username}))
+            .build()?
+            .sign()
+            .await
     }
 }
