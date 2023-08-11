@@ -12,6 +12,7 @@ use ucan::builder::UcanBuilder;
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
+use ipfs_api::IpfsApi;
 
 use crate::{
     crypto::patchedkey::PatchedKeyPair,
@@ -154,6 +155,13 @@ impl Account {
         conn: &mut Conn<'_>,
         cid: String,
     ) -> Result<NewVolumeRecord, diesel::result::Error> {
+        let ipfs = ipfs_api::IpfsClient::default();
+
+        if ipfs.pin_add(&cid, true).await.is_err() {
+            // FIXME: Use better error
+            return Err(diesel::result::Error::NotFound);
+        }
+
         let volume = Volume::new(conn, cid).await?;
         let volume_id = volume.id;
 

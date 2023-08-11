@@ -79,6 +79,7 @@ impl Volume {
         let ipfs = ipfs_api::IpfsClient::default();
 
         if ipfs.pin_add(cid, true).await.is_err() {
+            // FIXME: Use better error
             return Err(diesel::result::Error::NotFound);
         }
 

@@ -3,7 +3,7 @@
 use crate::{
     app_state::AppState,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, doh, fallback::notfound_404, health, ping, volume, ws},
+    routes::{account, auth, doh, fallback::notfound_404, health, ipfs, ping, volume, ws},
 };
 
 use axum::{
@@ -14,13 +14,6 @@ use tower_http::cors::{Any, CorsLayer};
 
 /// Setup main router for application.
 pub fn setup_app_router(app_state: AppState) -> Router {
-    let mut router = Router::new()
-        .route("/dns-query", get(doh::get).post(doh::post))
-        .route("/ping", get(ping::get))
-        .fallback(notfound_404)
-        .with_state(app_state.clone());
-
-    // I fucking hate CORS.
     let cors = CorsLayer::new()
         // allow `GET`, `POST`, and `PUT` when accessing the resource
         .allow_methods([http::Method::GET, http::Method::POST, http::Method::PUT])
@@ -32,6 +25,13 @@ pub fn setup_app_router(app_state: AppState) -> Router {
         // allow requests from any origin
         .allow_origin(Any);
 
+    let mut router = Router::new()
+        .route("/dns-query", get(doh::get).post(doh::post))
+        .route("/ipfs/peers", get(ipfs::peers))
+        .route("/ping", get(ping::get))
+        .fallback(notfound_404)
+        .with_state(app_state.clone());
+
     let api_router = Router::new()
         .route("/relay/:did", get(ws::handler))
         .route("/auth/email/verify", post(auth::request_token))
@@ -40,13 +40,13 @@ pub fn setup_app_router(app_state: AppState) -> Router {
         .route("/account/:name/did", put(account::update_did))
         .route("/account/:name/volume/cid", get(volume::get_cid))
         .route("/account/:name/volume/cid", put(volume::update_cid))
-        .layer(cors)
         .with_state(app_state.clone())
         .fallback(notfound_404);
 
     router = router.nest("/api", api_router);
 
-    // Logging layer
+    // Additional layers
+    router = router.layer(cors);
     router = router.layer(axum::middleware::from_fn(log_request_response::<Logger>));
 
     // Healthcheck layer

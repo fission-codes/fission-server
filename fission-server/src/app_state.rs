@@ -21,6 +21,8 @@ pub type WsPeerMap = Arc<DashMap<String, DashMap<SocketAddr, WsPeer>>>;
 pub struct AppState {
     /// The database pool
     pub db_pool: Pool,
+    /// The ipfs peers to be rendered in the ipfs/peers endpoint
+    pub ipfs_peers: Vec<String>,
     /// The service that sends account verification codes
     pub verification_code_sender: Box<dyn VerificationCodeSender>,
     /// The currently connected websocket peers
@@ -31,6 +33,7 @@ pub struct AppState {
 /// Builder for [`AppState`]
 pub struct AppStateBuilder {
     db_pool: Option<Pool>,
+    ipfs_peers: Vec<String>,
     verification_code_sender: Option<Box<dyn VerificationCodeSender>>,
 }
 
@@ -41,12 +44,15 @@ impl AppStateBuilder {
             .db_pool
             .ok_or_else(|| anyhow::anyhow!("db_pool is required"))?;
 
+        let ipfs_peers = self.ipfs_peers;
+
         let verification_code_sender = self
             .verification_code_sender
             .ok_or_else(|| anyhow::anyhow!("verification_code_sender is required"))?;
 
         Ok(AppState {
             db_pool,
+            ipfs_peers,
             verification_code_sender,
             ws_peer_map: Default::default(),
         })
@@ -55,6 +61,12 @@ impl AppStateBuilder {
     /// Set the database pool
     pub fn with_db_pool(mut self, db_pool: Pool) -> Self {
         self.db_pool = Some(db_pool);
+        self
+    }
+
+    /// Set the ipfs peers
+    pub fn with_ipfs_peers(mut self, ipfs_peers: Vec<String>) -> Self {
+        self.ipfs_peers.extend(ipfs_peers);
         self
     }
 
