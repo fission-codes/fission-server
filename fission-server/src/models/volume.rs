@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use tracing::log;
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
@@ -81,7 +82,8 @@ impl Volume {
         let result = ipfs.pin_add(cid, true).await;
 
         if result.is_err() {
-            println!("oh right {:?}", result);
+            log::debug!("Error communicating with IPFS: {:?}", result);
+            // FIXME: Use better error
             return Err(diesel::result::Error::NotFound);
         }
 

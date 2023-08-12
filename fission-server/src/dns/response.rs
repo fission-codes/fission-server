@@ -29,7 +29,7 @@ pub struct Response {
     #[serde(rename = "Question")]
     question: Vec<DohQuestionJson>,
     #[serde(rename = "Answer")]
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     answer: Vec<DohRecordJson>,
     #[serde(rename = "Comment")]
     comment: Option<String>,

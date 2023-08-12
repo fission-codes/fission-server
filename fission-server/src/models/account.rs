@@ -12,6 +12,7 @@ use ucan::{builder::UcanBuilder, capability::CapabilitySemantics};
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
+use ipfs_api::IpfsApi;
 
 use crate::{
     crypto::patchedkey::PatchedKeyPair,
@@ -140,7 +141,14 @@ impl Account {
         &self,
         conn: &mut Conn<'_>,
         cid: String,
-    ) -> Result<NewVolumeRecord, diesel::result::Error> {
+    ) -> Result<NewVolumeRecord, anyhow::Error> {
+        let ipfs = ipfs_api::IpfsClient::default();
+
+        if let Err(e) = ipfs.pin_add(&cid, true).await {
+            // FIXME: Use better error
+            return Err(anyhow::anyhow!("Failed to pin CID: {}", e));
+        }
+
         let volume = Volume::new(conn, cid).await?;
 
         diesel::update(accounts::dsl::accounts)

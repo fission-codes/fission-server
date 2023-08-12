@@ -89,7 +89,12 @@ pub async fn update_cid(
     println!("update_cid");
     let mut conn = db::connect(&state.db_pool).await?;
     let account = Account::find_by_username(&mut conn, username).await?;
-    let volume = account.update_volume_cid(&mut conn, &payload.cid).await?;
+
+    let volume: NewVolumeRecord = if account.volume_id.is_some() {
+        account.update_volume_cid(&mut conn, &payload.cid).await?
+    } else {
+        account.set_volume_cid(&mut conn, payload.cid).await?
+    };
 
     Ok((StatusCode::OK, Json(volume)))
 }
@@ -138,12 +143,17 @@ mod tests {
             .finalize()
             .await?;
 
+        let hw_string = StringReader::new("Hello World!");
+        let ipfs_result = ipfs_api::IpfsClient::default().add(hw_string).await;
+
+        if ipfs_result.is_err() {
+            return Err(anyhow::anyhow!("Error communicating with IPFS node"));
+        }
+
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account/tuttle/volume")
             .with_ucan(ucan)
             .with_ucan_proof(root_account.ucan)
-            .with_json_body(
-                json!({ "cid": "bafybeicn7i3soqdgr7dwnrwytgq4zxy7a5jpkizrvhm5mv6bgjd32wm3q4" }),
-            )?
+            .with_json_body(json!({ "cid": ipfs_result.unwrap().name }))?
             .into_raw_response()
             .await?;
 
@@ -213,16 +223,15 @@ mod tests {
         .await?;
 
         let hw_string = StringReader::new("Hello World!");
-        let hello_world = ipfs_api::IpfsClient::default().add(hw_string).await?;
-        println!("hello world {:?}", hello_world);
+        let ipfs_result = ipfs_api::IpfsClient::default().add(hw_string).await;
 
-        println!("el volume {:?}", root_account.account);
+        if ipfs_result.is_err() {
+            return Err(anyhow::anyhow!("Error communicating with IPFS node"));
+        }
+
         root_account
             .account
-            .set_volume_cid(
-                &mut conn,
-                "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy".to_string(),
-            )
+            .set_volume_cid(&mut conn, ipfs_result.unwrap().name)
             .await?;
 
         let (ucan, _) = UcanBuilder::default()
