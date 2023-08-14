@@ -140,12 +140,11 @@ impl Account {
     pub async fn set_volume_cid(
         &self,
         conn: &mut Conn<'_>,
-        cid: String,
+        cid: &str,
     ) -> Result<NewVolumeRecord, anyhow::Error> {
         let ipfs = ipfs_api::IpfsClient::default();
 
         if let Err(e) = ipfs.pin_add(&cid, true).await {
-            // FIXME: Use better error
             return Err(anyhow::anyhow!("Failed to pin CID: {}", e));
         }
 

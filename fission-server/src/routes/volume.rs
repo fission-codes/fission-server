@@ -56,7 +56,7 @@ pub async fn create_volume(
         .has_capability("ucan:*", "ucan/*", &account.did)
         .await?;
     if allowed {
-        let volume = account.set_volume_cid(&mut conn, payload.cid).await?;
+        let volume = account.set_volume_cid(&mut conn, &payload.cid).await?;
         Ok((StatusCode::CREATED, Json(volume)))
     } else {
         Err(AppError::new(
@@ -82,7 +82,7 @@ pub async fn create_volume(
 /// Handler to update the CID associated with an account's volume
 pub async fn update_cid(
     State(state): State<AppState>,
-    _authority: Authority,
+    authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
@@ -90,13 +90,42 @@ pub async fn update_cid(
     let mut conn = db::connect(&state.db_pool).await?;
     let account = Account::find_by_username(&mut conn, username).await?;
 
-    let volume: NewVolumeRecord = if account.volume_id.is_some() {
-        account.update_volume_cid(&mut conn, &payload.cid).await?
-    } else {
-        account.set_volume_cid(&mut conn, payload.cid).await?
-    };
+    let allowed = authority
+        .has_capability("ucan:*", "ucan/*", &account.did)
+        .await;
 
-    Ok((StatusCode::OK, Json(volume)))
+    // FIXME: this is a hack to get around the fact that rs-ucan
+    // doesn't produce very helpful errors
+    if allowed.is_err() {
+        println!("error resolving ucan");
+        return Err(AppError::new(
+            StatusCode::UNAUTHORIZED,
+            Some("No valid UCAN found"),
+        ));
+    }
+
+    if let Ok(allowed) = allowed {
+        if allowed {
+            println!("allowed");
+            let volume: NewVolumeRecord = if account.volume_id.is_some() {
+                account.update_volume_cid(&mut conn, &payload.cid).await?
+            } else {
+                account.set_volume_cid(&mut conn, &payload.cid).await?
+            };
+
+            Ok((StatusCode::OK, Json(volume)))
+        } else {
+            Err(AppError::new(
+                StatusCode::UNAUTHORIZED,
+                Some("No valid UCAN found"),
+            ))
+        }
+    } else {
+        Err(AppError::new(
+            StatusCode::UNAUTHORIZED,
+            Some("Error interpreting UCAN. Unable to proceed. Maybe supply some proofs?"),
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -231,17 +260,20 @@ mod tests {
 
         root_account
             .account
-            .set_volume_cid(&mut conn, ipfs_result.unwrap().name)
+            .set_volume_cid(&mut conn, &ipfs_result.unwrap().name)
             .await?;
 
         let (ucan, _) = UcanBuilder::default()
             .with_issuer(issuer)
+            .with_proof(root_account.ucan.clone())
+            .with_capability("ucan:*", "ucan/*")
             .finalize()
             .await?;
 
         let (status, _) =
             RouteBuilder::new(ctx.app(), Method::PUT, "/api/account/tuttle/volume/cid")
                 .with_ucan(ucan)
+                .with_ucan_proof(root_account.ucan)
                 .with_json_body(json!({ "cid": "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy" }))?
                 .into_raw_response()
                 .await?;
@@ -253,24 +285,130 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_volume_pin_failure() -> Result<()> {
-        // this should test that the update fails if the CID is not pinned
-        // the response code should be a 500 error that indicates that the
-        // cid could not be pinned
-        Err(anyhow::anyhow!("Not implemented"))
+        let ctx = TestContext::new().await;
+
+        let mut conn = ctx.get_db_conn().await;
+
+        let (_, issuer) = UcanBuilder::default().finalize().await?;
+
+        let username = "tuttle";
+        let email = "tuttle@heating.engineer";
+        let agent_did = issuer.get_did().await?;
+
+        let root_account = RootAccount::new(
+            &mut conn,
+            username.to_string(),
+            email.to_string(),
+            &agent_did,
+        )
+        .await?;
+
+        let (ucan, _) = UcanBuilder::default()
+            .with_issuer(issuer)
+            .with_proof(root_account.ucan)
+            .finalize()
+            .await?;
+
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account/tuttle/volume")
+            .with_ucan(ucan)
+            .with_json_body(
+                json!({ "cid": "bafybeicn7i3soqdgr7dwnrwytgq4zxy7a5jpkizrvhm5mv6bgjd32wm3q4" }),
+            )?
+            .into_raw_response()
+            .await?;
+
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+
+        Ok(())
     }
 
     #[tokio::test]
     async fn test_update_volume_not_found() -> Result<()> {
-        Err(anyhow::anyhow!("Not implemented"))
+        let ctx = TestContext::new().await;
+
+        let (_, issuer) = UcanBuilder::default().finalize().await?;
+
+        let (ucan, _) = UcanBuilder::default()
+            .with_issuer(issuer)
+            .finalize()
+            .await?;
+
+        let (status, _) =
+            RouteBuilder::new(ctx.app(), Method::PUT, "/api/account/buttle/volume/cid")
+                .with_ucan(ucan)
+                .with_json_body(json!({ "cid": "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy" }))?
+                .into_raw_response()
+                .await?;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        Ok(())
     }
 
     #[tokio::test]
     async fn test_get_volume_ok() -> Result<()> {
-        Err(anyhow::anyhow!("Not implemented"))
+        // this method might be deprecated in favour of the DoH method?
+
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
+        let (_, issuer) = UcanBuilder::default().finalize().await?;
+
+        let username = "tuttle";
+        let email = "tuttle@heating.engineer";
+        let agent_did = issuer.get_did().await?;
+
+        let root_account = RootAccount::new(
+            &mut conn,
+            username.to_string(),
+            email.to_string(),
+            &agent_did,
+        )
+        .await?;
+
+        root_account
+            .account
+            .set_volume_cid(&mut conn, "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy")
+            .await?;
+
+        let (status, _) =
+            RouteBuilder::new(ctx.app(), Method::GET, "/api/account/tuttle/volume/cid")
+                .into_raw_response()
+                .await?;
+
+        assert_eq!(status, StatusCode::OK);
+
+        Ok(())
     }
 
     #[tokio::test]
     async fn test_get_volume_not_found() -> Result<()> {
-        Err(anyhow::anyhow!("Not implemented"))
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
+        let (_, issuer) = UcanBuilder::default().finalize().await?;
+
+        let username = "tuttle";
+        let email = "tuttle@heating.engineer";
+        let agent_did = issuer.get_did().await?;
+
+        RootAccount::new(
+            &mut conn,
+            username.to_string(),
+            email.to_string(),
+            &agent_did,
+        )
+        .await?;
+
+        let ctx = TestContext::new().await;
+
+        let (status, _) =
+            RouteBuilder::new(ctx.app(), Method::GET, "/api/account/buttle/volume/cid")
+                .into_raw_response()
+                .await?;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        Ok(())
     }
 }

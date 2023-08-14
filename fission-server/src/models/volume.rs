@@ -54,8 +54,10 @@ impl From<Volume> for NewVolumeRecord {
 
 impl Volume {
     /// Create a new Volume. Inserts the volume into the database.
-    pub async fn new(conn: &mut Conn<'_>, cid: String) -> Result<Self, diesel::result::Error> {
-        let new_volume = NewVolumeRecord { cid };
+    pub async fn new(conn: &mut Conn<'_>, cid: &str) -> Result<Self, diesel::result::Error> {
+        let new_volume = NewVolumeRecord {
+            cid: cid.to_string(),
+        };
 
         diesel::insert_into(volumes::table)
             .values(new_volume)
