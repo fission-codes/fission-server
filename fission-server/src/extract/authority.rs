@@ -119,9 +119,6 @@ async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority:
         .await
         .map_err(|_| MissingCredentials)?;
 
-    println!("parts: {:?}", parts);
-    println!("proofs: {:?}", proofs);
-
     // Decode the UCAN
     let token = bearer.token();
     let ucan = Ucan::try_from(token).map_err(|err| {

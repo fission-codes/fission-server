@@ -86,7 +86,6 @@ pub async fn update_cid(
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
-    println!("update_cid");
     let mut conn = db::connect(&state.db_pool).await?;
     let account = Account::find_by_username(&mut conn, username).await?;
 
@@ -97,7 +96,6 @@ pub async fn update_cid(
     // FIXME: this is a hack to get around the fact that rs-ucan
     // doesn't produce very helpful errors
     if allowed.is_err() {
-        println!("error resolving ucan");
         return Err(AppError::new(
             StatusCode::UNAUTHORIZED,
             Some("No valid UCAN found"),
@@ -106,7 +104,6 @@ pub async fn update_cid(
 
     if let Ok(allowed) = allowed {
         if allowed {
-            println!("allowed");
             let volume: NewVolumeRecord = if account.volume_id.is_some() {
                 account.update_volume_cid(&mut conn, &payload.cid).await?
             } else {

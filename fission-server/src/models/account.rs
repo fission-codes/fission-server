@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use anyhow::bail;
 use did_key::{generate, Ed25519KeyPair};
 
 use chrono::NaiveDateTime;
@@ -144,7 +145,7 @@ impl Account {
     ) -> Result<NewVolumeRecord, anyhow::Error> {
         let ipfs = ipfs_api::IpfsClient::default();
 
-        if let Err(e) = ipfs.pin_add(&cid, true).await {
+        if let Err(e) = ipfs.pin_add(cid, true).await {
             return Err(anyhow::anyhow!("Failed to pin CID: {}", e));
         }
 
@@ -171,19 +172,16 @@ impl Account {
         &self,
         conn: &mut Conn<'_>,
         cid: &str,
-    ) -> Result<NewVolumeRecord, diesel::result::Error> {
+    ) -> Result<NewVolumeRecord, anyhow::Error> {
         if let Some(volume_id) = self.volume_id {
-            println!("ahem? {:?}", volume_id);
             let volume = Volume::find_by_id(conn, volume_id)
                 .await?
                 .update_cid(conn, cid)
                 .await?;
-            println!("volume: {:?}", volume);
             Ok(volume.into())
         } else {
-            println!("what the heck {:?}", self.volume_id);
             // FIXME wrong error type
-            Err(diesel::result::Error::NotFound)
+            bail!("No volume associated with account")
         }
     }
 }

@@ -55,8 +55,6 @@ impl Authority {
             .ok()
             .map(|t| t.as_secs());
 
-        println!("over here");
-
         for proof in &self.proofs {
             if let Ok(ucan_str) = proof.encode() {
                 tracing::debug!("Adding proof: {}", ucan_str);
@@ -67,29 +65,20 @@ impl Authority {
             }
         }
 
-        println!("whee");
-
         let my_ucan = self.ucan.clone();
         let chain =
             ucan::chain::ProofChain::from_ucan(my_ucan, current_time, &mut did_parser, &store)
                 .await
                 .map_err(|err| err.to_string())?;
 
-        println!("nope");
-
         let capability_infos =
             chain.reduce_capabilities(&fission_core::capabilities::delegation::SEMANTICS);
-
-        println!("here?");
 
         let expected_capability = fission_core::capabilities::delegation::SEMANTICS
             .parse(with, can)
             .unwrap();
 
-        println!("the unwrap screwed us");
-
         for info in capability_infos {
-            println!("in this thing");
             tracing::debug!("Checking capabilities: {:?} {}", info, issuer_did);
             if info.originators.contains(issuer_did)
                 && info.capability.enables(&expected_capability)
@@ -98,7 +87,6 @@ impl Authority {
             }
         }
 
-        println!("returning normally no access");
         Ok(false)
     }
 }
