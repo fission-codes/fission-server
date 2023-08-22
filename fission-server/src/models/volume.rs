@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use tracing::log;
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
@@ -53,8 +54,10 @@ impl From<Volume> for NewVolumeRecord {
 
 impl Volume {
     /// Create a new Volume. Inserts the volume into the database.
-    pub async fn new(conn: &mut Conn<'_>, cid: String) -> Result<Self, diesel::result::Error> {
-        let new_volume = NewVolumeRecord { cid };
+    pub async fn new(conn: &mut Conn<'_>, cid: &str) -> Result<Self, diesel::result::Error> {
+        let new_volume = NewVolumeRecord {
+            cid: cid.to_string(),
+        };
 
         diesel::insert_into(volumes::table)
             .values(new_volume)
@@ -78,7 +81,10 @@ impl Volume {
     ) -> Result<Self, diesel::result::Error> {
         let ipfs = ipfs_api::IpfsClient::default();
 
-        if ipfs.pin_add(cid, true).await.is_err() {
+        let result = ipfs.pin_add(cid, true).await;
+
+        if result.is_err() {
+            log::debug!("Error communicating with IPFS: {:?}", result);
             // FIXME: Use better error
             return Err(diesel::result::Error::NotFound);
         }

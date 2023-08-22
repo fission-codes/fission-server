@@ -39,6 +39,7 @@ pub fn setup_app_router(app_state: AppState) -> Router {
         .route("/account/:name", get(account::get_account))
         .route("/account/:name/did", put(account::update_did))
         .route("/account/:name/volume/cid", get(volume::get_cid))
+        .route("/account/:name/volume", post(volume::create_volume))
         .route("/account/:name/volume/cid", put(volume::update_cid))
         .with_state(app_state.clone())
         .fallback(notfound_404);

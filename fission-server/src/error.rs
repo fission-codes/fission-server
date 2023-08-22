@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 
+use http::header::ToStrError;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use ulid::Ulid;
@@ -129,6 +130,30 @@ impl From<diesel::result::Error> for AppError {
                     detail: Some(err.to_string()),
                 }
             }
+        }
+    }
+}
+
+impl From<ToStrError> for AppError {
+    fn from(_err: ToStrError) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            title: StatusCode::BAD_REQUEST
+                .canonical_reason()
+                .map(|r| r.to_string()),
+            detail: None,
+        }
+    }
+}
+
+impl From<String> for AppError {
+    fn from(_err: String) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            title: StatusCode::INTERNAL_SERVER_ERROR
+                .canonical_reason()
+                .map(|r| r.to_string()),
+            detail: None, //Some(err),
         }
     }
 }
