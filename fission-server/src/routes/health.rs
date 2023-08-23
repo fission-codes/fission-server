@@ -106,7 +106,7 @@ mod tests {
             .await?;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.database_connected, true);
+        assert!(body.database_connected);
         assert_eq!(body.database_up_to_date, Some(true));
 
         Ok(())
@@ -125,7 +125,7 @@ mod tests {
             .await?;
 
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body.database_connected, false);
+        assert!(!body.database_connected);
         assert_eq!(body.database_up_to_date, None);
 
         Ok(())
@@ -147,7 +147,7 @@ mod tests {
             .await?;
 
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body.database_connected, true);
+        assert!(body.database_connected);
         assert_eq!(body.database_up_to_date, Some(false));
 
         Ok(())

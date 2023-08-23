@@ -198,7 +198,7 @@ mod tests {
             Method::GET,
             format!(
                 "/dns-query?name={}&type={}",
-                format!("_did.{}.fission.app", username),
+                format_args!("_did.{}.fission.app", username),
                 "txt"
             ),
         )
@@ -250,7 +250,7 @@ mod tests {
             Method::GET,
             format!(
                 "/dns-query?name={}&type={}",
-                format!("_dnslink.{}.fission.app", username),
+                format_args!("_dnslink.{}.fission.app", username),
                 "txt"
             ),
         )
@@ -315,7 +315,7 @@ mod tests {
             Method::GET,
             format!(
                 "/dns-query?name={}&type={}",
-                format!("_dnslink.{}.fission.app", username),
+                format_args!("_dnslink.{}.fission.app", username),
                 "txt"
             ),
         )
@@ -380,7 +380,7 @@ mod tests {
             Method::GET,
             format!(
                 "/dns-query?name={}&type={}",
-                format!("_dnslink.{}.fission.app", username),
+                format_args!("_dnslink.{}.fission.app", username),
                 "txt"
             ),
         )
