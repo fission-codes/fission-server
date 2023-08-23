@@ -42,6 +42,19 @@ pub async fn get_cid(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/account/{username}/volume",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Successfully created Volume", body=NewVolume),
+        (status = 400, description = "Invalid request", body=AppError),
+        (status = 401, description = "Unauthorized"),
+    )
+)]
+
 /// Handler to create a new volume for an account
 pub async fn create_volume(
     State(state): State<AppState>,

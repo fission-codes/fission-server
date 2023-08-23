@@ -18,117 +18,114 @@
     flake-utils,
     rust-overlay,
   } @ inputs:
-    flake-utils.lib.eachDefaultSystem (
-      system: let
-        overlays = [(import rust-overlay)];
-        pkgs = import nixpkgs {inherit system overlays;};
+    flake-utils.lib.eachDefaultSystem (system: let
+      overlays = [(import rust-overlay)];
+      pkgs = import nixpkgs {inherit system overlays;};
 
-        rust-toolchain = (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml).override {
+      rust-toolchain =
+        (pkgs.rust-bin.fromRustupToolchainFile
+          ./rust-toolchain.toml)
+        .override {
           extensions = ["cargo" "clippy" "rustfmt" "rust-src" "rust-std"];
         };
 
-        nightly-rustfmt = pkgs.rust-bin.nightly.latest.rustfmt;
+      nightly-rustfmt = pkgs.rust-bin.nightly.latest.rustfmt;
 
-        format-pkgs = with pkgs; [
-          nixpkgs-fmt
-          alejandra
-        ];
+      format-pkgs = with pkgs; [nixpkgs-fmt alejandra];
 
-        cargo-installs = with pkgs; [
-          cargo-deny
-          cargo-expand
-          cargo-outdated
-          cargo-sort
-          cargo-udeps
-          cargo-watch
-          diesel-cli
-        ];
-      in rec
-      {
-        devShells.default = pkgs.mkShell {
-          name = "fission-server";
-          nativeBuildInputs = with pkgs;
-            [
-              # The ordering of these two items is important. For nightly rustfmt to be used instead of
-              # the rustfmt provided by `rust-toolchain`, it must appear first in the list. This is
-              # because native build inputs are added to $PATH in the order they're listed here.
-              nightly-rustfmt
-              rust-toolchain
-              pre-commit
-              protobuf
-              postgresql
-              direnv
-              self.packages.${system}.irust
-              kubo
-            ]
-            ++ format-pkgs
-            ++ cargo-installs
-            ++ lib.optionals stdenv.isDarwin [
-              darwin.apple_sdk.frameworks.Security
-              darwin.apple_sdk.frameworks.CoreFoundation
-              darwin.apple_sdk.frameworks.Foundation
-            ];
+      cargo-installs = with pkgs; [
+        cargo-deny
+        cargo-expand
+        cargo-outdated
+        cargo-sort
+        cargo-udeps
+        cargo-watch
+        diesel-cli
+      ];
+    in rec {
+      devShells.default = pkgs.mkShell {
+        name = "fission-server";
+        nativeBuildInputs = with pkgs;
+          [
+            # The ordering of these two items is important. For nightly rustfmt to be used instead of
+            # the rustfmt provided by `rust-toolchain`, it must appear first in the list. This is
+            # because native build inputs are added to $PATH in the order they're listed here.
+            nightly-rustfmt
+            rust-toolchain
+            pre-commit
+            protobuf
+            postgresql
+            direnv
+            self.packages.${system}.irust
+            kubo
+          ]
+          ++ format-pkgs
+          ++ cargo-installs
+          ++ lib.optionals stdenv.isDarwin [
+            darwin.apple_sdk.frameworks.Security
+            darwin.apple_sdk.frameworks.CoreFoundation
+            darwin.apple_sdk.frameworks.Foundation
+          ];
 
-          shellHook = ''
-            [ -e .git/hooks/pre-commit ] || pre-commit install --install-hooks && pre-commit install --hook-type commit-msg
+        shellHook = ''
+          [ -e .git/hooks/pre-commit ] || pre-commit install --install-hooks && pre-commit install --hook-type commit-msg
 
-            PGDATA="./.pg";
-            PGURL=postgres://postgres@localhost:5432/fission-server
+          PGDATA="./.pg";
+          PGURL=postgres://postgres@localhost:5432/fission-server
 
-            # Initialize a local database if necessary.
-            if [ ! -e $PGDATA ]; then
-              echo -e "\nInitializing PostgreSQL in $PGDATA\n"
-              initdb $PGDATA --no-instructions -A trust -U postgres
-              if pg_ctl -D $PGDATA start; then
-                cd fission-server
-                diesel database setup --database-url $PGURL
-                cd ..
-                pg_ctl -D $PGDATA stop
-              else
-                echo "Unable to start PostgreSQL server on default port (:5432). Maybe a local database is already running?"
-              fi
-            fi
-
-            # Give instructions on how to start postgresql if it's not already running.
-            if [ ! -e $PGDATA/postmaster.pid ]; then
-              echo -e "\nPostgreSQL not running. To start, use the following command:"
-              echo -e "  pg_ctl -D $PGDATA -l postgres.log start\n\n"
-            else
-              echo -e "\nPostgreSQL is running. To stop, use the following command:"
-              echo -e "  pg_ctl -D $PGDATA stop\n\n"
-
-              echo -e "\nRunning pending Diesel Migrations..."
+          # Initialize a local database if necessary.
+          if [ ! -e $PGDATA ]; then
+            echo -e "\nInitializing PostgreSQL in $PGDATA\n"
+            initdb $PGDATA --no-instructions -A trust -U postgres
+            if pg_ctl -o '-k /tmp' -D $PGDATA start; then
               cd fission-server
-              diesel migration run --database-url $PGURL
+              diesel database setup --database-url $PGURL
               cd ..
-              echo
+              pg_ctl -o '-k /tmp' -D $PGDATA stop
+            else
+              echo "Unable to start PostgreSQL server on default port (:5432). Maybe a local database is already running?"
             fi
+          fi
 
-            # Setup local Kubo config
-            if [ ! -e ./.ipfs ]; then
-              ipfs --repo-dir ./.ipfs --offline init
-            fi
+          # Give instructions on how to start postgresql if it's not already running.
+          if [ ! -e $PGDATA/postmaster.pid ]; then
+            echo -e "\nPostgreSQL not running. To start, use the following command:"
+            echo -e "  pg_ctl -o '-k /tmp' -D $PGDATA -l postgres.log start\n\n"
+          else
+            echo -e "\nPostgreSQL is running. To stop, use the following command:"
+            echo -e "  pg_ctl -o '-k /tmp' -D $PGDATA stop\n\n"
 
-            # Run Kubo
-            echo -e "To run Kubo as a local IPFS node, use the following command:"
-            echo -e " . ipfs --repo-dir ./.ipfs --offline daemon"
+            echo -e "\nRunning pending Diesel Migrations..."
+            cd fission-server
+            diesel migration run --database-url $PGURL
+            cd ..
             echo
-          '';
+          fi
+
+          # Setup local Kubo config
+          if [ ! -e ./.ipfs ]; then
+            ipfs --repo-dir ./.ipfs --offline init
+          fi
+
+          # Run Kubo
+          echo -e "To run Kubo as a local IPFS node, use the following command:"
+          echo -e " ipfs --repo-dir ./.ipfs --offline daemon"
+          echo
+        '';
+      };
+
+      packages.irust = pkgs.rustPlatform.buildRustPackage rec {
+        pname = "irust";
+        version = "1.65.1";
+        src = pkgs.fetchFromGitHub {
+          owner = "sigmaSd";
+          repo = "IRust";
+          rev = "v${version}";
+          sha256 = "sha256-AMOND5q1XzNhN5smVJp+2sGl/OqbxkGPGuPBCE48Hik=";
         };
 
-        packages.irust = pkgs.rustPlatform.buildRustPackage rec {
-          pname = "irust";
-          version = "1.65.1";
-          src = pkgs.fetchFromGitHub {
-            owner = "sigmaSd";
-            repo = "IRust";
-            rev = "v${version}";
-            sha256 = "sha256-AMOND5q1XzNhN5smVJp+2sGl/OqbxkGPGuPBCE48Hik=";
-          };
-
-          doCheck = false;
-          cargoSha256 = "sha256-A24O3p85mCRVZfDyyjQcQosj/4COGNnqiQK2a7nCP6I=";
-        };
-      }
-    );
+        doCheck = false;
+        cargoSha256 = "sha256-A24O3p85mCRVZfDyyjQcQosj/4COGNnqiQK2a7nCP6I=";
+      };
+    });
 }

@@ -13,7 +13,7 @@ use utoipa::OpenApi;
 #[openapi(
         paths(health::healthcheck, ping::get, auth::request_token,
 account::create_account, account::get_account, account::update_did,
-volume::get_cid, volume::update_cid),
+volume::get_cid, volume::create_volume, volume::update_cid),
         components(schemas(AppError, email_verification::Request, auth::VerificationCodeResponse, AccountRequest, NewVolumeRecord, health::HealthcheckResponse)),
         modifiers(&UcanAddon),
         tags(
