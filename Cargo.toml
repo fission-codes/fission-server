@@ -9,8 +9,8 @@ ed25519-zebra = "3.1"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-ucan = { path = "../rs-ucan/ucan" }
-ucan-key-support = { path = "../rs-ucan/ucan-key-support" }
+ucan = { git = "https://github.com/blaine/rs-ucan", branch = "temporary-unscoped-fix" }
+ucan-key-support = { git = "https://github.com/blaine/rs-ucan", branch = "temporary-unscoped-fix" }
 url = "2.3"
 
 # Speedup build on macOS

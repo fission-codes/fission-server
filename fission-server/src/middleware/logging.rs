@@ -207,7 +207,7 @@ impl ReqwestMiddleware for Logger {
     }
 }
 
-fn log_reqwest(request: &reqwest::Request, extensions: &mut Extensions) {
+fn log_reqwest(request: &reqwest::Request, extensions: &Extensions) {
     let user_agent = request
         .headers()
         .get(header::USER_AGENT)
@@ -263,7 +263,7 @@ fn log_reqwest(request: &reqwest::Request, extensions: &mut Extensions) {
 
 async fn log_reqwest_response(
     response: reqwest::Response,
-    extensions: &mut Extensions,
+    extensions: &Extensions,
 ) -> Result<reqwest::Response> {
     /// Turn reqwest body, headers, status, and version into
     /// a generic [`http::Response`] and to capture body + parts,
@@ -325,7 +325,7 @@ async fn log_reqwest_response(
     Ok(post_log_response)
 }
 
-fn log_reqwest_error(error: &reqwest::Error, extensions: &mut Extensions) -> Result<()> {
+fn log_reqwest_error(error: &reqwest::Error, extensions: &Extensions) -> Result<()> {
     let url = extensions
         .get::<reqwest::Url>()
         .ok_or_else(|| anyhow!("failed to find Url extension"))?;
@@ -342,7 +342,7 @@ fn log_reqwest_error(error: &reqwest::Error, extensions: &mut Extensions) -> Res
     Ok(())
 }
 
-fn log_middleware_error(error: &anyhow::Error, extensions: &mut Extensions) -> Result<()> {
+fn log_middleware_error(error: &anyhow::Error, extensions: &Extensions) -> Result<()> {
     let url = extensions
         .get::<reqwest::Url>()
         .ok_or_else(|| anyhow!("failed to find Url extension"))?;

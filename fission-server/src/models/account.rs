@@ -298,7 +298,7 @@ impl RootAccount {
             // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
             .with_lifetime(60 * 60 * 24 * 365)
             .claiming_capability(&capability)
-            .with_fact(json!({"username": username}))
+            .with_fact(json!({ "username": username }))
             .build()?
             .sign()
             .await
