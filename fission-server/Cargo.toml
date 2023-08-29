@@ -98,7 +98,7 @@ tower = "0.4"
 tower-http = { version = "0.4", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
 tracing = "0.1"
 tracing-appender = "0.2"
-tracing-opentelemetry = "0.18"
+tracing-opentelemetry = "0.20"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
 tracing-test = "0.2.4"
 trust-dns-server = { version = "0.22.0", features = ["dns-over-rustls"] }
