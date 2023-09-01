@@ -22,6 +22,7 @@ use fission_server::{
         metrics_layer::{MetricsLayer, METRIC_META_PREFIX},
         storage_layer::StorageLayer,
     },
+    traits::IpfsHttpApiDatabase,
 };
 use http::header;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -155,6 +156,7 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs().peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun().clone()))
+        .with_ipfs_db(IpfsHttpApiDatabase::default())
         .finalize()?;
 
     let router = router::setup_app_router(app_state)

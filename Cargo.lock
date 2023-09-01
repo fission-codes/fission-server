@@ -497,6 +497,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "constant_time_eq 0.3.0",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -1412,6 +1413,7 @@ dependencies = [
  "base64 0.21.2",
  "base64-url",
  "bb8",
+ "blake3",
  "bytes",
  "chrono",
  "cid",
@@ -1461,6 +1463,8 @@ dependencies = [
  "stringreader",
  "sysinfo",
  "task-local-extensions",
+ "test-log",
+ "testresult",
  "thiserror",
  "time",
  "tokio",
@@ -4704,6 +4708,23 @@ dependencies = [
  "rustix 0.38.4",
  "windows-sys",
 ]
+
+[[package]]
+name = "test-log"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9601d162c1d77e62c1ea0bc8116cd1caf143ce3af947536c3c9052a1677fe0c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "testresult"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52e045f5cf9ad69772c1c9652f5567a75df88bbb5a1310a64e53cab140c5c459"
 
 [[package]]
 name = "thiserror"

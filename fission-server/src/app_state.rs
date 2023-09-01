@@ -1,14 +1,14 @@
 //! The Axum Application State
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axum::extract::ws;
 use dashmap::DashMap;
 use dyn_clone::DynClone;
 use futures::channel::mpsc::Sender;
-use std::{fmt, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
-use crate::db::Pool;
+use crate::{db::Pool, traits::IpfsDatabase};
 
 /// A channel for transmitting messages to a websocket peer
 pub type WsPeer = Sender<ws::Message>;
@@ -18,11 +18,13 @@ pub type WsPeerMap = Arc<DashMap<String, DashMap<SocketAddr, WsPeer>>>;
 
 #[derive(Clone)]
 /// Global application route state.
-pub struct AppState {
+pub struct AppState<D: IpfsDatabase> {
     /// The database pool
     pub db_pool: Pool,
     /// The ipfs peers to be rendered in the ipfs/peers endpoint
     pub ipfs_peers: Vec<String>,
+    /// Connection to what stores the IPFS blocks
+    pub ipfs_db: D,
     /// The service that sends account verification codes
     pub verification_code_sender: Box<dyn VerificationCodeSender>,
     /// The currently connected websocket peers
@@ -31,28 +33,30 @@ pub struct AppState {
 
 #[derive(Default)]
 /// Builder for [`AppState`]
-pub struct AppStateBuilder {
+pub struct AppStateBuilder<D: IpfsDatabase> {
     db_pool: Option<Pool>,
     ipfs_peers: Vec<String>,
+    ipfs_db: Option<D>,
     verification_code_sender: Option<Box<dyn VerificationCodeSender>>,
 }
 
-impl AppStateBuilder {
+impl<D: IpfsDatabase> AppStateBuilder<D> {
     /// Finalize the builder and return the [`AppState`]
-    pub fn finalize(self) -> Result<AppState> {
-        let db_pool = self
-            .db_pool
-            .ok_or_else(|| anyhow::anyhow!("db_pool is required"))?;
+    pub fn finalize(self) -> Result<AppState<D>> {
+        let db_pool = self.db_pool.ok_or_else(|| anyhow!("db_pool is required"))?;
 
         let ipfs_peers = self.ipfs_peers;
 
+        let ipfs_db = self.ipfs_db.ok_or_else(|| anyhow!("ipfs_db is required"))?;
+
         let verification_code_sender = self
             .verification_code_sender
-            .ok_or_else(|| anyhow::anyhow!("verification_code_sender is required"))?;
+            .ok_or_else(|| anyhow!("verification_code_sender is required"))?;
 
         Ok(AppState {
             db_pool,
             ipfs_peers,
+            ipfs_db,
             verification_code_sender,
             ws_peer_map: Default::default(),
         })
@@ -67,6 +71,12 @@ impl AppStateBuilder {
     /// Set the ipfs peers
     pub fn with_ipfs_peers(mut self, ipfs_peers: Vec<String>) -> Self {
         self.ipfs_peers.extend(ipfs_peers);
+        self
+    }
+
+    /// Set the ipfs database
+    pub fn with_ipfs_db(mut self, ipfs_db: D) -> Self {
+        self.ipfs_db = Some(ipfs_db);
         self
     }
 
@@ -96,18 +106,23 @@ impl VerificationCodeSender for Box<dyn VerificationCodeSender> {
     }
 }
 
-impl fmt::Debug for AppState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<D: IpfsDatabase + std::fmt::Debug> std::fmt::Debug for AppState<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppState")
             .field("db_pool", &self.db_pool)
+            .field("ipfs_peers", &self.ipfs_peers)
+            .field("ipfs_db", &self.ipfs_db)
+            .field("ws_peer_map", &self.ws_peer_map)
             .finish()
     }
 }
 
-impl fmt::Debug for AppStateBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<D: IpfsDatabase + std::fmt::Debug> std::fmt::Debug for AppStateBuilder<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppStateBuilder")
             .field("db_pool", &self.db_pool)
+            .field("ipfs_peers", &self.ipfs_peers)
+            .field("ipfs_db", &self.ipfs_db)
             .finish()
     }
 }

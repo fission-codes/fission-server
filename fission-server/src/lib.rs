@@ -24,6 +24,7 @@ pub mod routes;
 pub mod settings;
 pub mod tracer;
 pub mod tracing_layers;
+pub mod traits;
 
 #[cfg(test)]
 mod test_utils;

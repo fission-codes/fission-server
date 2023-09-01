@@ -22,6 +22,7 @@ use ucan_key_support::ed25519::Ed25519KeyMaterial;
 use crate::app_state::VerificationCodeSender;
 
 pub(crate) mod test_context;
+pub(crate) mod test_ipfs_database;
 
 pub(crate) trait Fact: Serialize + DeserializeOwned {}
 

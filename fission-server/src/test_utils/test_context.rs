@@ -13,9 +13,11 @@ use crate::{
     test_utils::MockVerificationCodeSender,
 };
 
+use super::test_ipfs_database::TestIpfsDatabase;
+
 pub(crate) struct TestContext {
     app: Router,
-    app_state: AppState,
+    app_state: AppState<TestIpfsDatabase>,
     base_url: String,
     db_name: String,
 }
@@ -27,7 +29,7 @@ impl TestContext {
 
     pub(crate) async fn new_with_state<F>(f: F) -> Self
     where
-        F: FnOnce(AppStateBuilder) -> AppStateBuilder,
+        F: FnOnce(AppStateBuilder<TestIpfsDatabase>) -> AppStateBuilder<TestIpfsDatabase>,
     {
         let base_url = "postgres://postgres:postgres@localhost:5432";
         let db_name = format!("fission_server_test_{}", Uuid::new_v4().simple());
@@ -54,6 +56,7 @@ impl TestContext {
 
         let builder = AppStateBuilder::default()
             .with_db_pool(db_pool)
+            .with_ipfs_db(TestIpfsDatabase::default())
             .with_verification_code_sender(MockVerificationCodeSender);
 
         let app_state = f(builder).finalize().unwrap();
@@ -76,6 +79,10 @@ impl TestContext {
 
     pub(crate) async fn get_db_conn(&self) -> Conn<'_> {
         self.app_state.db_pool.get().await.unwrap()
+    }
+
+    pub(crate) fn ipfs_db(&self) -> TestIpfsDatabase {
+        self.app_state.ipfs_db.clone()
     }
 }
 

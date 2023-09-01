@@ -1,17 +1,18 @@
 //! Volume model
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use tracing::log;
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
 
-use ipfs_api::IpfsApi;
-
-use crate::db::{schema::volumes, Conn};
+use crate::{
+    db::{schema::volumes, Conn},
+    traits::IpfsDatabase,
+};
 
 #[derive(Debug, Queryable, Insertable, Clone, Identifiable, Selectable, ToSchema)]
 #[diesel(table_name = volumes)]
@@ -54,23 +55,23 @@ impl From<Volume> for NewVolumeRecord {
 
 impl Volume {
     /// Create a new Volume. Inserts the volume into the database.
-    pub async fn new(conn: &mut Conn<'_>, cid: &str) -> Result<Self, diesel::result::Error> {
+    pub async fn new(conn: &mut Conn<'_>, cid: &str) -> Result<Self> {
         let new_volume = NewVolumeRecord {
             cid: cid.to_string(),
         };
 
-        diesel::insert_into(volumes::table)
+        Ok(diesel::insert_into(volumes::table)
             .values(new_volume)
             .get_result(conn)
-            .await
+            .await?)
     }
 
     /// Find a volume by its primary key
-    pub async fn find_by_id(conn: &mut Conn<'_>, id: i32) -> Result<Self, diesel::result::Error> {
-        volumes::table
+    pub async fn find_by_id(conn: &mut Conn<'_>, id: i32) -> Result<Self> {
+        Ok(volumes::table
             .filter(volumes::id.eq(id))
             .get_result(conn)
-            .await
+            .await?)
     }
 
     /// Update a volume by its CID
@@ -78,21 +79,14 @@ impl Volume {
         &self,
         conn: &mut Conn<'_>,
         cid: &str,
-    ) -> Result<Self, diesel::result::Error> {
-        let ipfs = ipfs_api::IpfsClient::default();
+        ipfs_db: &impl IpfsDatabase,
+    ) -> Result<Self> {
+        ipfs_db.pin_add(cid, true).await?;
 
-        let result = ipfs.pin_add(cid, true).await;
-
-        if result.is_err() {
-            log::debug!("Error communicating with IPFS: {:?}", result);
-            // FIXME: Use better error
-            return Err(diesel::result::Error::NotFound);
-        }
-
-        diesel::update(volumes::table)
+        Ok(diesel::update(volumes::table)
             .filter(volumes::id.eq(self.id))
             .set(volumes::cid.eq(cid))
             .get_result(conn)
-            .await
+            .await?)
     }
 }

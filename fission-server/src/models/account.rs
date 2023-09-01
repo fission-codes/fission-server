@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use anyhow::bail;
+use anyhow::{bail, Result};
 use did_key::{generate, Ed25519KeyPair};
 
 use chrono::NaiveDateTime;
@@ -13,12 +13,12 @@ use ucan::{builder::UcanBuilder, capability::CapabilitySemantics};
 use utoipa::ToSchema;
 
 use diesel_async::RunQueryDsl;
-use ipfs_api::IpfsApi;
 
 use crate::{
     crypto::patchedkey::PatchedKeyPair,
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
+    traits::IpfsDatabase,
 };
 
 /// New Account Struct (for creating new accounts)
@@ -125,10 +125,7 @@ impl Account {
     //
     // Note: this doesn't use a join, but rather a separate query to the volumes table.
     // Possibly not ideal, but it's simple and works.
-    pub async fn get_volume(
-        &self,
-        conn: &mut Conn<'_>,
-    ) -> Result<Option<NewVolumeRecord>, diesel::result::Error> {
+    pub async fn get_volume(&self, conn: &mut Conn<'_>) -> Result<Option<NewVolumeRecord>> {
         if let Some(volume_id) = self.volume_id {
             let volume = Volume::find_by_id(conn, volume_id).await?;
             Ok(Some(volume.into()))
@@ -142,12 +139,9 @@ impl Account {
         &self,
         conn: &mut Conn<'_>,
         cid: &str,
-    ) -> Result<NewVolumeRecord, anyhow::Error> {
-        let ipfs = ipfs_api::IpfsClient::default();
-
-        if let Err(e) = ipfs.pin_add(cid, true).await {
-            return Err(anyhow::anyhow!("Failed to pin CID: {}", e));
-        }
+        ipfs_db: &impl IpfsDatabase,
+    ) -> Result<NewVolumeRecord> {
+        ipfs_db.pin_add(cid, true).await?;
 
         let volume = Volume::new(conn, cid).await?;
 
@@ -172,11 +166,12 @@ impl Account {
         &self,
         conn: &mut Conn<'_>,
         cid: &str,
-    ) -> Result<NewVolumeRecord, anyhow::Error> {
+        ipfs_db: &impl IpfsDatabase,
+    ) -> Result<NewVolumeRecord> {
         if let Some(volume_id) = self.volume_id {
             let volume = Volume::find_by_id(conn, volume_id)
                 .await?
-                .update_cid(conn, cid)
+                .update_cid(conn, cid, ipfs_db)
                 .await?;
             Ok(volume.into())
         } else {
