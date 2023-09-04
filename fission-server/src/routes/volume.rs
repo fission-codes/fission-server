@@ -269,7 +269,7 @@ mod tests {
 
         root_account
             .account
-            .set_volume_cid(&mut conn, &hw_cid.to_string(), &ctx.ipfs_db())
+            .set_volume_cid(&mut conn, &hw_cid.to_string(), ctx.ipfs_db())
             .await?;
 
         let (ucan, _) = UcanBuilder::default()
@@ -380,7 +380,7 @@ mod tests {
             .set_volume_cid(
                 &mut conn,
                 "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy",
-                &ctx.ipfs_db(),
+                ctx.ipfs_db(),
             )
             .await?;
 

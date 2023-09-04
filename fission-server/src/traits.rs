@@ -10,6 +10,8 @@ use ipfs_api::IpfsApi;
 pub trait ServerSetup: Clone + Send + Sync {
     /// Which implementation for an IPFS database to choose
     type IpfsDatabase: IpfsDatabase;
+    /// Which implementation to use to send verification codes
+    type VerificationCodeSender: VerificationCodeSender;
 }
 
 /// Provides functionality for storing IPFS data.
@@ -19,6 +21,13 @@ pub trait ServerSetup: Clone + Send + Sync {
 pub trait IpfsDatabase: Clone + Send + Sync {
     /// Pin a DAG by CID.
     async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()>;
+}
+
+/// The service that sends account verification codes
+#[async_trait]
+pub trait VerificationCodeSender: Clone + Send + Sync {
+    /// Send the code associated with the email
+    async fn send_code(&self, email: &str, code: &str) -> Result<()>;
 }
 
 /// An implementation of `IpfsDatabase` which connects to a locally-running

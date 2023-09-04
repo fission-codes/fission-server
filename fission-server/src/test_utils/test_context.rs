@@ -10,7 +10,7 @@ use crate::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Conn, MIGRATIONS},
     router::setup_app_router,
-    test_utils::MockVerificationCodeSender,
+    test_utils::TestVerificationCodeSender,
     traits::ServerSetup,
 };
 
@@ -28,6 +28,7 @@ pub(crate) struct TestSetup;
 
 impl ServerSetup for TestSetup {
     type IpfsDatabase = TestIpfsDatabase;
+    type VerificationCodeSender = TestVerificationCodeSender;
 }
 
 impl TestContext {
@@ -65,7 +66,7 @@ impl TestContext {
         let builder = AppStateBuilder::default()
             .with_db_pool(db_pool)
             .with_ipfs_db(TestIpfsDatabase::default())
-            .with_verification_code_sender(MockVerificationCodeSender);
+            .with_verification_code_sender(TestVerificationCodeSender::default());
 
         let app_state = f(builder).finalize().unwrap();
 
@@ -89,8 +90,12 @@ impl TestContext {
         self.app_state.db_pool.get().await.unwrap()
     }
 
-    pub(crate) fn ipfs_db(&self) -> TestIpfsDatabase {
-        self.app_state.ipfs_db.clone()
+    pub(crate) fn ipfs_db(&self) -> &TestIpfsDatabase {
+        &self.app_state.ipfs_db
+    }
+
+    pub(crate) fn verification_code_sender(&self) -> &TestVerificationCodeSender {
+        &self.app_state.verification_code_sender
     }
 }
 

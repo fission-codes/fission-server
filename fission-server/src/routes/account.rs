@@ -164,7 +164,6 @@ mod tests {
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use serde_json::json;
-    use tokio::sync::broadcast;
     use ucan::crypto::KeyMaterial;
 
     use crate::{
@@ -172,18 +171,12 @@ mod tests {
         error::{AppError, ErrorResponse},
         models::account::{AccountRequest, RootAccount},
         routes::auth::VerificationCodeResponse,
-        test_utils::{
-            test_context::TestContext, BroadcastVerificationCodeSender, RouteBuilder, UcanBuilder,
-        },
+        test_utils::{test_context::TestContext, RouteBuilder, UcanBuilder},
     };
 
     #[tokio::test]
     async fn test_create_account_ok() -> Result<()> {
-        let (tx, mut rx) = broadcast::channel(1);
-        let ctx = TestContext::new_with_state(|builder| {
-            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
-        })
-        .await;
+        let ctx = TestContext::new().await;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
@@ -197,7 +190,12 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
 
-        let (_, code) = rx.recv().await?;
+        let (_, code) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email Sent");
 
         let (ucan, issuer) = UcanBuilder::default()
             .with_issuer(issuer)
@@ -252,11 +250,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_account_err_wrong_issuer() -> Result<()> {
-        let (tx, mut rx) = broadcast::channel(1);
-        let ctx = TestContext::new_with_state(|builder| {
-            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
-        })
-        .await;
+        let ctx = TestContext::new().await;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
@@ -271,7 +265,12 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
 
-        let (_, code) = rx.recv().await.unwrap();
+        let (_, code) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email sent");
 
         let (ucan, _) = UcanBuilder::default()
             .with_fact(json!({ "code": code }))?
@@ -352,11 +351,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_put_account_did_ok() -> Result<()> {
-        let (tx, mut rx) = broadcast::channel(1);
-        let ctx = TestContext::new_with_state(|builder| {
-            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
-        })
-        .await;
+        let ctx = TestContext::new().await;
 
         let mut conn = ctx.get_db_conn().await;
 
@@ -383,7 +378,12 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
 
-        let (_, code) = rx.recv().await.unwrap();
+        let (_, code) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email sent");
 
         let (ucan, issuer) = UcanBuilder::default()
             .with_issuer(issuer)

@@ -66,6 +66,7 @@ pub struct ProdSetup;
 
 impl ServerSetup for ProdSetup {
     type IpfsDatabase = IpfsHttpApiDatabase;
+    type VerificationCodeSender = EmailVerificationCodeSender;
 }
 
 #[tokio::main]
