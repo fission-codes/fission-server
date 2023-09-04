@@ -8,7 +8,7 @@ use dyn_clone::DynClone;
 use futures::channel::mpsc::Sender;
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::{db::Pool, traits::IpfsDatabase};
+use crate::{db::Pool, traits::ServerSetup};
 
 /// A channel for transmitting messages to a websocket peer
 pub type WsPeer = Sender<ws::Message>;
@@ -18,13 +18,13 @@ pub type WsPeerMap = Arc<DashMap<String, DashMap<SocketAddr, WsPeer>>>;
 
 #[derive(Clone)]
 /// Global application route state.
-pub struct AppState<D: IpfsDatabase> {
+pub struct AppState<S: ServerSetup> {
     /// The database pool
     pub db_pool: Pool,
     /// The ipfs peers to be rendered in the ipfs/peers endpoint
     pub ipfs_peers: Vec<String>,
     /// Connection to what stores the IPFS blocks
-    pub ipfs_db: D,
+    pub ipfs_db: S::IpfsDatabase,
     /// The service that sends account verification codes
     pub verification_code_sender: Box<dyn VerificationCodeSender>,
     /// The currently connected websocket peers
@@ -33,16 +33,16 @@ pub struct AppState<D: IpfsDatabase> {
 
 #[derive(Default)]
 /// Builder for [`AppState`]
-pub struct AppStateBuilder<D: IpfsDatabase> {
+pub struct AppStateBuilder<S: ServerSetup> {
     db_pool: Option<Pool>,
     ipfs_peers: Vec<String>,
-    ipfs_db: Option<D>,
+    ipfs_db: Option<S::IpfsDatabase>,
     verification_code_sender: Option<Box<dyn VerificationCodeSender>>,
 }
 
-impl<D: IpfsDatabase> AppStateBuilder<D> {
+impl<S: ServerSetup> AppStateBuilder<S> {
     /// Finalize the builder and return the [`AppState`]
-    pub fn finalize(self) -> Result<AppState<D>> {
+    pub fn finalize(self) -> Result<AppState<S>> {
         let db_pool = self.db_pool.ok_or_else(|| anyhow!("db_pool is required"))?;
 
         let ipfs_peers = self.ipfs_peers;
@@ -75,7 +75,7 @@ impl<D: IpfsDatabase> AppStateBuilder<D> {
     }
 
     /// Set the ipfs database
-    pub fn with_ipfs_db(mut self, ipfs_db: D) -> Self {
+    pub fn with_ipfs_db(mut self, ipfs_db: S::IpfsDatabase) -> Self {
         self.ipfs_db = Some(ipfs_db);
         self
     }
@@ -106,7 +106,11 @@ impl VerificationCodeSender for Box<dyn VerificationCodeSender> {
     }
 }
 
-impl<D: IpfsDatabase + std::fmt::Debug> std::fmt::Debug for AppState<D> {
+impl<S> std::fmt::Debug for AppState<S>
+where
+    S: ServerSetup,
+    S::IpfsDatabase: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppState")
             .field("db_pool", &self.db_pool)
@@ -117,7 +121,11 @@ impl<D: IpfsDatabase + std::fmt::Debug> std::fmt::Debug for AppState<D> {
     }
 }
 
-impl<D: IpfsDatabase + std::fmt::Debug> std::fmt::Debug for AppStateBuilder<D> {
+impl<S> std::fmt::Debug for AppStateBuilder<S>
+where
+    S: ServerSetup,
+    S::IpfsDatabase: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppStateBuilder")
             .field("db_pool", &self.db_pool)

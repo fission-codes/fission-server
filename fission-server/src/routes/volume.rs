@@ -6,7 +6,7 @@ use crate::{
     db::{self},
     error::{AppError, AppResult},
     models::{account::Account, volume::NewVolumeRecord},
-    traits::IpfsDatabase,
+    traits::ServerSetup,
 };
 use axum::extract::{Json, Path, State};
 use http::StatusCode;
@@ -25,8 +25,8 @@ use http::StatusCode;
 )]
 
 /// GET handler to retrieve account volume CID
-pub async fn get_cid<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn get_cid<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
@@ -57,8 +57,8 @@ pub async fn get_cid<D: IpfsDatabase>(
 )]
 
 /// Handler to create a new volume for an account
-pub async fn create_volume<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn create_volume<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,
@@ -96,8 +96,8 @@ pub async fn create_volume<D: IpfsDatabase>(
 )]
 
 /// Handler to update the CID associated with an account's volume
-pub async fn update_cid<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn update_cid<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,

@@ -11,15 +11,23 @@ use crate::{
     db::{self, Conn, MIGRATIONS},
     router::setup_app_router,
     test_utils::MockVerificationCodeSender,
+    traits::ServerSetup,
 };
 
 use super::test_ipfs_database::TestIpfsDatabase;
 
 pub(crate) struct TestContext {
     app: Router,
-    app_state: AppState<TestIpfsDatabase>,
+    app_state: AppState<TestSetup>,
     base_url: String,
     db_name: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TestSetup;
+
+impl ServerSetup for TestSetup {
+    type IpfsDatabase = TestIpfsDatabase;
 }
 
 impl TestContext {
@@ -29,7 +37,7 @@ impl TestContext {
 
     pub(crate) async fn new_with_state<F>(f: F) -> Self
     where
-        F: FnOnce(AppStateBuilder<TestIpfsDatabase>) -> AppStateBuilder<TestIpfsDatabase>,
+        F: FnOnce(AppStateBuilder<TestSetup>) -> AppStateBuilder<TestSetup>,
     {
         let base_url = "postgres://postgres:postgres@localhost:5432";
         let db_name = format!("fission_server_test_{}", Uuid::new_v4().simple());

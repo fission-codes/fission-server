@@ -9,7 +9,7 @@ use crate::{
         account::{Account, AccountRequest, RootAccount},
         email_verification::EmailVerification,
     },
-    traits::IpfsDatabase,
+    traits::ServerSetup,
 };
 use axum::{
     self,
@@ -38,8 +38,8 @@ use anyhow::{anyhow, Result};
 )]
 
 /// POST handler for creating a new account
-pub async fn create_account<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn create_account<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Json(payload): Json<AccountRequest>,
 ) -> AppResult<(StatusCode, Json<RootAccount>)> {
@@ -71,8 +71,8 @@ pub async fn create_account<D: IpfsDatabase>(
 )]
 
 /// GET handler to retrieve account details
-pub async fn get_account<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn get_account<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<AccountRequest>)> {
     let account =
@@ -101,8 +101,8 @@ pub struct AccountUpdateRequest {
 )]
 
 /// Handler to update the DID associated with an account
-pub async fn update_did<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn update_did<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<AccountUpdateRequest>,

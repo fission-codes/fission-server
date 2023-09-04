@@ -7,7 +7,7 @@ use crate::{
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
     settings::Settings,
-    traits::IpfsDatabase,
+    traits::ServerSetup,
 };
 use axum::{
     self,
@@ -50,8 +50,8 @@ impl VerificationCodeResponse {
 )]
 
 /// POST handler for requesting a new token by email
-pub async fn request_token<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn request_token<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {

@@ -12,12 +12,12 @@ use crate::{
     app_state::AppState,
     dns,
     extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
-    traits::IpfsDatabase,
+    traits::ServerSetup,
 };
 
 /// GET handler for resolving DoH queries
-pub async fn get<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn get<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     DNSRequestQuery(request, accept_type): DNSRequestQuery,
 ) -> Response {
     let response = match dns::handle_request(request, state.db_pool).await {
@@ -47,8 +47,8 @@ pub async fn get<D: IpfsDatabase>(
 }
 
 /// POST handler for resolvng DoH queries
-pub async fn post<D: IpfsDatabase>(
-    State(state): State<AppState<D>>,
+pub async fn post<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     DNSRequestBody(request): DNSRequestBody,
 ) -> Response {
     let response = match dns::handle_request(request, state.db_pool).await {

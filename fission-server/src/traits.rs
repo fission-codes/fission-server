@@ -3,6 +3,15 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ipfs_api::IpfsApi;
 
+/// This trait groups type parameters to the server's `AppState` struct.
+///
+/// It captures the setup of the server, distinguishing between e.g.
+/// unit testing & production setups.
+pub trait ServerSetup: Clone + Send + Sync {
+    /// Which implementation for an IPFS database to choose
+    type IpfsDatabase: IpfsDatabase;
+}
+
 /// Provides functionality for storing IPFS data.
 /// Abstracted away, so you can plug in a real kubo node
 /// or an in-memory test database.

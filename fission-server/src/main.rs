@@ -22,7 +22,7 @@ use fission_server::{
         metrics_layer::{MetricsLayer, METRIC_META_PREFIX},
         storage_layer::StorageLayer,
     },
-    traits::IpfsHttpApiDatabase,
+    traits::{IpfsHttpApiDatabase, ServerSetup},
 };
 use http::header;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -60,6 +60,13 @@ use utoipa_swagger_ui::SwaggerUi;
 
 /// Request identifier field.
 const REQUEST_ID: &str = "request_id";
+
+#[derive(Clone, Debug, Default)]
+pub struct ProdSetup;
+
+impl ServerSetup for ProdSetup {
+    type IpfsDatabase = IpfsHttpApiDatabase;
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -152,7 +159,7 @@ async fn serve_metrics(
 async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
     let req_id = HeaderName::from_static(REQUEST_ID);
 
-    let app_state = AppStateBuilder::default()
+    let app_state = AppStateBuilder::<ProdSetup>::default()
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs().peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun().clone()))
