@@ -105,26 +105,6 @@ Terri wants to register a function on Odd Functions. They go to the Fission CLI,
 
 Users come in two flavours: ~~vanilla and mint~~ Fission users and App users. The distinction is roughly "who is responsible for them?" (us or the app owner).
 
-# ERD
-
-Here is an _extremely loose, very hypothetical_ entity-relationship diagram modelling the database relationships.
-
-## Conventional
-
-### Short Term
-
-![](https://talk.fission.codes/uploads/default/optimized/2X/6/6a9e41fde8ef63d6b66db0a3b4a0ea62ea8d4e16_2_360x1000.png)
-
-### Medium Term
-
-![](https://talk.fission.codes/uploads/default/optimized/2X/3/392f45320d9228aefabc769678b249fbe6162c40_2_1200x1000.png)
-
-## Radical OCAP Design
-
-If we decide to lean more heavily into UCAN, we can pull some of these relationships out of the database, though keeping them aroudn certainly doesn't hurt in the case of recovery if they lose their UCAN. In this version, each resource gets its own DID, and delegates to the user. I suggest that this be kept as essentially a long term picture in your head as we can slowly make the databse vistigial.
-
-![](https://talk.fission.codes/uploads/default/optimized/2X/e/e35aed0f45a9f30aef5d115091a70b421a00104c_2_1380x838.png)
-
 # Fission User
 
 The root of the system: full users. These are the people that we have direction relationships with. This anology only goes so far, but it's like setting up a root (AWS) IAM account. As such, we MUST record their username and email. They also get attached Volume storage out of the box.
