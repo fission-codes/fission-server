@@ -2,20 +2,12 @@
 
 The Fission Server provides accounts, capabilities, and coordination for various services in the Fission ecosystem.
 
-# Account Service
-
-## Usage
-
 Use this as the main component for Fission hosted services. These are the ODD set of services, complimenting [ODD SDK](https://odd.dev). Developers are the primary audience, but also early adopters who want an ODD account / "Login with ODD".
 
 Let people who want run a managed namespace of accounts run their own instance of the server. This is likely an app developer with one or more apps and a large user base, or someone that wants to brand "Login with Brand" and accompanying domain names and other settings.
 
 We _may_ support multi-tenant in the future (hosting multiple "Login with Brand" experiences), but we'd rather see other people running instances first and/or have a clear desire for many of these.
 
-## Features
-
-* Management of attached WNFS storage, including updating `_dnslink` entries for every account.
-* Direct DNS capabilities, set up other DNS providers as secondaries
 
 
 
@@ -23,15 +15,70 @@ We _may_ support multi-tenant in the future (hosting multiple "Login with Brand"
 
 
 
-# DIRECT COPYPASTA
+
+
+```mermaid
+erDiagram
+    VerifiedUser ||--|| FileSystem: has
+    VerifiedUser ||--o{ App: has
+    SubUser ||--|| FileSystem: has
+    VerifiedUser ||--o{ SubUser: has
+
+    VerifiedUser {
+        int    id       PK
+        string username
+        string email
+        string did
+        int    volume   FK
+    }
+
+    SubUser {
+        int    id          PK
+        int     super_user_id FK 
+        string did
+        int    file_system FK
+    }
+
+    App {
+        int    id        PK
+        int    owner     FK
+        string subdomain
+        string cid_root
+    }
+
+    FileSystem {
+        int    id             PK
+        string cid_root
+        int    size_in_bytes
+    }
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Account Service
 
 ## Goals
 
-* Every user gets an attached file system & subdomain out of the box
-* BYODUOS: Bring Your Own Domain, UCAN, Or Storage
+* Runnable by Fission, or deployed by others (self-hosting)
 * Support app-namespaced users in addition to top-level Fission users
+* Each user gets a unqiue subdomain out of the box
 
 ## Antigoals
+
+* Kitchen sink service
+* 
+
+## User Stories
 
 ### User Archetypes
 
@@ -40,8 +87,6 @@ We _may_ support multi-tenant in the future (hosting multiple "Login with Brand"
 | April | 👩🏾‍💻    | App Developer  | Publish & manage apps                                 |
 | Terri | 🧑🏼‍💻    | Technical User | Publish files (e.g. backup their Desktop)             |
 | Usher | 👨🏽‍🎨    | App User       | Sign up for & use an app published to Fission's infra |
-
-## User Stories
 
 ### Near-Term Web Storage
 
@@ -55,13 +100,6 @@ April wants to launch an app on Fission's service. She goes to the Fission CLI, 
 
 Terri wants to register a function on Odd Functions. They go to the Fission CLI, and signs up for the service with their email, and registers the username `terri2023`. They're prompted to set up a Passkey (which will be their root DID). The Fission FaaS service then delegates 1000 credits to `did:key:zTerriPasskey`.
 
-### Aspirational BYODUOS Story
-
-Part of what we want to enable _in the long term_ is the ability to bring your own storage or DNS. For example, you may want to update DNS at a separate provider like Cloudflare. You'll also note that NNS slots in really nicely for lots of related use cases here 😉 This is more "future", but useful for context.
-
-Operationally, when someone sets up a Fission account, we automatically grant them storage and a subdomain. The server itself behaves as if it's in a closed world. The front end SDK can later evolve to plug in other providers, like Cloudflare for DNS if they need to update on chnage. However, with the magic of [DNSLink], the user can very easily map their Cloudflare DNS to their `fission.name` record.
-
-Carol wants to sign up for the Fission service, but is bringing her own DNS (Cloudflare) but wants to still use our storage (not that this could be the opposite where she brings her own storage). She goes through the normal server setup flow (literally nothing changes here). She navigates to her application, and makes a bunch of changes to the data on her Volume. The SDK is configured with Cloudflare as the DNS provider via its plugin architecture, and after the ODD Volume returns successfully, the SDK sends a request to Cloudflare to update her DNSLink there. Cloudflare returns a 200. She loads her app on a second device, and all of her updated data is visible there.
 
 # Requirements
 
@@ -75,21 +113,21 @@ Here is an _extremely loose, very hypothetical_ entity-relationship diagram mode
 
 ### Short Term
 
-![Screenshot 2023-03-31 at 15.37.49|180x500](upload://fdbG0GLuXJIwEqJdwp54y2L1UW2.png)
+![](https://talk.fission.codes/uploads/default/optimized/2X/6/6a9e41fde8ef63d6b66db0a3b4a0ea62ea8d4e16_2_360x1000.png)
 
 ### Medium Term
 
-![Screenshot 2023-03-31 at 15.37.57|600x500](upload://89Suv4MuHTylwJPZ7zSn1p5pBiE.png)
+![](https://talk.fission.codes/uploads/default/optimized/2X/3/392f45320d9228aefabc769678b249fbe6162c40_2_1200x1000.png)
 
 ## Radical OCAP Design
 
 If we decide to lean more heavily into UCAN, we can pull some of these relationships out of the database, though keeping them aroudn certainly doesn't hurt in the case of recovery if they lose their UCAN. In this version, each resource gets its own DID, and delegates to the user. I suggest that this be kept as essentially a long term picture in your head as we can slowly make the databse vistigial.
 
-![Screenshot 2023-03-31 at 15.38.01|690x419](upload://wrhc1gOCYDqRx3DIeRuKro9TVfK.png)
+![](https://talk.fission.codes/uploads/default/optimized/2X/e/e35aed0f45a9f30aef5d115091a70b421a00104c_2_1380x838.png)
 
 # Fission User
 
-The root of the system: Fission users. These are the people that we have direction relationships with. This anology only goes so far, but it's like setting up a root (AWS) IAM account. As such, we MUST record their username and email. They also get attached Volume storage out of the box.
+The root of the system: full users. These are the people that we have direction relationships with. This anology only goes so far, but it's like setting up a root (AWS) IAM account. As such, we MUST record their username and email. They also get attached Volume storage out of the box.
 
 Unlike the current database, where this is all handled with database tables, we should explore this with UCAN (though we can still record this relationshiop if we want). For example, in DAG House's "Spaces" concept, the Space is gerated with a keypair, it delegates full control over itself to the user's DID, and deletes its keys. The advantage of this is that you don't have to look up the Space's "owner"; the root of the UCAN chain is the Space's DID. This also gets rid of that ugly polymorphic relationship in the ERD above :wink:
 
@@ -103,22 +141,6 @@ That means we need to capture username and email on sign up or first interaction
 
 ![](https://talk.fission.codes/uploads/default/original/2X/e/eadadb10a37fee31a4836d2e194e16dae2efcee5.png)
 
-# App
-
-* Owned by _one_ Fission user
-  * Extend permissions to others via UCAN
-* Gets a `fission.app` subdomain
-* Storage points at a path inside the owner's Volume
-
-# App User
-
-While we could arguably roll these into Fission users, the requirements are different enough in this revision that splitting them out makes sense.
-
-* Get a DNS subdomain at `<username>.<appname>.<domain>`
-    * Where the default `<domain>` is `fission.app`
-* Get assigned a Volume
-
-Unlike Fission users, we don't need to capture their email address or other info (we may later, but not for now).
 
 # Where We're Going
 
@@ -126,31 +148,29 @@ It can be helpful to understand what's coming down the pipe. I can't emphasize s
 
 **Emphasis: this section is all about future stuff**
 
-## Volumes
+# FAQ
 
-As you may have heard, "pinning" is a terrible concept. It is much easier to think about a single logical "Volume" with a root CID. Volumes are likely going to include more info than a mutible pointer that holds a CID including geographic replication and storage quotas.
+# Eventing
 
-## Name Name System (NNS)
-
-Part of the BYODUOS philosophy means that we can take the mutible pointers out of our managed DNS and move them to NNS. Of course NNS also manages things like DIDs, but for pointers to e.g. the latest WNFS, updating in NNS is a good source of truth (it's where the idea originated after all).
-
-How we'd interact with NNS is a whole other question. It's technically a separate system, though we'd run at least one node. Would we run a NNS gateway? Would we poll and update DNS as we track certain records? Would NNS look up records from our DNS? These are questions for when we get closer.
+The Haskell server recorded an immutible log of events. This was a good idea, and made the DB very flexible and you capture a bunch of data that you don't realize would be useful until much later. I would suggest doing this again (some use cases came up on our call as well).
 
 ## Interop
 
 We would like to seamlessly interop with other products and services in our orbit, such as Noosphere, Number0, DAG House, and Bacalhau. Being able to support DIDs generated by them, or transparently have them (e.g.) use us for DNS or us use them for storage would be helpful.
-
-# :record_button: Eventing
-
-The Haskell server recorded an immutible log of events. This was a good idea, and made the DB very flexible and you capture a bunch of data that you don't realize would be useful until much later. I would suggest doing this again (some use cases came up on our call as well).
-
-# FAQ
 
 ## What About NNS?
 
 Part of the BYODUOS philosophy means that we can take the mutible pointers out of our managed DNS and move them to NNS. Of course NNS also manages things like DIDs, but for pointers to e.g. the latest WNFS, updating in NNS is a good source of truth (it's where the idea originated after all).
 
 How we'd interact with NNS is a whole other question. It's technically a separate system, though we'd run at least one node. Would we run a NNS gateway? Would we poll and update DNS as we track certain records? Would NNS look up records from our DNS? These are questions for when we get closer.
+
+## Is there still an aspirational BYODUOS story?
+
+Part of what we want to enable _in the long term_ is the ability to bring your own storage or DNS. For example, you may want to update DNS at a separate provider like Cloudflare. You'll also note that NNS slots in really nicely for lots of related use cases here 😉 This is more "future", but useful for context.
+
+Operationally, when someone sets up an account, we automatically grant them storage and a subdomain. The server itself behaves as if it's in a closed world. The front end SDK can later evolve to plug in other providers, like Cloudflare for DNS if they need to update on chnage. However, with the magic of [DNSLink], the user can very easily map their Cloudflare DNS to their `fission.name` record.
+
+Carol wants to sign up for the Fission service, but is bringing her own DNS (Cloudflare) but wants to still use our storage (not that this could be the opposite where she brings her own storage). She goes through the normal server setup flow (literally nothing changes here). She navigates to her application, and makes a bunch of changes to the data on her Volume. The SDK is configured with Cloudflare as the DNS provider via its plugin architecture, and after the ODD Volume returns successfully, the SDK sends a request to Cloudflare to update her DNSLink there. Cloudflare returns a 200. She loads her app on a second device, and all of her updated data is visible there.
 
 <!-- External Links -->
 
