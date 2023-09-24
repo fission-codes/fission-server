@@ -34,7 +34,7 @@ erDiagram
 
     SubUser {
         int    id          PK
-        int     super_user_id FK 
+        int     super_user_id FK
         string did
         int    file_system FK
     }
@@ -76,7 +76,7 @@ erDiagram
 ## Antigoals
 
 * Kitchen sink service
-* 
+*
 
 ## User Stories
 
