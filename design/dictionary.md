@@ -1,9 +1,13 @@
 # Dictionary
 
-| Term               | Definition |
+| Term               | Summary    |
 |--------------------|------------|
+| [App]              |            |
+| [Account]          |            |
 | [App Account]      |            |
 | [Verified Account] |            |
+
+## Account
 
 ### Verified Account
 
