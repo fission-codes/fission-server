@@ -105,12 +105,12 @@ erDiagram
 
     FullAccount ||--o{ Capability: has
     SubAccount  ||--o{ Capability: has
-    
+
     FullAccount ||--o{ App : owns
-    
+
     App ||--|{ HostName : has
     App ||--|| Storage  : has
-    
+
     UCAN       ||--|{ Capability : contains
     Revocation ||--|| UCAN       : revokes
 
@@ -124,20 +124,20 @@ erDiagram
         string   did            PK
         int      manager_id     FK
     }
-    
+
     HostName {
       string     did            PK
       string     domain_name
       string     subdomain
     }
-    
+
     App {
       string     did            PK
       string     owner_id       FK
       string     host_name_id   FK
       string     storage_id     FK
     }
-    
+
     Capability {
         int      id             PK
         string   cid
@@ -148,7 +148,7 @@ erDiagram
         datetime nbf
         datetime exp
     }
-    
+
     Revocation {
         string   revocation_cid PK
         string   ucan_cid
@@ -231,7 +231,7 @@ Revocation tracking is very useful. A simple revocation store can be modeled as 
 |------------------|------------|-------------|--------|----------|
 | `revocation_cid` | `String`   | Primary Key | Yes    | Yes      |
 | `ucan_cid`       | `String`   |             | No     | Yes      |
- 
+
 # Storage
 
 _Storage is not available at time of writing._
