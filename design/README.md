@@ -136,6 +136,7 @@ erDiagram
       string     owner_id       FK
       string     domain_name_id FK
       string     storage_id     FK
+    }
     
     Capability {
         int      id             PK
