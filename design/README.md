@@ -12,7 +12,7 @@ We _may_ support multi-tenant in the future (hosting multiple "Login with Brand"
 
 - Runnable by Fission, or deployed by others (self-hosting)
 - Easy to integrate into other backend services (modular, etc)
-- Record the information nessesary for recovery and contact
+- Record the information necessary for recovery and contact
 - Allow a user to manage a group of other users
 
 ## User Stories
@@ -43,7 +43,7 @@ Terri wants to register a function on Odd Functions. They go to the Fission CLI,
 
 ## Event Sourcing
 
-Instead of recording the `createdAt` and latest `modifiedAt`, the Fission server records immutible events. This stores more data in the database, but has multiple advantages:
+Instead of recording the `createdAt` and latest `modifiedAt`, the Fission server records immutable events. This stores more data in the database, but has multiple advantages:
 
 - Schema migrations can be reconstituted performed directly or by playing over the log
 - Post hoc analysis and debugging is possible
@@ -51,15 +51,15 @@ Instead of recording the `createdAt` and latest `modifiedAt`, the Fission server
 
 ## Resource DIDs
 
-In the previous (Haskell) server, the user's DID was registered directly in the (central) database. This appraoch has a few drawbacks:
+In the previous (Haskell) server, the user's DID was registered directly in the (central) database. This approach has a few drawbacks:
 
 - Requires a DB lookup to find the associated owner for an account (or other resource)
 - Doesn't provide a solution to uniquely identifying a single resource in a one-to-many relationship
-- Has ACL semantics at the final step of the delagation (which is not unheard of in capability modeling)
+- Has ACL semantics at the final step of the delegation (which is not unheard of in capability modeling)
 
-Instead, if evey resource (include the account itself) is uniquely identified by a DID, then UCANs can be used throughout without resorting to an external ownership list. With this spproach, the keys for the resource may be stored in a KMS, or ideally _dropped completely_ after delegating root access to one or more controllers. To solve for recovery and a server-controlled revocation fail-safe, a key may be kept offline (i.e. a "cold DID") and delegated to.
+Instead, if every resource (include the account itself) is uniquely identified by a DID, then UCANs can be used throughout without resorting to an external ownership list. With this approach, the keys for the resource may be stored in a KMS, or ideally _dropped completely_ after delegating root access to one or more controllers. To solve for recovery and a server-controlled revocation fail-safe, a key may be kept offline (i.e. a "cold DID") and delegated to.
 
-Here is one example of such a DID heirarchy:
+Here is one example of such a DID hierarchy:
 
 ``` mermaid
 flowchart
@@ -179,7 +179,7 @@ The distinction is roughly "who is the point of contact?" (Fission or one of our
 
 ## Full Account
 
-The core of the account system: Full Accounts. These are the people that we have direction relationships with. This anology only goes so far, but it's like setting up a root (AWS) IAM account. As such, we MUST record their username and email. They also get attached Volume storage out of the box.
+The core of the account system: Full Accounts. These are the people that we have direct relationships with. This anology only goes so far, but it's like setting up a root (AWS) IAM account. As such, we MUST record their username and email. They also get attached Volume storage out of the box.
 
 A Full Account has the following fields:
 
@@ -208,7 +208,7 @@ A Sub Account has the following fields:
 
 To facilitate UCAN delegation when users are offline, the Fission server adapts some patterns from object capabilities. As new resources are delegated to an account's DID, the relevant UCAN is captured in a cache and indexed. This provides the ability to attach arbitrary capabilities to an account.
 
-In object oriented terms, this means that the account learns about new messages that it can call. From the perspective of the delegated root user, it means that new APIs (or RPC actions) are possibly available dynamically. The capabilties may or _may not_ be exposed to the delegated user ("account owner"), since these may be abstracted away by a server-managed resource ("object"). When delegatable, an endpoint should be available for the delegated user to download from the cache. Clearing this cache is not required except for after expiration or revocation.
+In object oriented terms, this means that the account learns about new messages that it can call. From the perspective of the delegated root user, it means that new APIs (or RPC actions) are possibly available dynamically. The capabilities may or _may not_ be exposed to the delegated user ("account owner"), since these may be abstracted away by a server-managed resource ("object"). When delegatable, an endpoint should be available for the delegated user to download from the cache. Clearing this cache is not required except for after expiration or revocation.
 
 The UCAN that contains the capability is kept in binary storage (i.e. an object store). The capability is indexed for lookup performance:
 
@@ -276,7 +276,7 @@ We would like to seamlessly interop with other products and services in our orbi
 
 ## What About NNS?
 
-Part of the BYOR (bring your own resource) philosophy means that we can take the mutible pointers out of our managed DNS and move them to NNS. Of course NNS also manages things like DIDs, but for pointers to e.g. the latest WNFS, updating in NNS is a good source of truth (it's where the idea originated after all).
+Part of the BYOR (bring your own resource) philosophy means that we can take the mutable pointers out of our managed DNS and move them to NNS. Of course NNS also manages things like DIDs, but for pointers to e.g. the latest WNFS, updating in NNS is a good source of truth (it's where the idea originated after all).
 
 How we'd interact with NNS is a whole other question. It's technically a separate system, though we'd run at least one node. Would we run a NNS gateway? Would we poll and update DNS as we track certain records? Would NNS look up records from our DNS? These are questions for when we get closer.
 
