@@ -108,8 +108,8 @@ erDiagram
     
     FullAccount ||--o{ App : owns
     
-    App ||--|{ DomainName : has
-    App ||--|| Storage    : has
+    App ||--|{ HostName : has
+    App ||--|| Storage  : has
     
     UCAN       ||--|{ Capability : contains
     Revocation ||--|| UCAN       : revokes
@@ -125,16 +125,16 @@ erDiagram
         int      manager_id     FK
     }
     
-    DomainName {
+    HostName {
       string     did            PK
-      string     host_name
+      string     domain_name
       string     subdomain
     }
     
     App {
       string     did            PK
       string     owner_id       FK
-      string     domain_name_id FK
+      string     host_name_id   FK
       string     storage_id     FK
     }
     
@@ -247,25 +247,25 @@ Storage has the following fields:
 | `quota_bytes` | `Int`    |             | No     | Yes      |
 | `used_bytes`  | `Int`    |             | No     | Yes      |
 
-# Domain Name
+# Host Name
 
 _Domain names are not available at time of writing._
 
 | Field         | Type     | Role        | Unique | Required |
 |---------------|----------|-------------|--------|----------|
 | `did`         | `String` | Primary Key | Yes    | Yes      |
-| `host_name`   | `String` |             | No     | Yes      |
+| `domain_name` | `String` |             | No     | Yes      |
 | `subdomain`   | `String` |             | No     | No       |
 
 # App
 
 _Apps are not available at time of writing._
 
-| Field            | Type     | Role        | Unique | Required |
-|------------------|----------|-------------|--------|----------|
-| `did`            | `String` | Primary Key | Yes    | Yes      |
-| `owner_id`       | `String` | Foreign Key | No     | Yes      |
-| `domain_name_id` | `String` | Foreign Key | Yes    | Yes      |
+| Field          | Type     | Role        | Unique | Required |
+|----------------|----------|-------------|--------|----------|
+| `did`          | `String` | Primary Key | Yes    | Yes      |
+| `owner_id`     | `String` | Foreign Key | No     | Yes      |
+| `host_name_id` | `String` | Foreign Key | Yes    | Yes      |
 | `storage_id`     | `String` | Foreign Key | No     | Yes      |
 
 # FAQ
