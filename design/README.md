@@ -90,11 +90,15 @@ sequenceDiagram
 
     Note over AccountDID, UserRootDID: Account Creation
     UserRootDID ->>+ JanServerDID: newAccount(RootDID)
-        JanServerDID ->>+ AccountDID: spawn!(owners: [ServerRootDID])
-        AccountDID ->> ServerRootDID: UcanDelegate (parenthood)
+        JanServerDID ->>+ AccountDID: spawn_with_parent!(ServerRootDID)
+        AccountDID ->> ServerRootDID: UcanDelegate [Note: because parenthood]
         AccountDID -->> AccountDID: dropPrivateKey!
-        ServerRootDID -->> JanServerDID: (recall that this UCAN delegation exists)
-        JanServerDID ->> UserRootDID: UcanDelegate
+        ServerRootDID -->> JanServerDID: [recall that this UCAN delegation exists]
+    JanServerDID ->>- UserRootDID: UcanDelegate
+
+    Note over AccountDID, UserRootDID: Later Access
+    UserRootDID ->>+ AccountDID: Invoke!
+    AccountDID ->>- UserRootDID: Ok, done
 ```
 
 # Entities
