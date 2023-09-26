@@ -83,23 +83,32 @@ sequenceDiagram
     participant AccountDID
     participant ServerRootDID
     participant JanServerDID
+    participant FebServerDID
     actor UserRootDID
 
     Note over AccountDID, UserRootDID: Earlier Server Setup
     ServerRootDID ->> JanServerDID: UcanDelegate(any)
+    ServerRootDID ->> FebServerDID: UcanDelegate(any)
 
     Note over AccountDID, UserRootDID: Account Creation
     UserRootDID ->>+ JanServerDID: newAccount(RootDID)
         JanServerDID ->>+ AccountDID: spawn_with_parent!(ServerRootDID)
-        AccountDID ->> ServerRootDID: UcanDelegate [Note: because parenthood]
+        AccountDID ->> ServerRootDID: UcanDelegate(Account) [Note: because parenthood]
         AccountDID -->> AccountDID: dropPrivateKey!
         ServerRootDID -->> JanServerDID: [recall that this UCAN delegation exists]
-    JanServerDID ->>- UserRootDID: UcanDelegate
+    JanServerDID ->>- UserRootDID: UcanDelegate(Account)
 
     Note over AccountDID, UserRootDID: Later Access
     UserRootDID ->>+ AccountDID: Invoke!
     AccountDID ->>- UserRootDID: Ok, done
+
+    Note over AccountDID, UserRootDID: JanServerDID goes Byzantine
+    ServerRootDID -x JanServerDID: Revoke!
+    ServerRootDID -->> FebServerDID: [recall that this UCAN delegation exists]
+    FebServerDID ->> UserRootDID: UcanDelegate(Account) [Reissue]
 ```
+
+Note that in the revocation case, `RootServerDID` revokes all previous delegations affected by the Byzantine DID. This means that they "should" be re-issued, but the blast radius is contained. If more granularity is desired, the predelegation tree of server agents can be made deeper.
 
 # Entities
 
