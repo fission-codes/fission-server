@@ -219,6 +219,8 @@ A Sub Account has the following fields:
 
 # Capabilities
 
+_Dynamic capabilities are not available at time of writing._
+
 To facilitate UCAN delegation when users are offline, the Fission server adapts some patterns from object capabilities. As new resources are delegated to an account's DID, the relevant UCAN is captured in a cache and indexed. This provides the ability to attach arbitrary capabilities to an account.
 
 In object oriented terms, this means that the account learns about new messages that it can call. From the perspective of the delegated root user, it means that new APIs (or RPC actions) are possibly available dynamically. The capabilities may or _may not_ be exposed to the delegated user ("account owner"), since these may be abstracted away by a server-managed resource ("object"). When delegatable, an endpoint should be available for the delegated user to download from the cache. Clearing this cache is not required except for after expiration or revocation.
@@ -235,7 +237,7 @@ The UCAN that contains the capability is kept in binary storage (i.e. an object 
 | `caveat`      | `String`   |             | No     | No       |
 | `nbf`         | `DateTime` |             | No     | Yes      |
 | `exp`         | `DateTime` |             | No     | Yes      |
-
+  * [ ] 
 ## Revocation
 
 Revocation tracking is very useful. A simple revocation store can be modeled as follows:
