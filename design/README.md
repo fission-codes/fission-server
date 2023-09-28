@@ -237,7 +237,7 @@ The UCAN that contains the capability is kept in binary storage (i.e. an object 
 | `caveat`      | `String`   |             | No     | No       |
 | `nbf`         | `DateTime` |             | No     | Yes      |
 | `exp`         | `DateTime` |             | No     | Yes      |
-  * [ ] 
+  
 ## Revocation
 
 Revocation tracking is very useful. A simple revocation store can be modeled as follows:
