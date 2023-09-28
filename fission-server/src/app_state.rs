@@ -1,14 +1,12 @@
 //! The Axum Application State
 
-use anyhow::Result;
-use async_trait::async_trait;
+use anyhow::{anyhow, Result};
 use axum::extract::ws;
 use dashmap::DashMap;
-use dyn_clone::DynClone;
 use futures::channel::mpsc::Sender;
-use std::{fmt, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
-use crate::db::Pool;
+use crate::{db::Pool, traits::ServerSetup};
 
 /// A channel for transmitting messages to a websocket peer
 pub type WsPeer = Sender<ws::Message>;
@@ -18,41 +16,55 @@ pub type WsPeerMap = Arc<DashMap<String, DashMap<SocketAddr, WsPeer>>>;
 
 #[derive(Clone)]
 /// Global application route state.
-pub struct AppState {
+pub struct AppState<S: ServerSetup> {
     /// The database pool
     pub db_pool: Pool,
     /// The ipfs peers to be rendered in the ipfs/peers endpoint
     pub ipfs_peers: Vec<String>,
+    /// Connection to what stores the IPFS blocks
+    pub ipfs_db: S::IpfsDatabase,
     /// The service that sends account verification codes
-    pub verification_code_sender: Box<dyn VerificationCodeSender>,
+    pub verification_code_sender: S::VerificationCodeSender,
     /// The currently connected websocket peers
     pub ws_peer_map: WsPeerMap,
 }
 
-#[derive(Default)]
 /// Builder for [`AppState`]
-pub struct AppStateBuilder {
+pub struct AppStateBuilder<S: ServerSetup> {
     db_pool: Option<Pool>,
     ipfs_peers: Vec<String>,
-    verification_code_sender: Option<Box<dyn VerificationCodeSender>>,
+    ipfs_db: Option<S::IpfsDatabase>,
+    verification_code_sender: Option<S::VerificationCodeSender>,
 }
 
-impl AppStateBuilder {
+impl<S: ServerSetup> Default for AppStateBuilder<S> {
+    fn default() -> Self {
+        Self {
+            db_pool: None,
+            ipfs_peers: Default::default(),
+            ipfs_db: None,
+            verification_code_sender: None,
+        }
+    }
+}
+
+impl<S: ServerSetup> AppStateBuilder<S> {
     /// Finalize the builder and return the [`AppState`]
-    pub fn finalize(self) -> Result<AppState> {
-        let db_pool = self
-            .db_pool
-            .ok_or_else(|| anyhow::anyhow!("db_pool is required"))?;
+    pub fn finalize(self) -> Result<AppState<S>> {
+        let db_pool = self.db_pool.ok_or_else(|| anyhow!("db_pool is required"))?;
 
         let ipfs_peers = self.ipfs_peers;
 
+        let ipfs_db = self.ipfs_db.ok_or_else(|| anyhow!("ipfs_db is required"))?;
+
         let verification_code_sender = self
             .verification_code_sender
-            .ok_or_else(|| anyhow::anyhow!("verification_code_sender is required"))?;
+            .ok_or_else(|| anyhow!("verification_code_sender is required"))?;
 
         Ok(AppState {
             db_pool,
             ipfs_peers,
+            ipfs_db,
             verification_code_sender,
             ws_peer_map: Default::default(),
         })
@@ -70,44 +82,51 @@ impl AppStateBuilder {
         self
     }
 
+    /// Set the ipfs database
+    pub fn with_ipfs_db(mut self, ipfs_db: S::IpfsDatabase) -> Self {
+        self.ipfs_db = Some(ipfs_db);
+        self
+    }
+
     /// Set the service that sends account verification codes
-    pub fn with_verification_code_sender<T>(mut self, verification_code_sender: T) -> Self
-    where
-        T: VerificationCodeSender + 'static,
-    {
-        self.verification_code_sender = Some(Box::new(verification_code_sender));
+    pub fn with_verification_code_sender(
+        mut self,
+        verification_code_sender: S::VerificationCodeSender,
+    ) -> Self {
+        self.verification_code_sender = Some(verification_code_sender);
         self
     }
 }
 
-/// The service that sends account verification codes
-#[async_trait]
-pub trait VerificationCodeSender: DynClone + Send + Sync {
-    /// Send the code associated with the email
-    async fn send_code(&self, email: &str, code: &str) -> Result<()>;
-}
-
-dyn_clone::clone_trait_object!(VerificationCodeSender);
-
-#[async_trait]
-impl VerificationCodeSender for Box<dyn VerificationCodeSender> {
-    async fn send_code(&self, email: &str, code: &str) -> Result<()> {
-        self.as_ref().send_code(email, code).await
-    }
-}
-
-impl fmt::Debug for AppState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<S> std::fmt::Debug for AppState<S>
+where
+    S: ServerSetup,
+    S::IpfsDatabase: std::fmt::Debug,
+    S::VerificationCodeSender: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppState")
             .field("db_pool", &self.db_pool)
+            .field("ipfs_peers", &self.ipfs_peers)
+            .field("ipfs_db", &self.ipfs_db)
+            .field("ws_peer_map", &self.ws_peer_map)
+            .field("verification_code_sender", &self.verification_code_sender)
             .finish()
     }
 }
 
-impl fmt::Debug for AppStateBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<S> std::fmt::Debug for AppStateBuilder<S>
+where
+    S: ServerSetup,
+    S::IpfsDatabase: std::fmt::Debug,
+    S::VerificationCodeSender: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppStateBuilder")
             .field("db_pool", &self.db_pool)
+            .field("ipfs_peers", &self.ipfs_peers)
+            .field("ipfs_db", &self.ipfs_db)
+            .field("verification_code_sender", &self.verification_code_sender)
             .finish()
     }
 }

@@ -4,6 +4,7 @@ use crate::{
     app_state::AppState,
     db::{self, MIGRATIONS},
     error::AppResult,
+    traits::ServerSetup,
 };
 use axum::{self, extract::State, http::StatusCode};
 use diesel::{
@@ -48,8 +49,8 @@ impl HealthcheckResponse {
         (status = 503, description = "fission-server not healthy", body=HealthcheckResponse)
     )
 )]
-pub async fn healthcheck(
-    State(state): State<AppState>,
+pub async fn healthcheck<S: ServerSetup>(
+    State(state): State<AppState<S>>,
 ) -> AppResult<(StatusCode, axum::Json<serde_json::Value>)> {
     let (database_connected, database_up_to_date) =
         if let Ok(mut conn) = db::connect(&state.db_pool).await {

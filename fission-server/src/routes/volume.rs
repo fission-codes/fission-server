@@ -6,6 +6,7 @@ use crate::{
     db::{self},
     error::{AppError, AppResult},
     models::{account::Account, volume::NewVolumeRecord},
+    traits::ServerSetup,
 };
 use axum::extract::{Json, Path, State};
 use http::StatusCode;
@@ -24,8 +25,8 @@ use http::StatusCode;
 )]
 
 /// GET handler to retrieve account volume CID
-pub async fn get_cid(
-    State(state): State<AppState>,
+pub async fn get_cid<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<NewVolumeRecord>)> {
     let mut conn = db::connect(&state.db_pool).await?;
@@ -56,8 +57,8 @@ pub async fn get_cid(
 )]
 
 /// Handler to create a new volume for an account
-pub async fn create_volume(
-    State(state): State<AppState>,
+pub async fn create_volume<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,
@@ -69,7 +70,9 @@ pub async fn create_volume(
         .has_capability("ucan:*", "ucan/*", &account.did)
         .await?;
     if allowed {
-        let volume = account.set_volume_cid(&mut conn, &payload.cid).await?;
+        let volume = account
+            .set_volume_cid(&mut conn, &payload.cid, &state.ipfs_db)
+            .await?;
         Ok((StatusCode::CREATED, Json(volume)))
     } else {
         Err(AppError::new(
@@ -93,8 +96,8 @@ pub async fn create_volume(
 )]
 
 /// Handler to update the CID associated with an account's volume
-pub async fn update_cid(
-    State(state): State<AppState>,
+pub async fn update_cid<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Path(username): Path<String>,
     Json(payload): Json<NewVolumeRecord>,
@@ -118,9 +121,13 @@ pub async fn update_cid(
     if let Ok(allowed) = allowed {
         if allowed {
             let volume: NewVolumeRecord = if account.volume_id.is_some() {
-                account.update_volume_cid(&mut conn, &payload.cid).await?
+                account
+                    .update_volume_cid(&mut conn, &payload.cid, &state.ipfs_db)
+                    .await?
             } else {
-                account.set_volume_cid(&mut conn, &payload.cid).await?
+                account
+                    .set_volume_cid(&mut conn, &payload.cid, &state.ipfs_db)
+                    .await?
             };
 
             Ok((StatusCode::OK, Json(volume)))
@@ -142,7 +149,6 @@ pub async fn update_cid(
 mod tests {
     use anyhow::Result;
     use http::{Method, StatusCode};
-    use ipfs_api_backend_hyper::IpfsApi;
     use serde_json::json;
     use stringreader::StringReader;
     use tracing_test::traced_test;
@@ -183,16 +189,12 @@ mod tests {
             .await?;
 
         let hw_string = StringReader::new("Hello World!");
-        let ipfs_result = ipfs_api::IpfsClient::default().add(hw_string).await;
-
-        if ipfs_result.is_err() {
-            return Err(anyhow::anyhow!("Error communicating with IPFS node"));
-        }
+        let hw_cid = ctx.ipfs_db().add(hw_string)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account/tuttle/volume")
             .with_ucan(ucan)
             .with_ucan_proof(root_account.ucan)
-            .with_json_body(json!({ "cid": ipfs_result.unwrap().name }))?
+            .with_json_body(json!({ "cid": hw_cid.to_string() }))?
             .into_raw_response()
             .await?;
 
@@ -242,6 +244,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_update_volume_ok() -> Result<()> {
         let ctx = TestContext::new().await;
 
@@ -262,15 +265,11 @@ mod tests {
         .await?;
 
         let hw_string = StringReader::new("Hello World!");
-        let ipfs_result = ipfs_api::IpfsClient::default().add(hw_string).await;
-
-        if ipfs_result.is_err() {
-            return Err(anyhow::anyhow!("Error communicating with IPFS node"));
-        }
+        let hw_cid = ctx.ipfs_db().add(hw_string)?;
 
         root_account
             .account
-            .set_volume_cid(&mut conn, &ipfs_result.unwrap().name)
+            .set_volume_cid(&mut conn, &hw_cid.to_string(), ctx.ipfs_db())
             .await?;
 
         let (ucan, _) = UcanBuilder::default()
@@ -378,7 +377,11 @@ mod tests {
 
         root_account
             .account
-            .set_volume_cid(&mut conn, "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy")
+            .set_volume_cid(
+                &mut conn,
+                "Qmf1rtki74jvYmGeqaaV51hzeiaa6DyWc98fzDiuPatzyy",
+                ctx.ipfs_db(),
+            )
             .await?;
 
         let (status, _) =

@@ -8,13 +8,16 @@ use axum::{
 };
 use futures::{channel::mpsc, future, pin_mut, StreamExt, TryStreamExt};
 
-use crate::app_state::{AppState, WsPeerMap};
+use crate::{
+    app_state::{AppState, WsPeerMap},
+    traits::ServerSetup,
+};
 
 /// Websocket handler
-pub async fn handler(
+pub async fn handler<S: ServerSetup>(
     ws: WebSocketUpgrade,
     Path(did): Path<String>,
-    State(state): State<AppState>,
+    State(state): State<AppState<S>>,
     ConnectInfo(src_addr): ConnectInfo<SocketAddr>,
 ) -> Response {
     ws.on_upgrade(move |socket| handle_socket(did, socket, state.ws_peer_map, src_addr))

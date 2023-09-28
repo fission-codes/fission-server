@@ -8,10 +8,12 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::{app_state::AppState, error::AppResult};
+use crate::{app_state::AppState, error::AppResult, traits::ServerSetup};
 
 /// Render a list of IPFS node addresses
-pub async fn peers(State(state): State<AppState>) -> AppResult<(StatusCode, Response)> {
+pub async fn peers<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+) -> AppResult<(StatusCode, Response)> {
     let json = json!(state.ipfs_peers);
     Ok((StatusCode::OK, Json(json).into_response()))
 }

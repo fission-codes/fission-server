@@ -7,6 +7,7 @@ use crate::{
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
     settings::Settings,
+    traits::ServerSetup,
 };
 use axum::{
     self,
@@ -49,8 +50,8 @@ impl VerificationCodeResponse {
 )]
 
 /// POST handler for requesting a new token by email
-pub async fn request_token(
-    State(state): State<AppState>,
+pub async fn request_token<S: ServerSetup>(
+    State(state): State<AppState<S>>,
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
@@ -116,23 +117,16 @@ mod tests {
     use anyhow::Result;
     use http::{Method, StatusCode};
     use serde_json::json;
-    use tokio::sync::broadcast;
 
     use crate::{
         error::{AppError, ErrorResponse},
         routes::auth::VerificationCodeResponse,
-        test_utils::{
-            test_context::TestContext, BroadcastVerificationCodeSender, RouteBuilder, UcanBuilder,
-        },
+        test_utils::{test_context::TestContext, RouteBuilder, UcanBuilder},
     };
 
     #[tokio::test]
     async fn test_request_code_ok() -> Result<()> {
-        let (tx, mut rx) = broadcast::channel(1);
-        let ctx = TestContext::new_with_state(|builder| {
-            builder.with_verification_code_sender(BroadcastVerificationCodeSender(tx))
-        })
-        .await;
+        let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";
         let (ucan, _) = UcanBuilder::default().finalize().await?;
@@ -143,7 +137,12 @@ mod tests {
             .into_json_response::<VerificationCodeResponse>()
             .await?;
 
-        let (email, _) = rx.recv().await?;
+        let (email, _) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email sent");
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(email, "oedipa@trystero.com");

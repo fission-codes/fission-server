@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 use async_trait::async_trait;
 use axum::Router;
@@ -11,7 +13,6 @@ use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
 use mime::{Mime, APPLICATION_JSON};
 use serde::{de::DeserializeOwned, Serialize};
-use tokio::sync::broadcast;
 use tower::ServiceExt;
 use ucan::{
     capability::{Capability, CapabilitySemantics},
@@ -19,9 +20,10 @@ use ucan::{
 };
 use ucan_key_support::ed25519::Ed25519KeyMaterial;
 
-use crate::app_state::VerificationCodeSender;
+use crate::traits::VerificationCodeSender;
 
 pub(crate) mod test_context;
+pub(crate) mod test_ipfs_database;
 
 pub(crate) trait Fact: Serialize + DeserializeOwned {}
 
@@ -221,23 +223,23 @@ impl RouteBuilder {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct MockVerificationCodeSender;
+pub(crate) struct TestVerificationCodeSender {
+    emails: Arc<Mutex<Vec<(String, String)>>>,
+}
 
-#[async_trait]
-impl VerificationCodeSender for MockVerificationCodeSender {
-    async fn send_code(&self, _email: &str, _code: &str) -> Result<()> {
-        Ok(())
+impl TestVerificationCodeSender {
+    pub(crate) fn get_emails(&self) -> Vec<(String, String)> {
+        self.emails.lock().unwrap().clone()
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct BroadcastVerificationCodeSender(pub(crate) broadcast::Sender<(String, String)>);
-
 #[async_trait]
-impl VerificationCodeSender for BroadcastVerificationCodeSender {
+impl VerificationCodeSender for TestVerificationCodeSender {
     async fn send_code(&self, email: &str, code: &str) -> Result<()> {
-        self.0.send((email.to_string(), code.to_string()))?;
-
+        self.emails
+            .lock()
+            .unwrap()
+            .push((email.to_string(), code.to_string()));
         Ok(())
     }
 }

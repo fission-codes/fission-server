@@ -14,9 +14,9 @@ use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
 use crate::{
-    app_state::VerificationCodeSender,
     db::{schema::email_verifications, Conn},
     settings,
+    traits::VerificationCodeSender,
 };
 
 #[derive(Debug, Clone)]

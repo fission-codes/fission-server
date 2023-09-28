@@ -112,8 +112,11 @@ validator = { version = "0.16.0", features = ["derive"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0"
+blake3 = "1.4.1"
 rsa = { version = "0.9" }
 stringreader = "0.1.1"
+test-log = { workspace = true }
+testresult = { workspace = true }
 tokio-test = "0.4"
 uuid = "1.4.1"
 wiremock = "0.5"

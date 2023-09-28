@@ -10,14 +10,25 @@ use crate::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Conn, MIGRATIONS},
     router::setup_app_router,
-    test_utils::MockVerificationCodeSender,
+    test_utils::TestVerificationCodeSender,
+    traits::ServerSetup,
 };
+
+use super::test_ipfs_database::TestIpfsDatabase;
 
 pub(crate) struct TestContext {
     app: Router,
-    app_state: AppState,
+    app_state: AppState<TestSetup>,
     base_url: String,
     db_name: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TestSetup;
+
+impl ServerSetup for TestSetup {
+    type IpfsDatabase = TestIpfsDatabase;
+    type VerificationCodeSender = TestVerificationCodeSender;
 }
 
 impl TestContext {
@@ -27,7 +38,7 @@ impl TestContext {
 
     pub(crate) async fn new_with_state<F>(f: F) -> Self
     where
-        F: FnOnce(AppStateBuilder) -> AppStateBuilder,
+        F: FnOnce(AppStateBuilder<TestSetup>) -> AppStateBuilder<TestSetup>,
     {
         let base_url = "postgres://postgres:postgres@localhost:5432";
         let db_name = format!("fission_server_test_{}", Uuid::new_v4().simple());
@@ -54,7 +65,8 @@ impl TestContext {
 
         let builder = AppStateBuilder::default()
             .with_db_pool(db_pool)
-            .with_verification_code_sender(MockVerificationCodeSender);
+            .with_ipfs_db(TestIpfsDatabase::default())
+            .with_verification_code_sender(TestVerificationCodeSender::default());
 
         let app_state = f(builder).finalize().unwrap();
 
@@ -76,6 +88,14 @@ impl TestContext {
 
     pub(crate) async fn get_db_conn(&self) -> Conn<'_> {
         self.app_state.db_pool.get().await.unwrap()
+    }
+
+    pub(crate) fn ipfs_db(&self) -> &TestIpfsDatabase {
+        &self.app_state.ipfs_db
+    }
+
+    pub(crate) fn verification_code_sender(&self) -> &TestVerificationCodeSender {
+        &self.app_state.verification_code_sender
     }
 }
 
