@@ -1,13 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axum::Router;
 use bytes::Bytes;
-use cid::Cid;
 use fission_core::{
     authority::key_material::generate_ed25519_material,
-    capabilities::delegation::{Ability, Resource, SEMANTICS},
+    capabilities::delegation::{FissionAbility, FissionResource, FissionSemantics},
 };
 use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
@@ -15,7 +14,7 @@ use mime::{Mime, APPLICATION_JSON};
 use serde::{de::DeserializeOwned, Serialize};
 use tower::ServiceExt;
 use ucan::{
-    capability::{Capability, CapabilitySemantics},
+    capability::{CapabilitySemantics, CapabilityView},
     Ucan,
 };
 use ucan_key_support::ed25519::Ed25519KeyMaterial;
@@ -33,9 +32,9 @@ impl<T> Fact for T where T: Serialize + DeserializeOwned {}
 pub(crate) struct UcanBuilder {
     issuer: Option<Ed25519KeyMaterial>,
     audience: Option<String>,
-    facts: Vec<serde_json::Value>,
+    facts: Vec<(String, serde_json::Value)>,
     proof: Option<ucan::Ucan>,
-    capability: Option<Capability<Resource, Ability>>,
+    capability: Option<CapabilityView<FissionResource, FissionAbility>>,
 }
 
 impl UcanBuilder {
@@ -60,11 +59,11 @@ impl UcanBuilder {
             .with_lifetime(300);
 
         if let Some(proof) = self.proof {
-            builder = builder.witnessed_by(&proof);
+            builder = builder.witnessed_by(&proof, None);
         }
 
-        for fact in self.facts {
-            builder = builder.with_fact(fact);
+        for (name, fact) in self.facts {
+            builder = builder.with_fact(&name, fact);
         }
 
         if let Some(capability) = self.capability {
@@ -86,11 +85,12 @@ impl UcanBuilder {
         self
     }
 
-    pub(crate) fn with_fact<T>(mut self, fact: T) -> Result<Self>
+    pub(crate) fn with_fact<T>(mut self, fact_name: &str, fact: T) -> Result<Self>
     where
         T: DeserializeOwned + Serialize,
     {
-        self.facts.push(serde_json::to_value(fact)?);
+        self.facts
+            .push((fact_name.to_string(), serde_json::to_value(fact)?));
 
         Ok(self)
     }
@@ -101,7 +101,7 @@ impl UcanBuilder {
     }
 
     pub(crate) fn with_capability(mut self, with: &str, can: &str) -> Self {
-        self.capability = Some(SEMANTICS.parse(with, can).unwrap());
+        self.capability = Some(FissionSemantics.parse(with, can, None).unwrap());
         self
     }
 }
@@ -178,9 +178,13 @@ impl RouteBuilder {
         let response = self.app.oneshot(request).await?;
         let status = response.status();
         let body = hyper::body::to_bytes(response.into_body()).await?;
-        let body = serde_json::from_slice::<T>(&body)?;
-
-        Ok((status, body))
+        match serde_json::from_slice::<T>(&body) {
+            Ok(body) => Ok((status, body)),
+            Err(e) => Err(anyhow!(
+                "Couldn't parse {}: {e}",
+                String::from_utf8_lossy(&body)
+            )),
+        }
     }
 
     fn build_request(&mut self) -> Result<Request<Body>> {
@@ -204,7 +208,7 @@ impl RouteBuilder {
 
         let builder = if let Some(proof) = self.ucan_proof.take() {
             let encoded_ucan = proof.encode()?;
-            let cid = Cid::try_from(proof)?;
+            let cid = proof.to_cid(cid::multihash::Code::Sha2_256)?;
             builder.header("ucan", format!("{} {}", cid, encoded_ucan))
         } else {
             builder

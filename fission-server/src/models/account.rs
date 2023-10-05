@@ -7,8 +7,8 @@ use did_key::{generate, Ed25519KeyPair};
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use fission_core::capabilities::delegation::FissionSemantics;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::json;
 use ucan::{builder::UcanBuilder, capability::CapabilitySemantics};
 use utoipa::ToSchema;
 
@@ -283,9 +283,7 @@ impl RootAccount {
     ) -> Result<ucan::Ucan, anyhow::Error> {
         let ephemeral_key = Self::generate_ephemeral_keypair();
 
-        let capability = fission_core::capabilities::delegation::SEMANTICS
-            .parse("ucan:*", "ucan/*")
-            .unwrap();
+        let capability = FissionSemantics.parse("ucan:*", "*", None).unwrap();
 
         UcanBuilder::default()
             .issued_by(&ephemeral_key)
@@ -293,7 +291,7 @@ impl RootAccount {
             // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
             .with_lifetime(60 * 60 * 24 * 365)
             .claiming_capability(&capability)
-            .with_fact(json!({ "username": username }))
+            .with_fact("username", username.to_string())
             .build()?
             .sign()
             .await

@@ -133,28 +133,21 @@ async fn find_validation_token(
     let code = authority
         .ucan
         .facts()
-        .iter()
-        .filter_map(|f| f.as_object())
-        .find_map(|f| {
-            f.get("code")
-                .and_then(|c| c.as_str())
-                .and_then(|c| c.parse::<u64>().ok())
-        });
+        .as_ref()
+        .and_then(|facts| facts.get("code"))
+        .and_then(|c| c.as_str())
+        .and_then(|c| c.parse::<u64>().ok())
+        .ok_or_else(|| anyhow!("Missing or malformed validation token"))?;
 
-    match code {
-        None => Err(anyhow!("Missing validation token")),
-        Some(code) => {
-            let did = authority.ucan.issuer().to_string();
+    let did = authority.ucan.issuer().to_string();
 
-            let mut conn = db::connect(db_pool).await?;
-            // FIXME do something with the verification token here.
-            //   - mark it as used
-            //   - also above, check expiry
-            //   - also above, check that it's not already used
+    let mut conn = db::connect(db_pool).await?;
+    // FIXME do something with the verification token here.
+    //   - mark it as used
+    //   - also above, check expiry
+    //   - also above, check that it's not already used
 
-            EmailVerification::find_token(&mut conn, email, &did, code).await
-        }
-    }
+    EmailVerification::find_token(&mut conn, email, &did, code).await
 }
 
 #[cfg(test)]
@@ -199,7 +192,7 @@ mod tests {
 
         let (ucan, issuer) = UcanBuilder::default()
             .with_issuer(issuer)
-            .with_fact(json!({ "code": code }))?
+            .with_fact("code", code)?
             .finalize()
             .await?;
 
@@ -225,7 +218,7 @@ mod tests {
         let email = "oedipa@trystero.com";
 
         let (ucan, _) = UcanBuilder::default()
-            .with_fact(json!({ "code": "wrong code" }))?
+            .with_fact("code", json!("wrong code"))?
             .finalize()
             .await?;
 
@@ -273,7 +266,7 @@ mod tests {
             .expect("No email sent");
 
         let (ucan, _) = UcanBuilder::default()
-            .with_fact(json!({ "code": code }))?
+            .with_fact("code", code)?
             .finalize()
             .await?;
 
@@ -387,7 +380,7 @@ mod tests {
 
         let (ucan, issuer) = UcanBuilder::default()
             .with_issuer(issuer)
-            .with_fact(json!({ "code": code }))?
+            .with_fact("code", code)?
             .finalize()
             .await?;
 
@@ -429,7 +422,7 @@ mod tests {
             .await?;
 
         let (ucan, _) = UcanBuilder::default()
-            .with_fact(json!({ "code": "wrong code" }))?
+            .with_fact("code", json!("wrong code"))?
             .finalize()
             .await?;
 

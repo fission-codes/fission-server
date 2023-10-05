@@ -48,8 +48,6 @@ impl VerificationCodeResponse {
         (status = 510, description = "Not extended")
     )
 )]
-
-/// POST handler for requesting a new token by email
 pub async fn request_token<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,

@@ -43,6 +43,7 @@ pub async fn get_cid<S: ServerSetup>(
     }
 }
 
+/// Handler to create a new volume for an account
 #[utoipa::path(
     post,
     path = "/api/account/{username}/volume",
@@ -55,8 +56,6 @@ pub async fn get_cid<S: ServerSetup>(
         (status = 401, description = "Unauthorized"),
     )
 )]
-
-/// Handler to create a new volume for an account
 pub async fn create_volume<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
@@ -67,7 +66,7 @@ pub async fn create_volume<S: ServerSetup>(
     let account = Account::find_by_username(&mut conn, username).await?;
 
     let allowed = authority
-        .has_capability("ucan:*", "ucan/*", &account.did)
+        .has_capability("volume:/", "volume/update", &account.did)
         .await?;
     if allowed {
         let volume = account
@@ -106,7 +105,7 @@ pub async fn update_cid<S: ServerSetup>(
     let account = Account::find_by_username(&mut conn, username).await?;
 
     let allowed = authority
-        .has_capability("ucan:*", "ucan/*", &account.did)
+        .has_capability("volume:/", "*", &account.did)
         .await;
 
     // FIXME: this is a hack to get around the fact that rs-ucan
@@ -184,7 +183,7 @@ mod tests {
         let (ucan, _) = UcanBuilder::default()
             .with_issuer(agent_keypair)
             .with_proof(root_account.ucan.clone())
-            .with_capability("ucan:*", "ucan/*")
+            .with_capability("volume:/", "volume/update")
             .finalize()
             .await?;
 
@@ -275,7 +274,7 @@ mod tests {
         let (ucan, _) = UcanBuilder::default()
             .with_issuer(issuer)
             .with_proof(root_account.ucan.clone())
-            .with_capability("ucan:*", "ucan/*")
+            .with_capability("volume:/", "volume/update")
             .finalize()
             .await?;
 

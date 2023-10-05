@@ -1,7 +1,7 @@
 //! Delegation capabilities
 
 use anyhow::{anyhow, Result};
-use ucan::capability::{Action, CapabilitySemantics, Scope};
+use ucan::capability::{Ability, CapabilitySemantics, Scope};
 use url::Url;
 
 //////////////
@@ -9,58 +9,33 @@ use url::Url;
 //////////////
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-/// Delegation resource
-pub enum Resource {
-    /// All possible provable UCANs
-    AllProvableUCANs,
-
-    /// All in this UCAN's proofs
-    AllProofs,
+/// Fission resources
+pub enum FissionResource {
+    /// The volume associated with this account
+    Volume,
 }
 
-impl Scope for Resource {
-    fn contains(&self, other: &Self) -> bool {
-        match self {
-            Resource::AllProvableUCANs => match other {
-                Resource::AllProvableUCANs => true,
-                Resource::AllProofs => true,
-            },
-
-            Resource::AllProofs => match other {
-                Resource::AllProvableUCANs => false,
-                Resource::AllProofs => true,
-            },
-        }
+impl Scope for FissionResource {
+    fn contains(&self, _other: &Self) -> bool {
+        true
     }
 }
 
-impl ToString for Resource {
+impl ToString for FissionResource {
     fn to_string(&self) -> String {
         match self {
-            Resource::AllProvableUCANs => "ucan:*",
-            Resource::AllProofs => "ucan:./*",
+            Self::Volume => "volume:/".to_string(),
         }
-        .into()
     }
 }
 
-impl TryFrom<Url> for Resource {
+impl TryFrom<Url> for FissionResource {
     type Error = anyhow::Error;
 
-    fn try_from(value: Url) -> Result<Self> {
-        match value.scheme() {
-            "ucan" => match value.path() {
-                "*" => Ok(Resource::AllProvableUCANs),
-                "./*" => Ok(Resource::AllProofs),
-                _ => Err(anyhow!(
-                    "Could not interpret URI as a delegation resource: {:?}",
-                    value
-                )),
-            },
-            _ => Err(anyhow!(
-                "Could not interpret URI as a delegation resource: {:?}",
-                value
-            )),
+    fn try_from(resource: Url) -> Result<Self> {
+        match resource.scheme() {
+            "volume" => Ok(Self::Volume),
+            _ => Err(anyhow!("Unrecognized resource: {resource}")),
         }
     }
 }
@@ -71,30 +46,36 @@ impl TryFrom<Url> for Resource {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 /// Delegation ability
-pub enum Ability {
-    /// Target all the capabilities
-    AllCapabilities,
+pub enum FissionAbility {
+    /// Delegate any & all abilities
+    Any,
+    /// Ability to update a volume
+    VolumeUpdate,
 }
 
-impl Action for Ability {}
+impl Ability for FissionAbility {}
 
-impl ToString for Ability {
+impl ToString for FissionAbility {
     fn to_string(&self) -> String {
         match self {
-            Ability::AllCapabilities => "ucan/*",
+            FissionAbility::Any => "*",
+            FissionAbility::VolumeUpdate => "volume/update",
         }
-        .into()
+        .to_string()
     }
 }
 
-impl TryFrom<String> for Ability {
+impl TryFrom<String> for FissionAbility {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self> {
-        Ok(match value.as_str() {
-            "ucan/*" => Ability::AllCapabilities,
-            _ => return Err(anyhow!("Unrecognized ability: {:?}", value)),
-        })
+        if value == "*" {
+            Ok(FissionAbility::Any)
+        } else if value == "volume/update" {
+            Ok(FissionAbility::VolumeUpdate)
+        } else {
+            Err(anyhow!("Couldn't parse ability \"{value}\""))
+        }
     }
 }
 
@@ -104,9 +85,6 @@ impl TryFrom<String> for Ability {
 
 #[derive(Debug)]
 /// Semantics
-pub struct Semantics {}
+pub struct FissionSemantics;
 
-impl CapabilitySemantics<Resource, Ability> for Semantics {}
-
-/// Semantics constant
-pub const SEMANTICS: Semantics = Semantics {};
+impl CapabilitySemantics<FissionResource, FissionAbility> for FissionSemantics {}
