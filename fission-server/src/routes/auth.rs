@@ -63,16 +63,15 @@ pub async fn request_token<S: ServerSetup>(
 
     */
 
-    let settings = Settings::load();
-    if let Err(error) = settings {
-        log::error!("Failed to load settings: {}", error);
-        return Err(AppError::new(
+    let settings = Settings::load().map_err(|e| {
+        log::error!("Failed to load settings: {e}");
+        AppError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             Some("Internal Server Error."),
-        ));
-    }
+        )
+    })?;
 
-    let server_did = settings.unwrap().server().did.clone();
+    let server_did = settings.server().did.clone();
     let ucan_aud = authority.ucan.audience();
     if ucan_aud != server_did {
         log::debug!(
@@ -114,20 +113,29 @@ pub async fn request_token<S: ServerSetup>(
 mod tests {
     use anyhow::Result;
     use http::{Method, StatusCode};
+    use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
     use serde_json::json;
 
     use crate::{
+        authority::generate_ed25519_issuer,
         error::{AppError, ErrorResponse},
         routes::auth::VerificationCodeResponse,
-        test_utils::{test_context::TestContext, RouteBuilder, UcanBuilder},
+        settings::Settings,
+        test_utils::{test_context::TestContext, RouteBuilder},
     };
 
     #[tokio::test]
     async fn test_request_code_ok() -> Result<()> {
         let ctx = TestContext::new().await;
 
+        let server_did = Settings::load()?.server().did.clone();
+
         let email = "oedipa@trystero.com";
-        let (ucan, _) = UcanBuilder::default().finalize().await?;
+        let (issuer, key) = generate_ed25519_issuer();
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(&issuer)
+            .for_audience(&server_did)
+            .sign(&key)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
             .with_ucan(ucan)
@@ -153,10 +161,11 @@ mod tests {
         let ctx = TestContext::new().await;
         let email = "oedipa@trystero.com";
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<ErrorResponse>()
-            .await?;
+        let (status, body) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<ErrorResponse>()
+                .await?;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
 
@@ -176,10 +185,11 @@ mod tests {
         let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";
-        let (ucan, _) = UcanBuilder::default()
-            .with_audience("did:fission:1234".to_string())
-            .finalize()
-            .await?;
+        let (issuer, key) = generate_ed25519_issuer();
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(&issuer)
+            .for_audience("did:fission:1234")
+            .sign(&key)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
             .with_ucan(ucan)

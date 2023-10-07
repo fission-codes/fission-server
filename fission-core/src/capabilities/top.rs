@@ -9,8 +9,6 @@ pub enum Ability {
     Top,
 }
 
-impl ucan::capability::Ability for Ability {}
-
 impl ToString for Ability {
     fn to_string(&self) -> String {
         match self {

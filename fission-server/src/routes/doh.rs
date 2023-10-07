@@ -73,6 +73,7 @@ mod tests {
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use mime::Mime;
+    use rs_ucan::DefaultFact;
     use serde_json::json;
 
     use crate::{
@@ -86,7 +87,7 @@ mod tests {
     async fn test_dns_json_soa() -> Result<()> {
         let ctx = TestContext::new().await;
 
-        let (status, body) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
             format!("/dns-query?name={}&type={}", "fission.app", "soa"),
@@ -133,7 +134,7 @@ mod tests {
     async fn test_dns_json_gateway() -> Result<()> {
         let ctx = TestContext::new().await;
 
-        let (status, body) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
             format!("/dns-query?name={}&type={}", "gateway.fission.app", "any"),
@@ -194,7 +195,7 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let (status, body) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
             format!(
@@ -246,7 +247,7 @@ mod tests {
         let ctx = TestContext::new().await;
         let username = "donnie";
 
-        let (status, body) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
             format!(
@@ -311,7 +312,7 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let (status, body) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
             format!(
@@ -376,7 +377,7 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let (status, body) = RouteBuilder::new(
+        let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
             format!(

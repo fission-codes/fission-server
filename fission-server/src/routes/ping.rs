@@ -20,6 +20,7 @@ pub async fn get() -> AppResult<StatusCode> {
 mod tests {
     use anyhow::Result;
     use http::{Method, StatusCode};
+    use rs_ucan::DefaultFact;
 
     use crate::test_utils::{test_context::TestContext, RouteBuilder};
 
@@ -27,7 +28,7 @@ mod tests {
     async fn test_ping() -> Result<()> {
         let ctx = TestContext::new().await;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::GET, "/ping")
+        let (status, _) = RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/ping")
             .into_raw_response()
             .await?;
 

@@ -91,6 +91,7 @@ mod tests {
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
+    use rs_ucan::DefaultFact;
 
     use crate::{
         db::__diesel_schema_migrations,
@@ -102,9 +103,10 @@ mod tests {
     async fn test_healthcheck_healthy() -> Result<()> {
         let ctx = TestContext::new().await;
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::GET, "/healthcheck")
-            .into_json_response::<HealthcheckResponse>()
-            .await?;
+        let (status, body) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/healthcheck")
+                .into_json_response::<HealthcheckResponse>()
+                .await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(body.database_connected);
@@ -121,7 +123,7 @@ mod tests {
         // Drop the database
         drop(ctx);
 
-        let (status, body) = RouteBuilder::new(app, Method::GET, "/healthcheck")
+        let (status, body) = RouteBuilder::<DefaultFact>::new(app, Method::GET, "/healthcheck")
             .into_json_response::<HealthcheckResponse>()
             .await?;
 
@@ -143,9 +145,10 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::GET, "/healthcheck")
-            .into_json_response::<HealthcheckResponse>()
-            .await?;
+        let (status, body) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/healthcheck")
+                .into_json_response::<HealthcheckResponse>()
+                .await?;
 
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert!(body.database_connected);

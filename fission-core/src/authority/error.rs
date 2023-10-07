@@ -13,7 +13,7 @@ pub enum Error {
     /// UCAN is expired, revoked, malformed, or otherwise invalid
     InvalidUcan {
         /// Reason why the UCAN is invalid
-        reason: String,
+        reason: anyhow::Error,
     },
 
     /// UCAN is missing

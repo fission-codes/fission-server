@@ -7,5 +7,4 @@ pub mod fallback;
 pub mod health;
 pub mod ipfs;
 pub mod ping;
-pub mod volume;
 pub mod ws;

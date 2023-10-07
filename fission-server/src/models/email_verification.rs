@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use mailgun_rs::{EmailAddress, Mailgun, Message};
+use mailgun_rs::{EmailAddress, Mailgun, MailgunRegion, Message};
 use openssl::sha::Sha256;
 use rand::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::log;
 use utoipa::ToSchema;
@@ -85,10 +85,7 @@ impl VerificationCodeSender for EmailVerificationCodeSender {
             domain: self.domain().to_string(),
         };
 
-        if let Err(e) = client.async_send(&self.sender()).await {
-            log::error!("ERROR: Failed to send the message to the recipient. {}.", e);
-            return Err(e)?;
-        };
+        client.async_send(MailgunRegion::US, &self.sender()).await?;
 
         Ok(())
     }
@@ -156,15 +153,15 @@ impl EmailVerification {
         conn: &mut Conn<'_>,
         email: &str,
         did: &str,
-        code: u64,
+        code: &VerificationCode,
     ) -> Result<Self> {
-        let code_hash = hash_code(email, did, code);
+        let code_hash = hash_code(email, did, code.code);
 
         log::debug!(
             "Looking up email verification request for email: {}, did: {}, code: {}",
             email,
             did,
-            code
+            code.code
         );
 
         let result = email_verifications::dsl::email_verifications
@@ -246,4 +243,11 @@ impl Request {
             .send_code(&self.email, &self.code.to_string())
             .await
     }
+}
+
+/// A struct for the verification code encoding used for email verification in requests/responses & UCAN facts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationCode {
+    /// The verification code
+    pub code: u64,
 }

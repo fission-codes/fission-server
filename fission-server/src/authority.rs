@@ -1,106 +1,118 @@
 //! Authority struct and functions
 
 use anyhow::Result;
-use fission_core::authority::key_material::SUPPORTED_KEYS;
-use fission_core::capabilities::delegation::FissionSemantics;
-use std::time::{SystemTime, UNIX_EPOCH};
-use ucan::chain::ProofChain;
-use ucan::crypto::did::DidParser;
+use did_key::{Ed25519KeyPair, Fingerprint};
+use ed25519_dalek::SigningKey;
+use libipld::{raw::RawCodec, Ipld};
+use rand::thread_rng;
+use rs_ucan::{
+    builder::DEFAULT_MULTIHASH,
+    crypto::eddsa::ed25519_dalek_verifier,
+    did_verifier::{did_key::DidKeyVerifier, DidVerifierMap},
+    semantics::{ability::Ability, resource::Resource},
+    store::{InMemoryStore, Store},
+    ucan::Ucan,
+    DefaultFact,
+};
+use serde::de::DeserializeOwned;
 
-use ucan::store::{MemoryStore, UcanJwtStore};
-
-use ucan::capability::CapabilitySemantics;
-
-///////////
+//-------//
 // TYPES //
-///////////
+//-------//
 
 #[derive(Debug, Clone)]
 /// Represents the authority of an incoming request
-pub struct Authority {
+pub struct Authority<F = DefaultFact> {
     /// https://github.com/ucan-wg/ucan-as-bearer-token#21-entry-point
-    pub ucan: ucan::Ucan,
+    pub ucan: Ucan<F>,
     /// proofs from `ucan` header
-    pub proofs: Vec<ucan::Ucan>,
+    pub proofs: Vec<Ucan>,
 }
 
-/////////////////////
+//-----------------//
 // IMPLEMENTATIONS //
-/////////////////////
+//-----------------//
 
-impl Authority {
+impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validate an authority struct
-    pub async fn validate(&self) -> Result<(), String> {
-        let mut did_parser = DidParser::new(SUPPORTED_KEYS);
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .map(|t| t.as_secs());
+    pub fn validate(&self, did_verifier_map: &DidVerifierMap) -> Result<()> {
+        self.ucan.validate(rs_ucan::time::now(), did_verifier_map)?;
 
-        ucan::Ucan::validate(&self.ucan, current_time, &mut did_parser)
-            .await
-            .map_err(|err| err.to_string())
+        Ok(())
     }
 
     /// Validates whether or not the UCAN and proofs have the capability to
     /// perform the given action, with the given issuer as the root of that
     /// authority.
-    pub async fn has_capability(&self, with: &str, can: &str, issuer_did: &str) -> Result<bool> {
-        let mut did_parser = DidParser::new(SUPPORTED_KEYS);
-        let mut store = MemoryStore::default();
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .map(|t| t.as_secs());
+    pub fn has_capability(
+        &self,
+        resource: impl Resource,
+        ability: impl Ability,
+        issuer: String,
+        did_verifier_map: &DidVerifierMap,
+    ) -> Result<bool> {
+        let current_time = rs_ucan::time::now();
+
+        let mut store = InMemoryStore::<RawCodec>::default();
 
         for proof in &self.proofs {
-            if let Ok(ucan_str) = proof.encode() {
-                tracing::debug!("Adding proof: {}", ucan_str);
-                store.write_token(&ucan_str).await?;
-            }
+            // TODO(matheus23): we assume SHA2-256 atm. The spec says to hash with all CID formats used in proofs >.<
+            store.write(
+                Ipld::Bytes(proof.encode()?.as_bytes().to_vec()),
+                DEFAULT_MULTIHASH,
+            )?;
         }
 
-        let my_ucan = self.ucan.clone();
-        let chain = ProofChain::from_ucan(my_ucan, current_time, &mut did_parser, &store).await?;
+        let caps = self.ucan.capabilities_for(
+            issuer,
+            resource,
+            ability,
+            current_time,
+            did_verifier_map,
+            &store,
+        )?;
 
-        let capability_infos = chain.reduce_capabilities(&FissionSemantics);
-
-        let expected_capability = FissionSemantics.parse(with, can, None).unwrap();
-
-        for info in capability_infos {
-            tracing::debug!("Checking capabilities: {:?} {}", info, issuer_did);
-            if info.originators.contains(issuer_did)
-                && info.capability.enables(&expected_capability)
-            {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
+        // TODO(matheus23): Not yet handling caveats.
+        Ok(!caps.is_empty())
     }
 }
 
-///////////
+pub(crate) fn generate_ed25519_issuer() -> (String, SigningKey) {
+    let key = ed25519_dalek::SigningKey::generate(&mut thread_rng());
+    let did_key_str = format!(
+        "did:key:{}",
+        Ed25519KeyPair::from_public_key(key.verifying_key().as_bytes()).fingerprint()
+    );
+    (did_key_str, key)
+}
+
+pub(crate) fn did_verifier_map() -> DidVerifierMap {
+    let mut did_key_verifier = DidKeyVerifier::default();
+    did_key_verifier.set::<ed25519::Signature, _>(ed25519_dalek_verifier);
+
+    let mut did_verifier_map = DidVerifierMap::default();
+    did_verifier_map.register(did_key_verifier);
+    did_verifier_map
+}
+
+//-------//
 // TESTS //
-///////////
+//-------//
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fission_core::authority::key_material::{generate_ed25519_material, SERVER_DID};
-    use ucan::builder::UcanBuilder;
+
+    use rs_ucan::builder::UcanBuilder;
 
     #[tokio::test]
     async fn validation_test() {
-        let issuer = generate_ed25519_material();
-        let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(SERVER_DID)
+        let (issuer, key) = generate_ed25519_issuer();
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .build()
-            .unwrap()
-            .sign()
-            .await
+            .sign(&key)
             .unwrap();
 
         let authority = Authority {
@@ -108,7 +120,7 @@ mod tests {
             proofs: vec![],
         };
 
-        assert!(authority.validate().await.is_ok());
+        assert!(authority.validate(&did_verifier_map()).is_ok());
     }
 
     #[tokio::test]
