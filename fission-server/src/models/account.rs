@@ -269,11 +269,7 @@ impl RootAccount {
     async fn issue_root_ucan(audience_did: &str) -> Result<Ucan, anyhow::Error> {
         let (issuer, key) = generate_ed25519_issuer();
 
-        let capability = Capability {
-            resource: Box::new(UcanResource::AllProvable),
-            ability: Box::new(TopAbility),
-            caveat: Box::new(EmptyCaveat {}),
-        };
+        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat {});
 
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)

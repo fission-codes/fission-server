@@ -7,8 +7,7 @@ use libipld::{raw::RawCodec, Ipld};
 use rand::thread_rng;
 use rs_ucan::{
     builder::DEFAULT_MULTIHASH,
-    crypto::eddsa::ed25519_dalek_verifier,
-    did_verifier::{did_key::DidKeyVerifier, DidVerifierMap},
+    did_verifier::DidVerifierMap,
     semantics::{ability::Ability, resource::Resource},
     store::{InMemoryStore, Store},
     ucan::Ucan,
@@ -86,15 +85,6 @@ pub(crate) fn generate_ed25519_issuer() -> (String, SigningKey) {
     (did_key_str, key)
 }
 
-pub(crate) fn did_verifier_map() -> DidVerifierMap {
-    let mut did_key_verifier = DidKeyVerifier::default();
-    did_key_verifier.set::<ed25519::Signature, _>(ed25519_dalek_verifier);
-
-    let mut did_verifier_map = DidVerifierMap::default();
-    did_verifier_map.register(did_key_verifier);
-    did_verifier_map
-}
-
 //-------//
 // TESTS //
 //-------//
@@ -120,7 +110,7 @@ mod tests {
             proofs: vec![],
         };
 
-        assert!(authority.validate(&did_verifier_map()).is_ok());
+        assert!(authority.validate(&DidVerifierMap::default()).is_ok());
     }
 
     #[tokio::test]

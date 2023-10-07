@@ -3964,7 +3964,7 @@ dependencies = [
 [[package]]
 name = "rs-ucan"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-ucan/?branch=matheus23/adjustments#9f264cc37a617c5183845ebc57f2a7222ccadd17"
+source = "git+https://github.com/fission-codes/rs-ucan/?branch=quinn-wip-rework#297ba2e9b9bbb4dc3d0bdef39ba394c4de0a4ec9"
 dependencies = [
  "anyhow",
  "async-trait",

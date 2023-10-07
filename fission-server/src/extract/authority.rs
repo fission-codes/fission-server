@@ -14,16 +14,13 @@ use axum::{
 };
 
 use http::{HeaderValue, StatusCode};
-use rs_ucan::ucan::Ucan;
+use rs_ucan::{did_verifier::DidVerifierMap, ucan::Ucan};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
 // 🧬
 
-use crate::{
-    authority::{did_verifier_map, Authority},
-    error::AppError,
-};
+use crate::{authority::Authority, error::AppError};
 use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
@@ -141,7 +138,7 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 
     // Validate the authority
     authority
-        .validate(&did_verifier_map())
+        .validate(&DidVerifierMap::default())
         .map_err(|reason| InvalidUcan { reason })?;
 
     Ok(authority)

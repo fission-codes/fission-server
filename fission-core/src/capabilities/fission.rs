@@ -126,8 +126,7 @@ mod tests {
     use rs_ucan::{
         builder::{UcanBuilder, DEFAULT_MULTIHASH},
         capability::{Capability, DefaultCapabilityParser},
-        crypto::eddsa::ed25519_dalek_verifier,
-        did_verifier::{did_key::DidKeyVerifier, DidVerifierMap},
+        did_verifier::DidVerifierMap,
         plugins::ucan::UcanResource,
         semantics::{ability::TopAbility, caveat::EmptyCaveat},
         store::{InMemoryStore, Store},
@@ -139,11 +138,7 @@ mod tests {
     #[test]
     fn test_resource_can_be_delegated() -> Result<()> {
         let mut store = InMemoryStore::<RawCodec>::default();
-        let mut did_key_verifier = DidKeyVerifier::default();
-        did_key_verifier.set::<ed25519::Signature, _>(ed25519_dalek_verifier);
-
-        let mut did_verifier_map = DidVerifierMap::default();
-        did_verifier_map.register(did_key_verifier);
+        let did_verifier_map = DidVerifierMap::default();
 
         let alice = ed25519_dalek::SigningKey::generate(&mut thread_rng());
         let bob = ed25519_dalek::SigningKey::generate(&mut thread_rng());
@@ -151,11 +146,11 @@ mod tests {
         let root_ucan: Ucan<DefaultFact, DefaultCapabilityParser> = UcanBuilder::default()
             .issued_by(did_key_str(alice.verifying_key()))
             .for_audience(did_key_str(bob.verifying_key()))
-            .claiming_capability(Capability {
-                resource: Box::new(UcanResource::AllProvable),
-                ability: Box::new(TopAbility),
-                caveat: Box::new(EmptyCaveat {}),
-            })
+            .claiming_capability(Capability::new(
+                UcanResource::AllProvable,
+                TopAbility,
+                EmptyCaveat {},
+            ))
             .with_lifetime(60 * 60)
             .sign(&alice)?;
 
@@ -167,13 +162,13 @@ mod tests {
         let invocation: Ucan<DefaultFact, DefaultCapabilityParser> = UcanBuilder::default()
             .issued_by(did_key_str(bob.verifying_key()))
             .for_audience("did:web:fission.codes")
-            .claiming_capability(Capability {
-                resource: Box::new(FissionResource {
+            .claiming_capability(Capability::new(
+                FissionResource {
                     did: "did:key:sth".to_string(),
-                }),
-                ability: Box::new(FissionAbility::AccountRead),
-                caveat: Box::new(EmptyCaveat {}),
-            })
+                },
+                FissionAbility::AccountRead,
+                EmptyCaveat {},
+            ))
             .witnessed_by(&root_ucan, None)
             .with_lifetime(60 * 60)
             .sign(&bob)?;
