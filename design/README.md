@@ -135,7 +135,7 @@ erDiagram
 
     SubAccount {
         string   did            PK
-        int      manager_id     FK
+        int      manager_did    FK
     }
 
     HostName {
@@ -170,16 +170,7 @@ erDiagram
 
 # API Endpoints
 
-While the Fission Server may eventually switch to a RPC design, today we use a JSON REST API:
-
-| REST Action | HTTP Verb | Path                               |
-|-------------|-----------|------------------------------------|
-| Create      | `POST`    | `/v0/api/account`                  |
-| Create      | `POST`    | `/v0/api/account/:account_did/sub` |
-| Update      | `PUT`     | `/v0/api/did/:did`                 |
-| Destroy     | `DELETE`  | `/v0/api/did/:did`                 |
-
-Note that since (most) entities are addressed by a unique DID, dispatch to multiple entity types can be handled with the same endpoint (e.g. for `DELETE`s).
+See the [API Design Doc].
 
 # Accounts
 
@@ -237,7 +228,7 @@ The UCAN that contains the capability is kept in binary storage (i.e. an object 
 | `caveat`      | `String`   |             | No     | No       |
 | `nbf`         | `DateTime` |             | No     | Yes      |
 | `exp`         | `DateTime` |             | No     | Yes      |
-  
+
 ## Revocation
 
 Revocation tracking is very useful. A simple revocation store can be modeled as follows:
@@ -298,3 +289,4 @@ How we'd interact with NNS is a whole other question. It's technically a separat
 <!-- External Links -->
 
 [DNSLink]: https://dnslink.io/
+[API Design Doc]: ./api.md
