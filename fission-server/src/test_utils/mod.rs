@@ -1,122 +1,31 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use crate::traits::VerificationCodeSender;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axum::Router;
 use bytes::Bytes;
-use cid::Cid;
-use fission_core::{
-    authority::key_material::generate_ed25519_material,
-    capabilities::delegation::{Ability, Resource, SEMANTICS},
-};
 use http::{Method, Request, StatusCode, Uri};
 use hyper::Body;
 use mime::{Mime, APPLICATION_JSON};
+use rs_ucan::{ucan::Ucan, DefaultFact};
 use serde::{de::DeserializeOwned, Serialize};
 use tower::ServiceExt;
-use ucan::{
-    capability::{Capability, CapabilitySemantics},
-    Ucan,
-};
-use ucan_key_support::ed25519::Ed25519KeyMaterial;
-
-use crate::traits::VerificationCodeSender;
 
 pub(crate) mod test_context;
 pub(crate) mod test_ipfs_database;
 
-pub(crate) trait Fact: Serialize + DeserializeOwned {}
-
-impl<T> Fact for T where T: Serialize + DeserializeOwned {}
-
-#[derive(Default)]
-pub(crate) struct UcanBuilder {
-    issuer: Option<Ed25519KeyMaterial>,
-    audience: Option<String>,
-    facts: Vec<serde_json::Value>,
-    proof: Option<ucan::Ucan>,
-    capability: Option<Capability<Resource, Ability>>,
-}
-
-impl UcanBuilder {
-    pub(crate) async fn finalize(self) -> Result<(Ucan, Ed25519KeyMaterial)> {
-        let issuer = if let Some(issuer) = self.issuer {
-            issuer
-        } else {
-            generate_ed25519_material()
-        };
-
-        let audience = if let Some(audience) = self.audience {
-            audience
-        } else {
-            let settings = crate::settings::Settings::load()?;
-
-            settings.server().did.clone()
-        };
-
-        let mut builder = ucan::builder::UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(&audience)
-            .with_lifetime(300);
-
-        if let Some(proof) = self.proof {
-            builder = builder.witnessed_by(&proof);
-        }
-
-        for fact in self.facts {
-            builder = builder.with_fact(fact);
-        }
-
-        if let Some(capability) = self.capability {
-            builder = builder.claiming_capability(&capability);
-        }
-
-        let ucan = builder.build()?.sign().await?;
-
-        Ok((ucan, issuer))
-    }
-
-    pub(crate) fn with_issuer(mut self, issuer: Ed25519KeyMaterial) -> Self {
-        self.issuer = Some(issuer);
-        self
-    }
-
-    pub(crate) fn with_audience(mut self, audience: String) -> Self {
-        self.audience = Some(audience);
-        self
-    }
-
-    pub(crate) fn with_fact<T>(mut self, fact: T) -> Result<Self>
-    where
-        T: DeserializeOwned + Serialize,
-    {
-        self.facts.push(serde_json::to_value(fact)?);
-
-        Ok(self)
-    }
-
-    pub(crate) fn with_proof(mut self, proof: ucan::Ucan) -> Self {
-        self.proof = Some(proof);
-        self
-    }
-
-    pub(crate) fn with_capability(mut self, with: &str, can: &str) -> Self {
-        self.capability = Some(SEMANTICS.parse(with, can).unwrap());
-        self
-    }
-}
-
-pub(crate) struct RouteBuilder {
+pub(crate) struct RouteBuilder<F = DefaultFact> {
     app: Router,
     method: Method,
     path: Uri,
     body: Option<(Mime, Body)>,
-    ucan: Option<ucan::Ucan>,
-    ucan_proof: Option<ucan::Ucan>,
+    ucan: Option<Ucan<F>>,
+    ucan_proof: Option<Ucan>,
     accept_mime: Option<Mime>,
 }
 
-impl RouteBuilder {
+impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
     pub(crate) fn new<U>(app: Router, method: Method, path: U) -> Self
     where
         Uri: TryFrom<U>,
@@ -133,7 +42,7 @@ impl RouteBuilder {
         }
     }
 
-    pub(crate) fn with_ucan(mut self, ucan: Ucan) -> Self {
+    pub(crate) fn with_ucan(mut self, ucan: Ucan<F>) -> Self {
         self.ucan = Some(ucan);
         self
     }
@@ -178,9 +87,13 @@ impl RouteBuilder {
         let response = self.app.oneshot(request).await?;
         let status = response.status();
         let body = hyper::body::to_bytes(response.into_body()).await?;
-        let body = serde_json::from_slice::<T>(&body)?;
-
-        Ok((status, body))
+        match serde_json::from_slice::<T>(&body) {
+            Ok(body) => Ok((status, body)),
+            Err(e) => Err(anyhow!(
+                "Couldn't parse {}: {e}",
+                String::from_utf8_lossy(&body)
+            )),
+        }
     }
 
     fn build_request(&mut self) -> Result<Request<Body>> {
@@ -204,7 +117,7 @@ impl RouteBuilder {
 
         let builder = if let Some(proof) = self.ucan_proof.take() {
             let encoded_ucan = proof.encode()?;
-            let cid = Cid::try_from(proof)?;
+            let cid = proof.to_cid(cid::multihash::Code::Sha2_256)?;
             builder.header("ucan", format!("{} {}", cid, encoded_ucan))
         } else {
             builder

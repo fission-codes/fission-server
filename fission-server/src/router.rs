@@ -3,7 +3,7 @@
 use crate::{
     app_state::AppState,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, doh, fallback::notfound_404, health, ipfs, ping, volume, ws},
+    routes::{account, auth, doh, fallback::notfound_404, health, ipfs, ping, ws},
     traits::ServerSetup,
 };
 
@@ -39,9 +39,6 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .route("/account", post(account::create_account))
         .route("/account/:name", get(account::get_account))
         .route("/account/:name/did", put(account::update_did))
-        .route("/account/:name/volume/cid", get(volume::get_cid))
-        .route("/account/:name/volume", post(volume::create_volume))
-        .route("/account/:name/volume/cid", put(volume::update_cid))
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

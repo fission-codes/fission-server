@@ -1,7 +1,6 @@
 //! DID Capabilities
 
 use anyhow::{anyhow, Result};
-use ucan::capability::Scope;
 use url::Url;
 
 //////////////
@@ -13,12 +12,6 @@ use url::Url;
 pub struct Resource {
     /// The DID related to the resource
     pub did: String,
-}
-
-impl Scope for Resource {
-    fn contains(&self, other: &Self) -> bool {
-        other.did == self.did
-    }
 }
 
 impl ToString for Resource {

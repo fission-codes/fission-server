@@ -2,6 +2,9 @@
 //!
 //! Todo: this should be extracted to a separate crate and made available as a generic Axum UCAN extractor.
 
+use std::str::FromStr;
+
+use anyhow::anyhow;
 use axum::{
     async_trait,
     extract::{FromRequestParts, TypedHeader},
@@ -10,10 +13,10 @@ use axum::{
     RequestPartsExt,
 };
 
-use http::StatusCode;
+use http::{HeaderValue, StatusCode};
+use rs_ucan::{did_verifier::DidVerifierMap, ucan::Ucan};
+use serde::de::DeserializeOwned;
 use serde_json::json;
-use tracing::log;
-use ucan::ucan::Ucan;
 
 // 🧬
 
@@ -36,43 +39,45 @@ impl Header for UcanHeader {
         UCAN_HEADER_NAME
     }
 
-    fn decode<'i, I>(values: &mut I) -> Result<UcanHeader, axum::headers::Error>
+    fn decode<'i, I>(header_values: &mut I) -> Result<UcanHeader, headers::Error>
     where
         I: Iterator<Item = &'i http::HeaderValue>,
     {
-        let mut c = 0;
+        let mut ucans = Vec::new();
 
-        let ucans = values.map(|val| {
-            c += 1;
+        for header_value in header_values {
+            let header_str = header_value.to_str().map_err(|_| {
+                tracing::warn!("Got non-string ucan request header: {:?}", header_value);
+                headers::Error::invalid()
+            })?;
 
-            if let Ok(header_str) = val.to_str() {
-                if let Some((_, token_str)) = header_str.split_once(' ') {
-                    if let Ok(ucan) = Ucan::try_from(token_str) {
-                        return Some(ucan);
-                    }
-                }
+            for ucan_str in header_str.split_ascii_whitespace() {
+                let ucan = Ucan::from_str(ucan_str).map_err(|e| {
+                    tracing::warn!("Got invalid ucan in ucan request header: {e}");
+                    headers::Error::invalid()
+                })?;
+                ucans.push(ucan);
             }
-
-            None
-        });
-
-        let valid_headers: Vec<Ucan> = ucans.flatten().collect();
-
-        if valid_headers.len() != c {
-            Err(axum::headers::Error::invalid())
-        } else {
-            Ok(Self(valid_headers))
         }
+
+        Ok(UcanHeader(ucans))
     }
 
-    // Unimplemented!
-    // FIXME
-    fn encode<E>(&self, _values: &mut E)
+    fn encode<E>(&self, values: &mut E)
     where
-        E: Extend<http::HeaderValue>,
+        E: Extend<HeaderValue>,
     {
-        // for ucan in &self.0 {
-        // }
+        let header_str = self
+            .0
+            .iter()
+            .map(|ucan| ucan.encode().expect("Failed to encode UCAN"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let header_value = HeaderValue::from_str(&header_str)
+            .expect("Encoded UCAN into invalid HTTP header characters");
+
+        values.extend([header_value]);
     }
 }
 
@@ -81,9 +86,10 @@ impl Header for UcanHeader {
 ////////////
 
 #[async_trait]
-impl<S> FromRequestParts<S> for Authority
+impl<S, F> FromRequestParts<S> for Authority<F>
 where
     S: Send + Sync,
+    F: Clone + DeserializeOwned,
 {
     type Rejection = AppError;
 
@@ -94,7 +100,7 @@ where
             }
             authority::Error::InvalidUcan { reason } => AppError::new(
                 StatusCode::UNAUTHORIZED,
-                Some(format!("Invalid UCAN: {}", reason)),
+                Some(format!("Invalid UCAN: {reason}")),
             ),
             authority::Error::MissingCredentials => {
                 AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
@@ -107,7 +113,9 @@ where
     }
 }
 
-async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority::Error> {
+async fn do_extract_authority<F: Clone + DeserializeOwned>(
+    parts: &mut Parts,
+) -> Result<Authority<F>, authority::Error> {
     // Extract the token from the authorization header
     let TypedHeader(Authorization(bearer)) = parts
         .extract::<TypedHeader<Authorization<Bearer>>>()
@@ -121,11 +129,8 @@ async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority:
 
     // Decode the UCAN
     let token = bearer.token();
-    let ucan = Ucan::try_from(token).map_err(|err| {
-        log::error!("Error decoding UCAN: {}", err);
-        InvalidUcan {
-            reason: err.to_string(),
-        }
+    let ucan = Ucan::try_from(token).map_err(|reason| InvalidUcan {
+        reason: anyhow!(reason),
     })?;
 
     // Construct authority
@@ -133,10 +138,10 @@ async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority:
 
     // Validate the authority
     authority
-        .validate()
-        .await
-        .map(|_| authority)
-        .map_err(|reason| InvalidUcan { reason })
+        .validate(&DidVerifierMap::default())
+        .map_err(|reason| InvalidUcan { reason })?;
+
+    Ok(authority)
 }
 
 ///////////
@@ -145,38 +150,37 @@ async fn do_extract_authority(parts: &mut Parts) -> Result<Authority, authority:
 
 #[cfg(test)]
 mod tests {
+    use crate::authority::generate_ed25519_issuer;
+
     use super::*;
     use axum::{
+        body::BoxBody,
         http::StatusCode,
         routing::{get, Router},
     };
-    use fission_core::authority::key_material::{generate_ed25519_material, SERVER_DID};
-    use http::Request;
+    use http::{Request, Response};
+    use rs_ucan::builder::UcanBuilder;
     use tower::ServiceExt;
-    use ucan::builder::UcanBuilder;
 
     #[tokio::test]
     async fn extract_authority() {
-        let issuer = generate_ed25519_material();
+        let (issuer, key) = generate_ed25519_issuer();
 
         // Test if request requires a valid UCAN
-        let app: Router<(), axum::body::Body> = Router::new().route(
-            "/",
-            get(|_authority: Authority| async { axum::body::Empty::new() }),
-        );
+        async fn authorized_get(_authority: Authority) -> Response<BoxBody> {
+            Response::default()
+        }
+        let app: Router = Router::new().route("/", get(authorized_get));
 
         // If a valid UCAN is given
-        let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(SERVER_DID)
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .build()
-            .unwrap()
-            .sign()
-            .await
+            .sign(&key)
             .unwrap();
 
-        let ucan_string: String = Ucan::encode(&ucan).unwrap();
+        let ucan_string: String = ucan.encode().unwrap();
         let authed = app
             .clone()
             .oneshot(
@@ -194,7 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn extract_authority_invalid_ucan() {
-        let issuer = generate_ed25519_material();
+        let (issuer, key) = generate_ed25519_issuer();
 
         // Test if request requires a valid UCAN
         let app: Router<(), axum::body::Body> = Router::new().route(
@@ -203,17 +207,14 @@ mod tests {
         );
 
         // If an invalid UCAN is given
-        let faulty_ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(SERVER_DID)
+        let faulty_ucan: Ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience("did:web:runfission.com")
             .with_expiration(0)
-            .build()
-            .unwrap()
-            .sign()
-            .await
+            .sign(&key)
             .unwrap();
 
-        let faulty_ucan_string: String = Ucan::encode(&faulty_ucan).unwrap();
+        let faulty_ucan_string: String = faulty_ucan.encode().unwrap();
         let invalid_auth = app
             .clone()
             .oneshot(
@@ -244,25 +245,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(not_authed.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn extract_authority_ucan_header() {
-        // let app: Router<(), axum::body::Body> = Router::new().route(
-        //     "/",
-        //     get(|_authority: Authority| async { axum::body::Empty::new() }),
-        // );
-
-        // let ucan_header_check = app
-        //     .clone()
-        //     .oneshot(
-        //         Request::builder()
-        //             .uri("/")
-        //             .header("Authorization", format!("Bearer {}", faulty_ucan_string))
-        //             .body("".into())
-        //             .unwrap(),
-        //     )
-        //     .await
-        //     .unwrap();
     }
 }

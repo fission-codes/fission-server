@@ -1,7 +1,6 @@
 //! Top capability
 
 use anyhow::{anyhow, Result};
-use ucan::capability::Action;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 /// Top ability
@@ -9,8 +8,6 @@ pub enum Ability {
     /// *
     Top,
 }
-
-impl Action for Ability {}
 
 impl ToString for Ability {
     fn to_string(&self) -> String {

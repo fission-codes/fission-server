@@ -11,8 +11,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 test-log = { version = "0.2", default-features = false, features = ["trace"] }
 testresult = "0.3"
-ucan = { git = "https://github.com/blaine/rs-ucan", branch = "temporary-unscoped-fix", commit = "24f00ed8055a15ccfe1ffd7f8c5c81ae70d290e5" }
-ucan-key-support = { git = "https://github.com/blaine/rs-ucan", branch = "temporary-unscoped-fix", commit = "24f00ed8055a15ccfe1ffd7f8c5c81ae70d290e5" }
+rs-ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "quinn-wip-rework" }
 url = "2.3"
 
 # Speedup build on macOS

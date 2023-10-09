@@ -1,25 +1,25 @@
 //! Fission Account Model
 
-use std::str::FromStr;
-
-use anyhow::{bail, Result};
-use did_key::{generate, Ed25519KeyPair};
-
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::json;
-use ucan::{builder::UcanBuilder, capability::CapabilitySemantics};
-use utoipa::ToSchema;
-
-use diesel_async::RunQueryDsl;
-
 use crate::{
-    crypto::patchedkey::PatchedKeyPair,
+    authority::generate_ed25519_issuer,
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
     traits::IpfsDatabase,
 };
+use anyhow::{bail, Result};
+use chrono::NaiveDateTime;
+use diesel::prelude::*;
+use diesel_async::RunQueryDsl;
+use rs_ucan::{
+    builder::UcanBuilder,
+    capability::Capability,
+    plugins::ucan::UcanResource,
+    semantics::{ability::TopAbility, caveat::EmptyCaveat},
+    ucan::Ucan,
+};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::str::FromStr;
+use utoipa::ToSchema;
 
 /// New Account Struct (for creating new accounts)
 #[derive(Insertable)]
@@ -207,11 +207,11 @@ pub struct RootAccount {
     /// A UCAN with Root Authority
     #[serde(serialize_with = "encode_ucan")]
     #[serde(deserialize_with = "decode_ucan")]
-    pub ucan: ucan::Ucan,
+    pub ucan: Ucan,
 }
 
 /// Serialize a UCAN to a string
-fn encode_ucan<S>(ucan: &ucan::Ucan, serializer: S) -> Result<S::Ok, S::Error>
+fn encode_ucan<S>(ucan: &Ucan, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -223,17 +223,12 @@ where
     }
 }
 
-fn decode_ucan<'de, D>(value: D) -> Result<ucan::Ucan, D::Error>
+fn decode_ucan<'de, D>(value: D) -> Result<Ucan, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let ucan = String::deserialize(value)?;
-    let ucan = ucan::Ucan::from_str(&ucan);
-    if let Ok(ucan) = ucan {
-        Ok(ucan)
-    } else {
-        Err(serde::de::Error::custom("Failed to decode UCAN"))
-    }
+    Ucan::from_str(&String::deserialize(value)?)
+        .map_err(|e| serde::de::Error::custom(format!("Failed to decode ucan: {e}")))
 }
 
 /// Account with Root Authority
@@ -250,7 +245,7 @@ impl RootAccount {
         email: String,
         audience_did: &str,
     ) -> Result<Self, anyhow::Error> {
-        let ucan = Self::issue_root_ucan(audience_did, &username).await?;
+        let ucan = Self::issue_root_ucan(audience_did).await?;
         let account = Account::new(conn, username, email, ucan.issuer()).await?;
 
         Ok(Self { ucan, account })
@@ -265,37 +260,23 @@ impl RootAccount {
         account: &Account,
         audience_did: &str,
     ) -> Result<Self, anyhow::Error> {
-        let ucan = Self::issue_root_ucan(audience_did, &account.username).await?;
+        let ucan = Self::issue_root_ucan(audience_did).await?;
         let account = account.update_did(conn, ucan.issuer()).await?;
 
         Ok(Self { ucan, account })
     }
 
-    fn generate_ephemeral_keypair() -> PatchedKeyPair {
-        // FIXME did-key library should zeroize memory https://github.com/decentralized-identity/did-key.rs/issues/40
-        // Alt: we should switch to a different crate that does this.
-        PatchedKeyPair(generate::<Ed25519KeyPair>(None))
-    }
+    async fn issue_root_ucan(audience_did: &str) -> Result<Ucan, anyhow::Error> {
+        let (issuer, key) = generate_ed25519_issuer();
 
-    async fn issue_root_ucan(
-        audience_did: &str,
-        username: &str,
-    ) -> Result<ucan::Ucan, anyhow::Error> {
-        let ephemeral_key = Self::generate_ephemeral_keypair();
+        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat {});
 
-        let capability = fission_core::capabilities::delegation::SEMANTICS
-            .parse("ucan:*", "ucan/*")
-            .unwrap();
-
-        UcanBuilder::default()
-            .issued_by(&ephemeral_key)
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(issuer)
             .for_audience(audience_did)
-            // QUESTION: How long should these be valid for? This is basically sign-in expiry/duration.
-            .with_lifetime(60 * 60 * 24 * 365)
-            .claiming_capability(&capability)
-            .with_fact(json!({ "username": username }))
-            .build()?
-            .sign()
-            .await
+            .claiming_capability(capability)
+            .sign(&key)?;
+
+        Ok(ucan)
     }
 }

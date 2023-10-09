@@ -1,6 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_debug_implementations, missing_docs, rust_2018_idioms)]
-#![deny(unreachable_pub, private_in_public)]
+#![deny(unreachable_pub)]
 
 //! fission-server
 
@@ -9,7 +9,6 @@ extern crate diesel_migrations;
 
 pub mod app_state;
 pub mod authority;
-pub mod crypto;
 pub mod db;
 pub mod dns;
 pub mod docs;

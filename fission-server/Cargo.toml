@@ -52,7 +52,6 @@ did-key = "0.2.1"
 diesel = { version = "2.0.4", features = ["postgres", "chrono"] }
 diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
 diesel_migrations = "2.1"
-dyn-clone = "1.0.12"
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
 futures-util = "0.3.28"
@@ -102,13 +101,15 @@ tracing-opentelemetry = "0.18"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
 tracing-test = "0.2.4"
 trust-dns-server = { version = "0.22.0", features = ["dns-over-rustls"] }
-ucan = { workspace = true }
-ucan-key-support = { workspace = true }
+rs-ucan = { workspace = true }
 ulid = { version = "1.0", features = ["serde"] }
 url = { workspace = true }
 utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
 utoipa-swagger-ui = { version = "3.1", features = ["axum"] }
 validator = { version = "0.16.0", features = ["derive"] }
+ed25519 = "2.2.2"
+libipld = "0.16.0"
+ed25519-dalek = "2.0.0"
 
 [dev-dependencies]
 assert-json-diff = "2.0"
