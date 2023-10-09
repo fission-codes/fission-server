@@ -42,7 +42,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .with_state(app_state.clone())
         .fallback(notfound_404);
 
-    router = router.nest("/api", api_router);
+    router = router.nest("/api/v0", api_router);
 
     // Additional layers
     router = router.layer(cors);

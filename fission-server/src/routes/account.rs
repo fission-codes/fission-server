@@ -23,7 +23,7 @@ use utoipa::ToSchema;
 /// POST handler for creating a new account
 #[utoipa::path(
     post,
-    path = "/api/account",
+    path = "/api/v0/account",
     request_body = AccountRequest,
     security(
         ("ucan_bearer" = []),
@@ -55,7 +55,7 @@ pub async fn create_account<S: ServerSetup>(
 /// GET handler to retrieve account details
 #[utoipa::path(
     get,
-    path = "/api/account/{username}",
+    path = "/api/v0/account/{username}",
     security(
         ("ucan_bearer" = []),
     ),
@@ -87,7 +87,7 @@ pub struct AccountUpdateRequest {
 /// Handler to update the DID associated with an account
 #[utoipa::path(
     put,
-    path = "/api/account/{username}/did",
+    path = "/api/v0/account/{username}/did",
     request_body = AccountUpdateRequest,
     responses(
         (status = 200, description = "Successfully updated DID", body=AccountRequest),
@@ -176,7 +176,7 @@ mod tests {
             .for_audience(&server_did)
             .sign(&key)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<VerificationCodeResponse>()
@@ -199,7 +199,7 @@ mod tests {
             })
             .sign(&key)?;
 
-        let (status, root_account) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
+        let (status, root_account) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan2)
             .with_json_body(json!({ "username": username, "email": email }))?
             .into_json_response::<RootAccount>()
@@ -229,7 +229,7 @@ mod tests {
             .with_fact(VerificationCode { code: 1_000_000 }) // wrong code
             .sign(&key)?;
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan)
             .with_json_body(json!({ "username": username, "email": email }))?
             .into_json_response::<ErrorResponse>()
@@ -263,7 +263,7 @@ mod tests {
             .for_audience(&server_did)
             .sign(&key)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<VerificationCodeResponse>()
@@ -287,7 +287,7 @@ mod tests {
             })
             .sign(&wrong_key)?;
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/account")
+        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan)
             .with_json_body(json!({ "username": username, "email": email }))?
             .into_json_response::<ErrorResponse>()
@@ -327,7 +327,7 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/account/{}", username),
+            format!("/api/v0/account/{}", username),
         )
         .into_json_response::<AccountRequest>()
         .await?;
@@ -347,7 +347,7 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/account/{}", username),
+            format!("/api/v0/account/{}", username),
         )
         .into_json_response::<ErrorResponse>()
         .await?;
@@ -392,7 +392,7 @@ mod tests {
             .for_audience(&server_did)
             .sign(&key)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<VerificationCodeResponse>()
@@ -418,7 +418,7 @@ mod tests {
         let (status, body) = RouteBuilder::new(
             ctx.app(),
             Method::PUT,
-            format!("/api/account/{}/did", username),
+            format!("/api/v0/account/{}/did", username),
         )
         .with_ucan(ucan)
         .with_json_body(json!({ "username": username, "email": email }))?
@@ -466,7 +466,7 @@ mod tests {
         let (status, body) = RouteBuilder::new(
             ctx.app(),
             Method::PUT,
-            format!("/api/account/{}/did", username),
+            format!("/api/v0/account/{}/did", username),
         )
         .with_ucan(ucan)
         .with_json_body(json!({ "username": username, "email": email }))?

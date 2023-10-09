@@ -36,7 +36,7 @@ impl VerificationCodeResponse {
 /// POST handler for requesting a new token by email
 #[utoipa::path(
     post,
-    path = "/api/auth/email/verify",
+    path = "/api/v0/auth/email/verify",
     request_body = email_verification::Request,
     security(
         ("ucan_bearer" = []),
@@ -137,7 +137,7 @@ mod tests {
             .for_audience(&server_did)
             .sign(&key)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<VerificationCodeResponse>()
@@ -162,7 +162,7 @@ mod tests {
         let email = "oedipa@trystero.com";
 
         let (status, body) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/auth/email/verify")
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
                 .into_json_response::<ErrorResponse>()
                 .await?;
@@ -191,11 +191,12 @@ mod tests {
             .for_audience("did:fission:1234")
             .sign(&key)?;
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<ErrorResponse>()
-            .await?;
+        let (status, body) =
+            RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_ucan(ucan)
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<ErrorResponse>()
+                .await?;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
 
