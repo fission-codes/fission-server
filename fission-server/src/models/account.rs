@@ -52,10 +52,10 @@ pub struct Account {
     pub did: String,
 
     /// Username associated with the account
-    pub username: String,
+    pub username: Option<String>,
 
     /// Email address associated with the account
-    pub email: String,
+    pub email: Option<String>,
 
     /// Inserted at timestamp
     pub inserted_at: NaiveDateTime,
@@ -190,8 +190,18 @@ pub struct AccountRequest {
     pub email: String,
 }
 
-impl From<Account> for AccountRequest {
-    fn from(account: Account) -> Self {
+/// Information about an account
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct AccountResponse {
+    /// username, if associated
+    pub username: Option<String>,
+    /// email, if associated
+    pub email: Option<String>,
+}
+
+impl AccountResponse {
+    /// Turn an account into a suitable response
+    pub fn new(account: Account) -> Self {
         Self {
             username: account.username,
             email: account.email,

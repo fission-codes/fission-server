@@ -6,7 +6,7 @@ use crate::{
     db::{self, Pool},
     error::{AppError, AppResult},
     models::{
-        account::{Account, AccountRequest, RootAccount},
+        account::{Account, AccountRequest, AccountResponse, RootAccount},
         email_verification::{EmailVerification, VerificationCode},
     },
     traits::ServerSetup,
@@ -69,12 +69,12 @@ pub async fn create_account<S: ServerSetup>(
 pub async fn get_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
     Path(username): Path<String>,
-) -> AppResult<(StatusCode, Json<AccountRequest>)> {
+) -> AppResult<(StatusCode, Json<AccountResponse>)> {
     let account =
         Account::find_by_username(&mut db::connect(&state.db_pool).await?, username.clone())
             .await?;
 
-    Ok((StatusCode::OK, Json(account.into())))
+    Ok((StatusCode::OK, Json(AccountResponse::new(account))))
 }
 
 /// AccountUpdateRequest Struct
@@ -206,8 +206,8 @@ mod tests {
             .await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(root_account.account.username, username);
-        assert_eq!(root_account.account.email, email);
+        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(root_account.account.email, Some(email.to_string()));
         assert_eq!(root_account.ucan.audience(), issuer);
 
         Ok(())
@@ -426,8 +426,8 @@ mod tests {
         .await?;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.account.username, username);
-        assert_eq!(body.account.email, email);
+        assert_eq!(body.account.username, Some(username.to_string()));
+        assert_eq!(body.account.email, Some(email.to_string()));
         assert_eq!(body.ucan.audience(), issuer);
 
         Ok(())

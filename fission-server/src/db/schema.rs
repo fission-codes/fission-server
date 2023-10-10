@@ -4,8 +4,8 @@ diesel::table! {
     accounts (id) {
         id -> Int4,
         did -> Text,
-        username -> Text,
-        email -> Text,
+        username -> Nullable<Text>,
+        email -> Nullable<Text>,
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         volume_id -> Nullable<Int4>,
@@ -29,8 +29,8 @@ diesel::table! {
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         email -> Text,
-        did -> Text,
         code_hash -> Text,
+        did -> Text,
     }
 }
 
