@@ -18,14 +18,14 @@ pub async fn get() -> AppResult<StatusCode> {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
     use http::{Method, StatusCode};
     use rs_ucan::DefaultFact;
+    use testresult::TestResult;
 
     use crate::test_utils::{test_context::TestContext, RouteBuilder};
 
-    #[tokio::test]
-    async fn test_ping() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_ping() -> TestResult {
         let ctx = TestContext::new().await;
 
         let (status, _) = RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/ping")

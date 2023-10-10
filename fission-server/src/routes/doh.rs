@@ -68,13 +68,13 @@ pub async fn post<S: ServerSetup>(
 mod tests {
     use std::str::FromStr;
 
-    use anyhow::Result;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use mime::Mime;
     use rs_ucan::DefaultFact;
     use serde_json::json;
+    use testresult::TestResult;
 
     use crate::{
         db::schema::{accounts, volumes},
@@ -83,8 +83,8 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    #[tokio::test]
-    async fn test_dns_json_soa() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_dns_json_soa() -> TestResult {
         let ctx = TestContext::new().await;
 
         let (status, body) = RouteBuilder::<DefaultFact>::new(
@@ -130,8 +130,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_dns_json_gateway() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_dns_json_gateway() -> TestResult {
         let ctx = TestContext::new().await;
 
         let (status, body) = RouteBuilder::<DefaultFact>::new(
@@ -177,8 +177,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_dns_json_did_username_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_dns_json_did_username_ok() -> TestResult {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 
@@ -242,8 +242,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_dns_json_did_username_err_not_found() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_dns_json_did_username_err_not_found() -> TestResult {
         let ctx = TestContext::new().await;
         let username = "donnie";
 
@@ -286,8 +286,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_dns_json_dnslink_volume_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_dns_json_dnslink_volume_ok() -> TestResult {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 
@@ -359,8 +359,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_dns_json_dnslink_volume_err_not_found() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_dns_json_dnslink_volume_err_not_found() -> TestResult {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 

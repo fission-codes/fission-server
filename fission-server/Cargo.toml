@@ -99,7 +99,6 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.18"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
-tracing-test = "0.2.4"
 trust-dns-server = { version = "0.22.0", features = ["dns-over-rustls"] }
 rs-ucan = { workspace = true }
 ulid = { version = "1.0", features = ["serde"] }
@@ -115,10 +114,8 @@ ed25519-dalek = "2.0.0"
 assert-json-diff = "2.0"
 blake3 = "1.4.1"
 rsa = { version = "0.9" }
-stringreader = "0.1.1"
 test-log = { workspace = true }
 testresult = { workspace = true }
-tokio-test = "0.4"
 uuid = "1.4.1"
 wiremock = "0.5"
 

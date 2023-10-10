@@ -1175,21 +1175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ed25519-zebra"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c24f403d068ad0b359e577a77f92392118be3f3c927538f2bb544a5ecd828c6"
-dependencies = [
- "curve25519-dalek 3.2.0",
- "hashbrown 0.12.3",
- "hex",
- "rand_core 0.6.4",
- "serde",
- "sha2 0.9.9",
- "zeroize",
-]
-
-[[package]]
 name = "either"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1369,7 +1354,6 @@ dependencies = [
  "did-key",
  "ed25519 2.2.2",
  "ed25519-dalek 2.0.0",
- "ed25519-zebra",
  "erased-serde",
  "libipld",
  "linkme",
@@ -1445,7 +1429,6 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_with",
- "stringreader",
  "sysinfo",
  "task-local-extensions",
  "test-log",
@@ -1453,7 +1436,6 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
- "tokio-test",
  "tokio-util",
  "tonic 0.8.3",
  "tower",
@@ -1462,7 +1444,6 @@ dependencies = [
  "tracing-appender",
  "tracing-opentelemetry 0.18.0",
  "tracing-subscriber",
- "tracing-test",
  "trust-dns-server",
  "ulid",
  "url",
@@ -4540,12 +4521,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stringreader"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "913e7b03d63752f6cdd2df77da36749d82669904798fe8944b9ec3d23f159905"
-
-[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4857,19 +4832,6 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
-]
-
-[[package]]
-name = "tokio-test"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89b3cbabd3ae862100094ae433e1def582cf86451b4e9bf83aa7ac1d8a7d719"
-dependencies = [
- "async-stream",
- "bytes",
- "futures-core",
- "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -5214,29 +5176,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
-]
-
-[[package]]
-name = "tracing-test"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a2c0ff408fe918a94c428a3f2ad04e4afd5c95bbc08fcf868eff750c15728a4"
-dependencies = [
- "lazy_static",
- "tracing-core",
- "tracing-subscriber",
- "tracing-test-macro",
-]
-
-[[package]]
-name = "tracing-test-macro"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "258bc1c4f8e2e73a977812ab339d503e6feeb92700f6d07a6de4d321522d5c08"
-dependencies = [
- "lazy_static",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

@@ -111,10 +111,10 @@ pub async fn request_token<S: ServerSetup>(
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
     use http::{Method, StatusCode};
     use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
     use serde_json::json;
+    use testresult::TestResult;
 
     use crate::{
         authority::generate_ed25519_issuer,
@@ -124,8 +124,8 @@ mod tests {
         test_utils::{test_context::TestContext, RouteBuilder},
     };
 
-    #[tokio::test]
-    async fn test_request_code_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
         let server_did = Settings::load()?.server().did.clone();
@@ -156,8 +156,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_request_code_no_ucan() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_no_ucan() -> TestResult {
         let ctx = TestContext::new().await;
         let email = "oedipa@trystero.com";
 
@@ -180,8 +180,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_request_code_wrong_aud() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_wrong_aud() -> TestResult {
         let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";

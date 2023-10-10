@@ -207,6 +207,7 @@ pub async fn parse_error(response: Response) -> AppError {
 mod tests {
     use super::*;
     use axum::{http::StatusCode, response::IntoResponse};
+    use testresult::TestResult;
     use ulid::Ulid;
 
     #[test]
@@ -241,8 +242,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_json_api_error_response() {
+    #[test_log::test(tokio::test)]
+    async fn test_json_api_error_response() -> TestResult {
         // verify that our json api response complies with the standard
         let id = Ulid::new();
         let err = AppError::not_found(id);
@@ -263,5 +264,7 @@ mod tests {
             err.detail.unwrap(),
             format!("Entity with id {id} not found")
         );
+
+        Ok(())
     }
 }

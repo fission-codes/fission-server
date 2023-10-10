@@ -87,11 +87,11 @@ fn latest_embedded_migration_version() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use rs_ucan::DefaultFact;
+    use testresult::TestResult;
 
     use crate::{
         db::__diesel_schema_migrations,
@@ -99,8 +99,8 @@ mod tests {
         test_utils::{test_context::TestContext, RouteBuilder},
     };
 
-    #[tokio::test]
-    async fn test_healthcheck_healthy() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_healthcheck_healthy() -> TestResult {
         let ctx = TestContext::new().await;
 
         let (status, body) =
@@ -115,8 +115,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_healthcheck_db_unavailable() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_healthcheck_db_unavailable() -> TestResult {
         let ctx = TestContext::new().await;
         let app = ctx.app();
 
@@ -134,8 +134,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_healthcheck_db_out_of_date() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_healthcheck_db_out_of_date() -> TestResult {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 

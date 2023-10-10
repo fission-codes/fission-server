@@ -202,10 +202,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
     use axum::routing::{get, Router};
     use http::Request;
     use hyper::Body;
     use serde::Deserialize;
+    use testresult::TestResult;
     use tower::ServiceExt;
 
     #[derive(Debug, Deserialize)]
@@ -213,8 +215,8 @@ mod tests {
         foo: String,
     }
 
-    #[tokio::test]
-    async fn deserialize_body() {
+    #[test_log::test(tokio::test)]
+    async fn deserialize_body() -> TestResult {
         let app = Router::new().route(
             "/",
             get(|input: Json<Input>| async { (StatusCode::OK, input.0.foo) }),
@@ -226,20 +228,20 @@ mod tests {
                 Request::builder()
                     .uri("/")
                     .header("Content-Type", "application/json")
-                    .body(req_body)
-                    .unwrap(),
+                    .body(req_body)?,
             )
-            .await
-            .unwrap();
+            .await?;
 
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body_text = std::str::from_utf8(&body[..]).unwrap();
+        let body = hyper::body::to_bytes(response.into_body()).await?;
+        let body_text = std::str::from_utf8(&body[..])?;
 
         assert_eq!(body_text, "bar");
+
+        Ok(())
     }
 
-    #[tokio::test]
-    async fn consume_body_to_json_requires_json_content_type() {
+    #[test_log::test(tokio::test)]
+    async fn consume_body_to_json_requires_json_content_type() -> TestResult {
         let app = Router::new().route(
             "/",
             get(|input: Json<Input>| async { (StatusCode::OK, input.0.foo) }),
@@ -251,18 +253,18 @@ mod tests {
                 Request::builder()
                     .uri("/")
                     .header("Content-Type", "application/text")
-                    .body(req_body)
-                    .unwrap(),
+                    .body(req_body)?,
             )
-            .await
-            .unwrap();
+            .await?;
 
         assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+        Ok(())
     }
 
-    #[tokio::test]
-    async fn json_content_types() {
-        async fn valid_json_content_type(content_type: &str) -> bool {
+    #[test_log::test(tokio::test)]
+    async fn json_content_types() -> TestResult {
+        async fn valid_json_content_type(content_type: &str) -> Result<bool> {
             let app = Router::new().route(
                 "/",
                 get(|input: Json<Input>| async { (StatusCode::OK, input.0.foo) }),
@@ -274,24 +276,24 @@ mod tests {
                     Request::builder()
                         .uri("/")
                         .header("Content-Type", content_type)
-                        .body(req_body)
-                        .unwrap(),
+                        .body(req_body)?,
                 )
-                .await
-                .unwrap();
+                .await?;
 
-            response.status() == StatusCode::OK
+            Ok(response.status() == StatusCode::OK)
         }
 
-        assert!(valid_json_content_type("application/json").await);
-        assert!(valid_json_content_type("application/json; charset=utf-8").await);
-        assert!(valid_json_content_type("application/json;charset=utf-8").await);
-        assert!(valid_json_content_type("application/cloudevents+json").await);
-        assert!(!valid_json_content_type("text/json").await);
+        assert!(valid_json_content_type("application/json").await?);
+        assert!(valid_json_content_type("application/json; charset=utf-8").await?);
+        assert!(valid_json_content_type("application/json;charset=utf-8").await?);
+        assert!(valid_json_content_type("application/cloudevents+json").await?);
+        assert!(!valid_json_content_type("text/json").await?);
+
+        Ok(())
     }
 
-    #[tokio::test]
-    async fn invalid_json_syntax() {
+    #[test_log::test(tokio::test)]
+    async fn invalid_json_syntax() -> TestResult {
         let app = Router::new().route(
             "/",
             get(|input: Json<Input>| async { (StatusCode::OK, input.0.foo) }),
@@ -303,11 +305,11 @@ mod tests {
                 Request::builder()
                     .uri("/")
                     .header("Content-Type", "application/json")
-                    .body(req_body)
-                    .unwrap(),
+                    .body(req_body)?,
             )
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        Ok(())
     }
 }

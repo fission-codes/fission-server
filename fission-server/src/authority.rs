@@ -94,16 +94,16 @@ mod tests {
     use super::*;
 
     use rs_ucan::builder::UcanBuilder;
+    use testresult::TestResult;
 
-    #[tokio::test]
-    async fn validation_test() {
+    #[test_log::test(tokio::test)]
+    async fn validation_test() -> TestResult {
         let (issuer, key) = generate_ed25519_issuer();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .sign(&key)
-            .unwrap();
+            .sign(&key)?;
 
         let authority = Authority {
             ucan,
@@ -111,21 +111,23 @@ mod tests {
         };
 
         assert!(authority.validate(&DidVerifierMap::default()).is_ok());
+
+        Ok(())
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn invalid_ucan_test() {
         panic!("pending")
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn incomplete_proofs_test() {
         panic!("pending")
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn invalid_delegation_test() {
         panic!("pending")

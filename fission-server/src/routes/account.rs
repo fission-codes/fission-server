@@ -142,12 +142,12 @@ async fn find_validation_token(
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
     use serde_json::json;
+    use testresult::TestResult;
 
     use crate::{
         authority::generate_ed25519_issuer,
@@ -162,8 +162,8 @@ mod tests {
         test_utils::{test_context::TestContext, RouteBuilder},
     };
 
-    #[tokio::test]
-    async fn test_create_account_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_create_account_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
         let server_did = Settings::load()?.server().did.clone();
@@ -213,8 +213,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_create_account_err_wrong_code() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_create_account_err_wrong_code() -> TestResult {
         let ctx = TestContext::new().await;
 
         let server_did = Settings::load()?.server().did.clone();
@@ -248,8 +248,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_create_account_err_wrong_issuer() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_create_account_err_wrong_issuer() -> TestResult {
         let ctx = TestContext::new().await;
 
         let server_did = Settings::load()?.server().did.clone();
@@ -306,8 +306,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_get_account_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_get_account_ok() -> TestResult {
         let ctx = TestContext::new().await;
         let mut conn = ctx.get_db_conn().await;
 
@@ -339,8 +339,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_get_account_err_not_found() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_get_account_err_not_found() -> TestResult {
         let ctx = TestContext::new().await;
         let username = "donnie";
 
@@ -365,8 +365,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_put_account_did_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_put_account_did_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
         let server_did = Settings::load()?.server().did.clone();
@@ -433,8 +433,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_put_account_did_err_wrong_code() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_put_account_did_err_wrong_code() -> TestResult {
         let ctx = TestContext::new().await;
 
         let server_did = Settings::load()?.server().did.clone();

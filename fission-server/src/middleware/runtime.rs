@@ -30,11 +30,12 @@ mod test {
         routing::get,
         Router,
     };
+    use testresult::TestResult;
     use tower::{ServiceBuilder, ServiceExt};
     use tower_http::catch_panic::CatchPanicLayer;
 
-    #[tokio::test]
-    async fn catch_panic_error() {
+    #[test_log::test(tokio::test)]
+    async fn catch_panic_error() -> TestResult {
         let middleware = ServiceBuilder::new().layer(CatchPanicLayer::custom(catch_panic));
 
         let app = Router::new()
@@ -42,9 +43,8 @@ mod test {
             .layer(middleware);
 
         let res = app
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+            .oneshot(Request::builder().uri("/").body(Body::empty())?)
+            .await?;
 
         let err = parse_error(res).await;
 
@@ -52,5 +52,7 @@ mod test {
             err,
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, Some("hi"))
         );
+
+        Ok(())
     }
 }

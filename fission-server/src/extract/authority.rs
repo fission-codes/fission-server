@@ -160,10 +160,11 @@ mod tests {
     };
     use http::{Request, Response};
     use rs_ucan::builder::UcanBuilder;
+    use testresult::TestResult;
     use tower::ServiceExt;
 
-    #[tokio::test]
-    async fn extract_authority() {
+    #[test_log::test(tokio::test)]
+    async fn extract_authority() -> TestResult {
         let (issuer, key) = generate_ed25519_issuer();
 
         // Test if request requires a valid UCAN
@@ -177,27 +178,26 @@ mod tests {
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .sign(&key)
-            .unwrap();
+            .sign(&key)?;
 
-        let ucan_string: String = ucan.encode().unwrap();
+        let ucan_string: String = ucan.encode()?;
         let authed = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/")
                     .header("Authorization", format!("Bearer {}", ucan_string))
-                    .body("".into())
-                    .unwrap(),
+                    .body("".into())?,
             )
-            .await
-            .unwrap();
+            .await?;
 
         assert_eq!(authed.status(), StatusCode::OK);
+
+        Ok(())
     }
 
-    #[tokio::test]
-    async fn extract_authority_invalid_ucan() {
+    #[test_log::test(tokio::test)]
+    async fn extract_authority_invalid_ucan() -> TestResult {
         let (issuer, key) = generate_ed25519_issuer();
 
         // Test if request requires a valid UCAN
@@ -211,27 +211,26 @@ mod tests {
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_expiration(0)
-            .sign(&key)
-            .unwrap();
+            .sign(&key)?;
 
-        let faulty_ucan_string: String = faulty_ucan.encode().unwrap();
+        let faulty_ucan_string: String = faulty_ucan.encode()?;
         let invalid_auth = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/")
                     .header("Authorization", format!("Bearer {}", faulty_ucan_string))
-                    .body("".into())
-                    .unwrap(),
+                    .body("".into())?,
             )
-            .await
-            .unwrap();
+            .await?;
 
         assert_eq!(invalid_auth.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
     }
 
-    #[tokio::test]
-    async fn extract_authority_no_auth_header() {
+    #[test_log::test(tokio::test)]
+    async fn extract_authority_no_auth_header() -> TestResult {
         // Test if request requires a valid UCAN
         let app: Router<(), axum::body::Body> = Router::new().route(
             "/",
@@ -241,9 +240,10 @@ mod tests {
         // If no authorization header is provided
         let not_authed = app
             .oneshot(Request::builder().uri("/").body("".into()).unwrap())
-            .await
-            .unwrap();
+            .await?;
 
         assert_eq!(not_authed.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
     }
 }
