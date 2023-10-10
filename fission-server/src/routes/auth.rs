@@ -42,7 +42,7 @@ impl VerificationCodeResponse {
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Successfully sent request token", body=Response),
+        (status = 200, description = "Successfully sent request token", body = VerificationCodeResponse),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 510, description = "Not extended")
@@ -111,13 +111,13 @@ pub async fn request_token<S: ServerSetup>(
 
 #[cfg(test)]
 mod tests {
+    use fission_core::ed_did_key::EdDidKey;
     use http::{Method, StatusCode};
     use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
     use serde_json::json;
     use testresult::TestResult;
 
     use crate::{
-        authority::generate_ed25519_issuer,
         error::{AppError, ErrorResponse},
         routes::auth::VerificationCodeResponse,
         settings::Settings,
@@ -131,11 +131,11 @@ mod tests {
         let server_did = Settings::load()?.server().did.clone();
 
         let email = "oedipa@trystero.com";
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
@@ -185,11 +185,11 @@ mod tests {
         let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience("did:fission:1234")
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, body) =
             RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")

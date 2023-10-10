@@ -25,8 +25,10 @@ rs-ucan = { workspace = true }
 url = { workspace = true }
 erased-serde = "0.3.31"
 linkme = "0.3.15"
-ed25519 = "2.2.2"
-ed25519-dalek = { version = "2.0.0", features = ["rand_core"] }
+ed25519 = { workspace = true }
+ed25519-dalek = { workspace = true }
 did-key = "0.2.1"
 libipld = "0.16.0"
 bs58 = "0.5.0"
+zeroize = "1.6.0"
+signature = "2.1.0"

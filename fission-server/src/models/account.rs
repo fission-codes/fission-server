@@ -1,7 +1,6 @@
 //! Fission Account Model
 
 use crate::{
-    authority::generate_ed25519_issuer,
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
     traits::IpfsDatabase,
@@ -10,6 +9,7 @@ use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+use fission_core::ed_did_key::EdDidKey;
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -277,16 +277,17 @@ impl RootAccount {
     }
 
     async fn issue_root_ucan(audience_did: &str) -> Result<Ucan, anyhow::Error> {
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = EdDidKey::generate();
 
         let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat {});
 
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
+            .issued_by(&issuer)
             .for_audience(audience_did)
             .claiming_capability(capability)
-            .sign(&key)?;
+            .sign(&issuer)?;
 
+        drop(issuer); // just to be explicit: The key material is zeroized here
         Ok(ucan)
     }
 }

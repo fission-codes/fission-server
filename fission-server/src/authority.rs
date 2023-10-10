@@ -1,10 +1,7 @@
 //! Authority struct and functions
 
 use anyhow::Result;
-use did_key::{Ed25519KeyPair, Fingerprint};
-use ed25519_dalek::SigningKey;
 use libipld::{raw::RawCodec, Ipld};
-use rand::thread_rng;
 use rs_ucan::{
     builder::DEFAULT_MULTIHASH,
     did_verifier::DidVerifierMap,
@@ -76,15 +73,6 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
     }
 }
 
-pub(crate) fn generate_ed25519_issuer() -> (String, SigningKey) {
-    let key = ed25519_dalek::SigningKey::generate(&mut thread_rng());
-    let did_key_str = format!(
-        "did:key:{}",
-        Ed25519KeyPair::from_public_key(key.verifying_key().as_bytes()).fingerprint()
-    );
-    (did_key_str, key)
-}
-
 //-------//
 // TESTS //
 //-------//
@@ -93,17 +81,18 @@ pub(crate) fn generate_ed25519_issuer() -> (String, SigningKey) {
 mod tests {
     use super::*;
 
+    use fission_core::ed_did_key::EdDidKey;
     use rs_ucan::builder::UcanBuilder;
     use testresult::TestResult;
 
     #[test_log::test(tokio::test)]
     async fn validation_test() -> TestResult {
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let authority = Authority {
             ucan,

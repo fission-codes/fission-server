@@ -1361,7 +1361,9 @@ dependencies = [
  "rs-ucan",
  "serde",
  "serde_json",
+ "signature 2.1.0",
  "url",
+ "zeroize",
 ]
 
 [[package]]

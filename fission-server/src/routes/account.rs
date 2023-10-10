@@ -60,8 +60,8 @@ pub async fn create_account<S: ServerSetup>(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Found account", body=AccountRequest),
-        (status = 400, description = "Invalid request", body=AppError),
+        (status = 200, description = "Found account", body = AccountResponse),
+        (status = 400, description = "Invalid request", body = AppError),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Not found"),
     )
@@ -144,13 +144,13 @@ async fn find_validation_token(
 mod tests {
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
+    use fission_core::ed_did_key::EdDidKey;
     use http::{Method, StatusCode};
     use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
     use serde_json::json;
     use testresult::TestResult;
 
     use crate::{
-        authority::generate_ed25519_issuer,
         db::schema::accounts,
         error::{AppError, ErrorResponse},
         models::{
@@ -170,11 +170,11 @@ mod tests {
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
@@ -192,12 +192,12 @@ mod tests {
             .expect("No email Sent");
 
         let ucan2 = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
             .with_fact(VerificationCode {
                 code: code.parse()?,
             })
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, root_account) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan2)
@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
         assert_eq!(root_account.account.email, Some(email.to_string()));
-        assert_eq!(root_account.ucan.audience(), issuer);
+        assert_eq!(root_account.ucan.audience(), issuer.as_ref());
 
         Ok(())
     }
@@ -222,12 +222,12 @@ mod tests {
         let username = "oedipa";
         let email = "oedipa@trystero.com";
 
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
             .with_fact(VerificationCode { code: 1_000_000 }) // wrong code
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan)
@@ -257,11 +257,11 @@ mod tests {
         let username = "oedipa";
         let email = "oedipa@trystero.com";
 
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
@@ -278,14 +278,14 @@ mod tests {
             .last()
             .expect("No email sent");
 
-        let (wrong_issuer, wrong_key) = generate_ed25519_issuer();
+        let wrong_issuer = &EdDidKey::generate();
         let ucan = UcanBuilder::default()
-            .issued_by(&wrong_issuer)
+            .issued_by(wrong_issuer)
             .for_audience(&server_did)
             .with_fact(VerificationCode {
                 code: code.parse()?,
             })
-            .sign(&wrong_key)?;
+            .sign(wrong_issuer)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan)
@@ -386,11 +386,11 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_ucan(ucan)
@@ -408,12 +408,12 @@ mod tests {
             .expect("No email sent");
 
         let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
             .with_fact(VerificationCode {
                 code: code.parse()?,
             })
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, body) = RouteBuilder::new(
             ctx.app(),
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body.account.username, Some(username.to_string()));
         assert_eq!(body.account.email, Some(email.to_string()));
-        assert_eq!(body.ucan.audience(), issuer);
+        assert_eq!(body.ucan.audience(), issuer.as_ref());
 
         Ok(())
     }
@@ -454,14 +454,14 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
         let ucan = UcanBuilder::default()
-            .issued_by(&issuer)
+            .issued_by(issuer)
             .for_audience(&server_did)
             .with_fact(VerificationCode {
                 code: 1_000_000, // wrong code
             })
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let (status, body) = RouteBuilder::new(
             ctx.app(),

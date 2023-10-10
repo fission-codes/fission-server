@@ -150,14 +150,13 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
-    use crate::authority::generate_ed25519_issuer;
-
     use super::*;
     use axum::{
         body::BoxBody,
         http::StatusCode,
         routing::{get, Router},
     };
+    use fission_core::ed_did_key::EdDidKey;
     use http::{Request, Response};
     use rs_ucan::builder::UcanBuilder;
     use testresult::TestResult;
@@ -165,7 +164,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority() -> TestResult {
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
 
         // Test if request requires a valid UCAN
         async fn authorized_get(_authority: Authority) -> Response<BoxBody> {
@@ -178,7 +177,7 @@ mod tests {
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let ucan_string: String = ucan.encode()?;
         let authed = app
@@ -198,7 +197,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority_invalid_ucan() -> TestResult {
-        let (issuer, key) = generate_ed25519_issuer();
+        let issuer = &EdDidKey::generate();
 
         // Test if request requires a valid UCAN
         let app: Router<(), axum::body::Body> = Router::new().route(
@@ -211,7 +210,7 @@ mod tests {
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_expiration(0)
-            .sign(&key)?;
+            .sign(issuer)?;
 
         let faulty_ucan_string: String = faulty_ucan.encode()?;
         let invalid_auth = app
