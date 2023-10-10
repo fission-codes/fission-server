@@ -1,10 +1,12 @@
 //! fission-server
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
+use ed25519::pkcs8::DecodePrivateKey;
+use fission_core::ed_did_key::EdDidKey;
 use fission_server::{
     app_state::AppStateBuilder,
     db::{self, Pool},
@@ -33,10 +35,12 @@ use std::{
     future::ready,
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    path::PathBuf,
     process::exit,
     time::Duration,
 };
 use tokio::{
+    fs,
     net::{TcpListener, UdpSocket},
     signal::{
         self,
@@ -74,13 +78,9 @@ async fn main() -> Result<()> {
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
 
     let settings = Settings::load()?;
-    let db_pool = db::pool(
-        &settings.database().url,
-        settings.database().connect_timeout,
-    )
-    .await?;
+    let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
 
-    setup_tracing(stdout_writer, settings.otel())?;
+    setup_tracing(stdout_writer, &settings.otel)?;
 
     info!(
         subject = "app_settings",
@@ -146,10 +146,10 @@ async fn serve_metrics(
 
     // Spawn tick-driven process collection task
     tokio::spawn(process::collect_metrics(
-        settings.monitoring().process_collector_interval,
+        settings.monitoring.process_collector_interval,
     ));
 
-    let (server, _) = serve("Metrics", router, settings.server().metrics_port).await;
+    let (server, _) = serve("Metrics", router, settings.server.metrics_port).await;
 
     token.cancelled().await;
     server.graceful_shutdown(None);
@@ -160,16 +160,27 @@ async fn serve_metrics(
 async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
     let req_id = HeaderName::from_static(REQUEST_ID);
 
+    let did_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("config")
+        .join(&settings.server.did_path);
+
+    let did = fs::read_to_string(&did_path)
+        .await
+        .map_err(|e| anyhow!(e))
+        .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", did_path.to_string_lossy(), e, did_path.to_string_lossy()))?;
+
     let app_state = AppStateBuilder::<ProdSetup>::default()
         .with_db_pool(db_pool)
-        .with_ipfs_peers(settings.ipfs().peers.clone())
-        .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun().clone()))
+        .with_ipfs_peers(settings.ipfs.peers.clone())
+        .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun.clone()))
         .with_ipfs_db(IpfsHttpApiDatabase::default())
+        .with_did(did)
         .finalize()?;
 
     let router = router::setup_app_router(app_state)
         .route_layer(axum::middleware::from_fn(middleware::metrics::track))
-        .layer(Extension(settings.environment()))
+        .layer(Extension(settings.server.environment))
         // Include trace context as header into the response.
         .layer(response_with_trace_layer())
         // Opentelemetry tracing middleware.
@@ -185,7 +196,7 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
         // Applies the `tower_http::timeout::Timeout` middleware which
         // applies a timeout to requests.
         .layer(TimeoutLayer::new(Duration::from_millis(
-            settings.server().timeout_ms,
+            settings.server.timeout_ms,
         )))
         // Catches runtime panics and converts them into
         // `500 Internal Server` responses.
@@ -194,12 +205,12 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
         .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
 
-    let (server, addr) = serve("Application", router, settings.server().port).await;
+    let (server, addr) = serve("Application", router, settings.server.port).await;
 
-    if settings.healthcheck().is_enabled {
+    if settings.healthcheck.is_enabled {
         tokio::spawn({
             let cancellation_token = token.clone();
-            let settings = settings.healthcheck().clone();
+            let settings = settings.healthcheck.clone();
 
             async move {
                 let mut interval =
@@ -250,7 +261,7 @@ async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) 
     server.register_socket(UdpSocket::bind(sock_addr).await?);
     server.register_listener(
         TcpListener::bind(sock_addr).await?,
-        Duration::from_millis(settings.server().timeout_ms),
+        Duration::from_millis(settings.server.timeout_ms),
     );
 
     tokio::select! {

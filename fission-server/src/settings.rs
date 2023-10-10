@@ -56,8 +56,8 @@ pub struct Server {
     pub metrics_port: u16,
     /// Server timeout in milliseconds.
     pub timeout_ms: u64,
-    /// Server DID
-    pub did: String,
+    /// Path to a PEM file containing the server's signing key (used for its DID)
+    pub did_path: String,
 }
 
 /// Process monitoring settings.
@@ -119,55 +119,20 @@ pub struct Healthcheck {
 #[derive(Clone, Debug, Deserialize)]
 /// Application settings.
 pub struct Settings {
-    database: Database,
-    ipfs: IPFS,
-    monitoring: Monitoring,
-    server: Server,
-    otel: Otel,
-    mailgun: Mailgun,
-    healthcheck: Healthcheck,
-}
-
-impl Settings {
-    /// Database settings getter.
-    pub fn database(&self) -> &Database {
-        &self.database
-    }
-
-    /// Environment settings getter.
-    pub fn environment(&self) -> AppEnvironment {
-        self.server().environment
-    }
-
-    /// IPFS settings getter.
-    pub fn ipfs(&self) -> &IPFS {
-        &self.ipfs
-    }
-
-    /// Monitoring settings getter.
-    pub fn monitoring(&self) -> &Monitoring {
-        &self.monitoring
-    }
-
-    /// OTEL settings getter.
-    pub fn otel(&self) -> &Otel {
-        &self.otel
-    }
-
-    /// Server settings getter.
-    pub fn server(&self) -> &Server {
-        &self.server
-    }
-
-    /// Mailgun settings getter.
-    pub fn mailgun(&self) -> &Mailgun {
-        &self.mailgun
-    }
-
-    /// Healthcheck settings getter.
-    pub fn healthcheck(&self) -> &Healthcheck {
-        &self.healthcheck
-    }
+    /// Database settings
+    pub database: Database,
+    /// IPFS settings
+    pub ipfs: IPFS,
+    /// Monitoring settings
+    pub monitoring: Monitoring,
+    /// Server settings
+    pub server: Server,
+    /// Open telemetry settings
+    pub otel: Otel,
+    /// Mailgun settings
+    pub mailgun: Mailgun,
+    /// Healthcheck settings
+    pub healthcheck: Healthcheck,
 }
 
 impl Settings {

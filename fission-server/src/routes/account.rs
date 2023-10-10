@@ -158,7 +158,6 @@ mod tests {
             email_verification::VerificationCode,
         },
         routes::auth::VerificationCodeResponse,
-        settings::Settings,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
 
@@ -166,14 +165,12 @@ mod tests {
     async fn test_create_account_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
@@ -193,7 +190,7 @@ mod tests {
 
         let ucan2 = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .with_fact(VerificationCode {
                 code: code.parse()?,
             })
@@ -217,15 +214,13 @@ mod tests {
     async fn test_create_account_err_wrong_code() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let username = "oedipa";
         let email = "oedipa@trystero.com";
 
         let issuer = &EdDidKey::generate();
         let ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .with_fact(VerificationCode { code: 1_000_000 }) // wrong code
             .sign(issuer)?;
 
@@ -252,15 +247,13 @@ mod tests {
     async fn test_create_account_err_wrong_issuer() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let username = "oedipa";
         let email = "oedipa@trystero.com";
 
         let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
@@ -281,7 +274,7 @@ mod tests {
         let wrong_issuer = &EdDidKey::generate();
         let ucan = UcanBuilder::default()
             .issued_by(wrong_issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .with_fact(VerificationCode {
                 code: code.parse()?,
             })
@@ -369,8 +362,6 @@ mod tests {
     async fn test_put_account_did_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let mut conn = ctx.get_db_conn().await;
 
         let username = "donnie";
@@ -389,7 +380,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
@@ -409,7 +400,7 @@ mod tests {
 
         let ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .with_fact(VerificationCode {
                 code: code.parse()?,
             })
@@ -437,8 +428,6 @@ mod tests {
     async fn test_put_account_did_err_wrong_code() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let mut conn = ctx.get_db_conn().await;
 
         let username = "donnie";
@@ -457,7 +446,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
         let ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .with_fact(VerificationCode {
                 code: 1_000_000, // wrong code
             })

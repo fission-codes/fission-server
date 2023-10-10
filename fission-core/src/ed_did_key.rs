@@ -1,7 +1,10 @@
 //! A simple wrapper around an EdDSA Ed25519 signing key that provides zeroization & a `did:key:` representation
 
 use did_key::{Ed25519KeyPair, Fingerprint};
-use ed25519::Signature;
+use ed25519::{
+    pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey},
+    Signature,
+};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::thread_rng;
 use signature::Signer;
@@ -48,6 +51,24 @@ impl Signer<Signature> for EdDidKey {
 impl AsRef<str> for EdDidKey {
     fn as_ref(&self) -> &str {
         &self.did_key_string
+    }
+}
+
+impl DecodePrivateKey for EdDidKey {
+    fn from_pkcs8_der(bytes: &[u8]) -> ed25519::pkcs8::Result<Self> {
+        Ok(Self::new(SigningKey::from_pkcs8_der(bytes)?))
+    }
+}
+
+impl EncodePrivateKey for EdDidKey {
+    fn to_pkcs8_der(&self) -> ed25519::pkcs8::Result<ed25519::pkcs8::SecretDocument> {
+        self.signing_key.to_pkcs8_der()
+    }
+}
+
+impl EncodePublicKey for EdDidKey {
+    fn to_public_key_der(&self) -> ed25519::pkcs8::spki::Result<ed25519::pkcs8::Document> {
+        self.signing_key.verifying_key().to_public_key_der()
     }
 }
 

@@ -9,6 +9,9 @@
 .envrc.custom
 .direnv
 
+# Ignore key files
+*.pem
+
 # Other files + dirs
 private
 *.temp

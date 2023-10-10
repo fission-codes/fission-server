@@ -6,7 +6,6 @@ use crate::{
     db::{self},
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
-    settings::Settings,
     traits::ServerSetup,
 };
 use axum::{
@@ -53,25 +52,7 @@ pub async fn request_token<S: ServerSetup>(
     authority: Authority,
     Json(payload): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
-    /*
-
-    The age-old question, should this be an invocation, or is the REST endpoint enough here?
-
-    For now, we're using regular UCANs. This check can be done within the authority extractor,
-    but we're going to repeat ourselves for now until we're sure that we don't need different
-    audiences for different methods.
-
-    */
-
-    let settings = Settings::load().map_err(|e| {
-        log::error!("Failed to load settings: {e}");
-        AppError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Some("Internal Server Error."),
-        )
-    })?;
-
-    let server_did = settings.server().did.clone();
+    let server_did = state.did.as_ref().as_ref();
     let ucan_aud = authority.ucan.audience();
     if ucan_aud != server_did {
         log::debug!(
@@ -120,7 +101,6 @@ mod tests {
     use crate::{
         error::{AppError, ErrorResponse},
         routes::auth::VerificationCodeResponse,
-        settings::Settings,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
 
@@ -128,13 +108,11 @@ mod tests {
     async fn test_request_code_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience(&server_did)
+            .for_audience(ctx.server_did())
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
