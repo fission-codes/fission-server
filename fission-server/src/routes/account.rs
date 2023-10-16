@@ -155,6 +155,7 @@ mod tests {
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use fission_core::{
@@ -254,13 +255,13 @@ mod tests {
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
-        assert!(matches!(
+        assert_matches!(
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::FORBIDDEN,
                 ..
             }]
-        ));
+        );
 
         Ok(())
     }
@@ -316,13 +317,13 @@ mod tests {
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
-        assert!(matches!(
+        assert_matches!(
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::FORBIDDEN,
                 ..
             }]
-        ));
+        );
 
         Ok(())
     }
@@ -375,13 +376,13 @@ mod tests {
 
         assert_eq!(status, StatusCode::NOT_FOUND);
 
-        assert!(matches!(
+        assert_matches!(
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::NOT_FOUND,
                 ..
             }]
-        ));
+        );
 
         Ok(())
     }

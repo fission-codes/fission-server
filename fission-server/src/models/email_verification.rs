@@ -3,7 +3,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use diesel::{
-    pg::Pg, ExpressionMethods, Insertable, QueryDsl, Queryable, Selectable, SelectableHelper,
+    debug_query,
+    dsl::{now, IntervalDsl},
+    pg::Pg,
+    ExpressionMethods, Insertable, QueryDsl, Queryable, Selectable, SelectableHelper,
 };
 use diesel_async::RunQueryDsl;
 use mailgun_rs::{EmailAddress, Mailgun, MailgunRegion, Message};
@@ -167,14 +170,15 @@ impl EmailVerification {
             verification.code
         );
 
-        let result = email_verifications::dsl::email_verifications
+        let query = email_verifications::table
             .filter(email_verifications::email.eq(email))
             .filter(email_verifications::did.eq(&verification.did))
             .filter(email_verifications::code_hash.eq(&code_hash))
-            .first(conn)
-            .await?;
+            .filter(email_verifications::inserted_at.ge(now - 24.hours()));
 
-        Ok(result)
+        tracing::debug!("{}", debug_query::<Pg, _>(&query));
+
+        Ok(query.first(conn).await?)
     }
 }
 

@@ -126,10 +126,16 @@ pub async fn request_token<S: ServerSetup>(
 #[cfg(test)]
 mod tests {
     use crate::{
+        db::schema::email_verifications,
         error::{AppError, ErrorResponse},
+        models::email_verification::{hash_code, EmailVerification, EmailVerificationFacts},
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use anyhow::anyhow;
+    use assert_matches::assert_matches;
+    use chrono::{Duration, Local};
+    use diesel_async::RunQueryDsl;
     use fission_core::{
         capabilities::{did::Did, email::EmailAbility},
         ed_did_key::EdDidKey,
@@ -178,6 +184,59 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    async fn test_email_verification_fetch_token() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience(ctx.server_did())
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                EmailAbility::Verify,
+                EmptyCaveat,
+            ))
+            .sign(issuer)?;
+
+        RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+            .with_ucan(ucan)
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<VerificationCodeResponse>()
+            .await?;
+
+        let (_, email_content) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email sent");
+
+        let code = email_content
+            .parse()
+            .expect("Couldn't parse validation code");
+
+        let token_result = EmailVerification::find_token(
+            &mut ctx.get_db_conn().await,
+            email,
+            &EmailVerificationFacts {
+                code,
+                did: issuer.did(),
+            },
+        )
+        .await;
+
+        assert_matches!(
+            token_result,
+            Ok(EmailVerification {
+                email, did, ..
+            }) if email == "oedipa@trystero.com" && did == issuer.did()
+        );
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
     async fn test_request_code_no_capability_err() -> TestResult {
         let ctx = TestContext::new().await;
 
@@ -196,13 +255,13 @@ mod tests {
                 .await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
-        assert!(matches!(
+        assert_matches!(
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::FORBIDDEN,
                 ..
             }]
-        ));
+        );
 
         Ok(())
     }
@@ -220,13 +279,13 @@ mod tests {
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-        assert!(matches!(
+        assert_matches!(
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::UNAUTHORIZED,
                 ..
             }]
-        ));
+        );
 
         Ok(())
     }
@@ -251,13 +310,53 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
 
-        assert!(matches!(
+        assert_matches!(
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::BAD_REQUEST,
                 ..
             }]
-        ));
+        );
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_expires() -> TestResult {
+        let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
+
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+        let code = 123456;
+
+        let inserted_at = Local::now()
+            .naive_utc()
+            .checked_sub_signed(Duration::hours(25))
+            .ok_or_else(|| anyhow!("Couldn't construct old date."))?;
+
+        let record = EmailVerification {
+            id: 0,
+            inserted_at,
+            updated_at: inserted_at,
+            did: issuer.did(),
+            email: email.to_string(),
+            code_hash: hash_code(email, issuer.as_ref(), code),
+        };
+
+        diesel::insert_into(email_verifications::table)
+            .values(&record)
+            .execute(&mut conn)
+            .await?;
+
+        let facts = &EmailVerificationFacts {
+            code,
+            did: issuer.did(),
+        };
+
+        let token_result = EmailVerification::find_token(&mut conn, email, &facts).await;
+
+        assert_matches!(token_result, Err(_));
 
         Ok(())
     }
