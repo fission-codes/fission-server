@@ -10,7 +10,7 @@ pub struct Did(pub String);
 impl Resource for Did {
     fn is_valid_attenuation(&self, other: &dyn Resource) -> bool {
         let Some(Did(did)) = other.downcast_ref() else {
-            return false
+            return false;
         };
 
         &self.0 == did
