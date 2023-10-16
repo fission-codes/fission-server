@@ -1,37 +1,24 @@
 //! DID Capabilities
 
-use anyhow::{anyhow, Result};
-use url::Url;
+use rs_ucan::semantics::resource::Resource;
+use std::fmt::Display;
 
-//////////////
-// RESOURCE //
-//////////////
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+#[derive(Clone, Debug)]
 /// DID Resource
-pub struct Resource {
-    /// The DID related to the resource
-    pub did: String,
-}
+pub struct Did(pub String);
 
-impl ToString for Resource {
-    fn to_string(&self) -> String {
-        self.did.clone()
+impl Resource for Did {
+    fn is_valid_attenuation(&self, other: &dyn Resource) -> bool {
+        let Some(Did(did)) = other.downcast_ref() else {
+            return false
+        };
+
+        &self.0 == did
     }
 }
 
-impl TryFrom<Url> for Resource {
-    type Error = anyhow::Error;
-
-    fn try_from(value: Url) -> Result<Self> {
-        match value.scheme() {
-            "did" => Ok(Resource {
-                did: format!("did:{}", value.path()),
-            }),
-            _ => Err(anyhow!(
-                "Could not interpret URI as a DID resource: {:?}",
-                value
-            )),
-        }
+impl Display for Did {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }

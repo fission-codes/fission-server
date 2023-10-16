@@ -2,7 +2,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use diesel::{
+    pg::Pg, ExpressionMethods, Insertable, QueryDsl, Queryable, Selectable, SelectableHelper,
+};
 use diesel_async::RunQueryDsl;
 use mailgun_rs::{EmailAddress, Mailgun, MailgunRegion, Message};
 use openssl::sha::Sha256;
@@ -106,6 +108,7 @@ pub struct NewEmailVerification {
 /// Email Verification Record
 #[derive(Debug, Queryable, Selectable, Insertable, Clone)]
 #[diesel(table_name = email_verifications)]
+#[diesel(check_for_backend(Pg))]
 pub struct EmailVerification {
     /// Internal Database Identifier
     pub id: i32,
@@ -118,13 +121,13 @@ pub struct EmailVerification {
     /// Email address associated with the account
     pub email: String,
 
-    /// The (pre-generated) did of the client application.
-    /// Currently only did:key is supported.
-    pub did: String,
-
     /// The hash of the code, so that it can only be used by the intended recipient.
     /// We only store the hash, not the code itself.
     pub code_hash: String,
+
+    /// The (pre-generated) did of the client application.
+    /// Currently only did:key is supported.
+    pub did: String,
 }
 
 impl EmailVerification {
@@ -136,14 +139,15 @@ impl EmailVerification {
     ) -> Result<Self, diesel::result::Error> {
         let new_request = NewEmailVerification {
             email: request.email,
-            did: did.into(),
+            did: did.to_string(),
             code_hash: request.code_hash.unwrap(),
         };
 
-        log::debug!("Creating new email verification request: {:?}", new_request);
+        tracing::debug!("Creating new email verification request: {:?}", new_request);
 
         diesel::insert_into(email_verifications::table)
             .values(&new_request)
+            .returning(EmailVerification::as_select())
             .get_result(conn)
             .await
     }
@@ -152,21 +156,20 @@ impl EmailVerification {
     pub async fn find_token(
         conn: &mut Conn<'_>,
         email: &str,
-        did: &str,
-        code: &VerificationCode,
+        verification: &EmailVerificationFacts,
     ) -> Result<Self> {
-        let code_hash = hash_code(email, did, code.code);
+        let code_hash = hash_code(email, &verification.did, verification.code);
 
-        log::debug!(
+        tracing::debug!(
             "Looking up email verification request for email: {}, did: {}, code: {}",
             email,
-            did,
-            code.code
+            &verification.did,
+            verification.code
         );
 
         let result = email_verifications::dsl::email_verifications
             .filter(email_verifications::email.eq(email))
-            .filter(email_verifications::did.eq(did))
+            .filter(email_verifications::did.eq(&verification.did))
             .filter(email_verifications::code_hash.eq(&code_hash))
             .first(conn)
             .await?;
@@ -245,9 +248,16 @@ impl Request {
     }
 }
 
-/// A struct for the verification code encoding used for email verification in requests/responses & UCAN facts
+/// This stores the information a client has to provide when returning with an
+/// email verification code.
+///
+/// Email verification needs two factors:
+/// 1. Access to read emails
+/// 2. Access to the keypair on the device that originally created the email verification request
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationCode {
+pub struct EmailVerificationFacts {
     /// The verification code
     pub code: u64,
+    /// The DID that was originally used to initiate the email verification
+    pub did: String,
 }

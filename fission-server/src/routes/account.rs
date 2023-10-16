@@ -3,22 +3,47 @@
 use crate::{
     app_state::AppState,
     authority::Authority,
-    db::{self, Pool},
+    db::{self, schema::accounts},
     error::{AppError, AppResult},
+    extract::json::Json,
     models::{
-        account::{Account, AccountRequest, AccountResponse, RootAccount},
-        email_verification::{EmailVerification, VerificationCode},
+        account::{Account, RootAccount},
+        email_verification::{EmailVerification, EmailVerificationFacts},
     },
     traits::ServerSetup,
 };
-use anyhow::{anyhow, Result};
 use axum::{
     self,
-    extract::{Json, Path, State},
+    extract::{Path, State},
     http::StatusCode,
 };
+use diesel::{ExpressionMethods, QueryDsl};
+use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
+use fission_core::capabilities::fission::{FissionAbility, FissionResource};
+use rs_ucan::did_verifier::DidVerifierMap;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 use utoipa::ToSchema;
+use validator::Validate;
+
+/// Account Request Struct (for creating new accounts)
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema, Validate)]
+pub struct AccountCreationRequest {
+    /// Username associated with the account
+    pub username: String,
+    /// Email address associated with the account
+    #[validate(email)]
+    pub email: String,
+}
+
+/// Information about an account
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
+pub struct AccountResponse {
+    /// username, if associated
+    pub username: Option<String>,
+    /// email, if associated
+    pub email: Option<String>,
+}
 
 /// POST handler for creating a new account
 #[utoipa::path(
@@ -29,27 +54,61 @@ use utoipa::ToSchema;
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully created account", body=RootAccount),
+        (status = 201, description = "Successfully created account", body = RootAccount),
         (status = 400, description = "Bad Request"),
         (status = 403, description = "Forbidden"),
     )
 )]
 pub async fn create_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    authority: Authority<VerificationCode>,
-    Json(payload): Json<AccountRequest>,
+    authority: Authority<EmailVerificationFacts>,
+    Json(payload): Json<AccountCreationRequest>,
 ) -> AppResult<(StatusCode, Json<RootAccount>)> {
-    if let Err(err) = find_validation_token(&state.db_pool, &authority, &payload.email).await {
-        return Err(AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())));
+    payload
+        .validate()
+        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e.to_string())))?;
+
+    let ver_facts = authority.ucan.facts().ok_or_else(|| {
+        AppError::new(
+            StatusCode::BAD_REQUEST,
+            Some("Missing UCAN facts with email code and DID."),
+        )
+    })?;
+
+    if !authority.has_capability(
+        FissionResource::All,
+        FissionAbility::AccountCreate,
+        ver_facts.did.clone(),
+        &DidVerifierMap::default(),
+    )? {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN,
+            Some("Missing UCAN capability to `account/create` `fission:*` resources."),
+        ));
     }
 
-    // Now create the account!
+    let conn = &mut db::connect(&state.db_pool).await?;
+    conn.transaction(|conn| {
+        async move {
+            let verification = EmailVerification::find_token(conn, &payload.email, ver_facts)
+                .await
+                .map_err(|err| AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())))?;
 
-    let mut conn = db::connect(&state.db_pool).await?;
-    let did = authority.ucan.issuer().to_string();
-    let new_account = RootAccount::new(&mut conn, payload.username, payload.email, &did).await?;
+            debug!("Found EmailVerification {verification:?}");
 
-    Ok((StatusCode::CREATED, Json(new_account)))
+            let new_account = RootAccount::new(
+                conn,
+                payload.username,
+                verification.email,
+                &verification.did,
+            )
+            .await?;
+
+            Ok((StatusCode::CREATED, Json(new_account)))
+        }
+        .scope_boxed()
+    })
+    .await
 }
 
 /// GET handler to retrieve account details
@@ -68,98 +127,47 @@ pub async fn create_account<S: ServerSetup>(
 )]
 pub async fn get_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    Path(username): Path<String>,
+    Path(did): Path<String>,
 ) -> AppResult<(StatusCode, Json<AccountResponse>)> {
-    let account =
-        Account::find_by_username(&mut db::connect(&state.db_pool).await?, username.clone())
-            .await?;
+    let conn = &mut db::connect(&state.db_pool).await?;
 
-    Ok((StatusCode::OK, Json(AccountResponse::new(account))))
-}
-
-/// AccountUpdateRequest Struct
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct AccountUpdateRequest {
-    username: String,
-    email: String,
-}
-
-/// Handler to update the DID associated with an account
-#[utoipa::path(
-    put,
-    path = "/api/v0/account/{username}/did",
-    request_body = AccountUpdateRequest,
-    responses(
-        (status = 200, description = "Successfully updated DID", body=AccountRequest),
-        (status = 400, description = "Invalid request", body=AppError),
-        (status = 403, description = "Forbidden"),
-    )
-)]
-pub async fn update_did<S: ServerSetup>(
-    State(state): State<AppState<S>>,
-    authority: Authority<VerificationCode>,
-    Path(username): Path<String>,
-    Json(payload): Json<AccountUpdateRequest>,
-) -> AppResult<(StatusCode, Json<RootAccount>)> {
-    if let Err(err) = find_validation_token(&state.db_pool, &authority, &payload.email).await {
-        return Err(AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())));
-    }
-
-    // Now update the account!
-
-    let mut conn = db::connect(&state.db_pool).await?;
-
-    let account = Account::find_by_username(&mut conn, username).await?;
-    let did = authority.ucan.issuer().to_string();
+    let account: Account = accounts::dsl::accounts
+        .filter(accounts::did.eq(did))
+        .first(conn)
+        .await?;
 
     Ok((
         StatusCode::OK,
-        Json(RootAccount::update(&mut conn, &account, &did).await?),
+        Json(AccountResponse {
+            username: account.username,
+            email: account.email,
+        }),
     ))
-}
-
-async fn find_validation_token(
-    db_pool: &Pool,
-    authority: &Authority<VerificationCode>,
-    email: &str,
-) -> Result<EmailVerification, anyhow::Error> {
-    // Validate Code
-    let code = authority
-        .ucan
-        .facts()
-        .ok_or_else(|| anyhow!("Missing or malformed validation token"))?;
-
-    let did = authority.ucan.issuer().to_string();
-
-    let mut conn = db::connect(db_pool).await?;
-    // FIXME do something with the verification token here.
-    //   - mark it as used
-    //   - also above, check expiry
-    //   - also above, check that it's not already used
-
-    EmailVerification::find_token(&mut conn, email, &did, code).await
 }
 
 #[cfg(test)]
 mod tests {
-    use diesel::ExpressionMethods;
-    use diesel_async::RunQueryDsl;
-    use fission_core::ed_did_key::EdDidKey;
-    use http::{Method, StatusCode};
-    use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
-    use serde_json::json;
-    use testresult::TestResult;
-
+    use super::*;
     use crate::{
         db::schema::accounts,
         error::{AppError, ErrorResponse},
-        models::{
-            account::{AccountRequest, RootAccount},
-            email_verification::VerificationCode,
-        },
+        models::{account::RootAccount, email_verification::EmailVerificationFacts},
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use diesel::ExpressionMethods;
+    use diesel_async::RunQueryDsl;
+    use fission_core::{
+        capabilities::{did::Did, email::EmailAbility},
+        ed_did_key::EdDidKey,
+    };
+    use http::{Method, StatusCode};
+    use rs_ucan::{
+        builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
+        DefaultFact,
+    };
+    use serde_json::json;
+    use testresult::TestResult;
 
     #[test_log::test(tokio::test)]
     async fn test_create_account_ok() -> TestResult {
@@ -171,6 +179,11 @@ mod tests {
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                EmailAbility::Verify,
+                EmptyCaveat,
+            ))
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
@@ -191,8 +204,14 @@ mod tests {
         let ucan2 = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
-            .with_fact(VerificationCode {
+            .claiming_capability(Capability::new(
+                FissionResource::All,
+                FissionAbility::AccountCreate,
+                EmptyCaveat,
+            ))
+            .with_fact(EmailVerificationFacts {
                 code: code.parse()?,
+                did: issuer.did(),
             })
             .sign(issuer)?;
 
@@ -221,7 +240,10 @@ mod tests {
         let ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
-            .with_fact(VerificationCode { code: 1_000_000 }) // wrong code
+            .with_fact(EmailVerificationFacts {
+                code: 1_000_000, // wrong code
+                did: issuer.did(),
+            })
             .sign(issuer)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
@@ -254,6 +276,11 @@ mod tests {
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                EmailAbility::Verify,
+                EmptyCaveat,
+            ))
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
@@ -275,8 +302,9 @@ mod tests {
         let ucan = UcanBuilder::default()
             .issued_by(wrong_issuer)
             .for_audience(ctx.server_did())
-            .with_fact(VerificationCode {
+            .with_fact(EmailVerificationFacts {
                 code: code.parse()?,
+                did: wrong_issuer.did(),
             })
             .sign(wrong_issuer)?;
 
@@ -320,9 +348,9 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/v0/account/{}", username),
+            format!("/api/v0/account/{}", did),
         )
-        .into_json_response::<AccountRequest>()
+        .into_json_response::<AccountCreationRequest>()
         .await?;
 
         assert_eq!(status, StatusCode::OK);
@@ -351,123 +379,6 @@ mod tests {
             body.errors.as_slice(),
             [AppError {
                 status: StatusCode::NOT_FOUND,
-                ..
-            }]
-        ));
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_put_account_did_ok() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let mut conn = ctx.get_db_conn().await;
-
-        let username = "donnie";
-        let email = "donnie@example.com";
-        let did = "did:28:06:42:12";
-
-        diesel::insert_into(accounts::table)
-            .values((
-                accounts::username.eq(username),
-                accounts::email.eq(email),
-                accounts::did.eq(did),
-            ))
-            .execute(&mut conn)
-            .await?;
-
-        let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .sign(issuer)?;
-
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<VerificationCodeResponse>()
-            .await?;
-
-        assert_eq!(status, StatusCode::OK);
-
-        let (_, code) = ctx
-            .verification_code_sender()
-            .get_emails()
-            .into_iter()
-            .last()
-            .expect("No email sent");
-
-        let ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .with_fact(VerificationCode {
-                code: code.parse()?,
-            })
-            .sign(issuer)?;
-
-        let (status, body) = RouteBuilder::new(
-            ctx.app(),
-            Method::PUT,
-            format!("/api/v0/account/{}/did", username),
-        )
-        .with_ucan(ucan)
-        .with_json_body(json!({ "username": username, "email": email }))?
-        .into_json_response::<RootAccount>()
-        .await?;
-
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.account.username, Some(username.to_string()));
-        assert_eq!(body.account.email, Some(email.to_string()));
-        assert_eq!(body.ucan.audience(), issuer.as_ref());
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_put_account_did_err_wrong_code() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let mut conn = ctx.get_db_conn().await;
-
-        let username = "donnie";
-        let email = "donnie@example.com";
-        let did = "did:28:06:42:12";
-
-        diesel::insert_into(accounts::table)
-            .values((
-                accounts::username.eq(username),
-                accounts::email.eq(email),
-                accounts::did.eq(did),
-            ))
-            .execute(&mut conn)
-            .await?;
-
-        let issuer = &EdDidKey::generate();
-        let ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .with_fact(VerificationCode {
-                code: 1_000_000, // wrong code
-            })
-            .sign(issuer)?;
-
-        let (status, body) = RouteBuilder::new(
-            ctx.app(),
-            Method::PUT,
-            format!("/api/v0/account/{}/did", username),
-        )
-        .with_ucan(ucan)
-        .with_json_body(json!({ "username": username, "email": email }))?
-        .into_json_response::<ErrorResponse>()
-        .await?;
-
-        assert_eq!(status, StatusCode::FORBIDDEN);
-
-        assert!(matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::FORBIDDEN,
                 ..
             }]
         ));

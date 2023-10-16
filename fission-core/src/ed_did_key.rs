@@ -40,6 +40,11 @@ impl EdDidKey {
     pub fn generate() -> Self {
         Self::new(SigningKey::generate(&mut thread_rng()))
     }
+
+    /// Returns the DID public key string. Does a clone.
+    pub fn did(&self) -> String {
+        self.did_key_string.clone()
+    }
 }
 
 impl Signer<Signature> for EdDidKey {

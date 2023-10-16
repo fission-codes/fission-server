@@ -8,7 +8,7 @@ use crate::{
 };
 
 use axum::{
-    routing::{get, post, put},
+    routing::{get, post},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -37,8 +37,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .route("/relay/:did", get(ws::handler))
         .route("/auth/email/verify", post(auth::request_token))
         .route("/account", post(account::create_account))
-        .route("/account/:name", get(account::get_account))
-        .route("/account/:name/did", put(account::update_did))
+        .route("/account/:did", get(account::get_account))
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

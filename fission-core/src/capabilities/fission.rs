@@ -12,11 +12,15 @@ use rs_ucan::{
 #[derive(Debug)]
 pub struct FissionPlugin;
 
+rs_ucan::register_plugin!(FISSION, &FissionPlugin);
+
 /// Resources supported by the fission server.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FissionResource {
-    /// The `fission:did:key:zABC` resource for fission accounts
-    pub(crate) did: String,
+pub enum FissionResource {
+    /// The resource encoded as `fission:*`, giving access to all current or future owned accounts
+    All,
+    /// The resource encoded as `fission:did:key:zABC` for a specific fission account
+    Did(String),
 }
 
 /// Abilities for fission accounts
@@ -24,9 +28,9 @@ pub struct FissionResource {
 pub enum FissionAbility {
     /// `account/read`, the ability to read account details like email address/username, etc.
     AccountRead,
+    /// `account/create`, the ability to create an account
+    AccountCreate,
 }
-
-rs_ucan::register_plugin!(FISSION, &FissionPlugin);
 
 impl Plugin for FissionPlugin {
     type Resource = FissionResource;
@@ -43,15 +47,17 @@ impl Plugin for FissionPlugin {
         &self,
         resource_uri: &url::Url,
     ) -> Result<Option<Self::Resource>, Self::Error> {
-        let did = resource_uri.path();
+        let path = resource_uri.path();
 
-        if !did.starts_with("did:key:") {
+        if path == "*" {
+            return Ok(Some(FissionResource::All));
+        }
+
+        if !path.starts_with("did:key:") {
             return Ok(None);
         }
 
-        Ok(Some(FissionResource {
-            did: did.to_string(),
-        }))
+        Ok(Some(FissionResource::Did(path.to_string())))
     }
 
     fn try_handle_ability(
@@ -61,6 +67,7 @@ impl Plugin for FissionPlugin {
     ) -> Result<Option<Self::Ability>, Self::Error> {
         Ok(match ability {
             "account/read" => Some(FissionAbility::AccountRead),
+            "account/create" => Some(FissionAbility::AccountCreate),
             _ => None,
         })
     }
@@ -83,18 +90,24 @@ impl Resource for FissionResource {
             return true;
         }
 
-        let Some(FissionResource { did }) = other.downcast_ref() else {
-            return false;
-        };
-
-        &self.did == did
+        match other.downcast_ref() {
+            Some(Self::All) => true,
+            Some(Self::Did(did)) => match self {
+                Self::All => false,
+                Self::Did(self_did) => self_did == did,
+            },
+            _ => false,
+        }
     }
 }
 
 impl Display for FissionResource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("fission:")?;
-        f.write_str(&self.did)
+        f.write_str(match self {
+            Self::All => "*",
+            Self::Did(did) => did,
+        })
     }
 }
 
@@ -110,19 +123,18 @@ impl Ability for FissionAbility {
 
 impl Display for FissionAbility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AccountRead => f.write_str("account/read"),
-        }
+        f.write_str(match self {
+            Self::AccountRead => "account/read",
+            Self::AccountCreate => "account/create",
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use did_key::{Ed25519KeyPair, Fingerprint};
-    use ed25519_dalek::VerifyingKey;
+    use crate::ed_did_key::EdDidKey;
     use libipld::{raw::RawCodec, Ipld};
-    use rand::thread_rng;
     use rs_ucan::{
         builder::{UcanBuilder, DEFAULT_MULTIHASH},
         capability::{Capability, DefaultCapabilityParser},
@@ -140,19 +152,19 @@ mod tests {
         let mut store = InMemoryStore::<RawCodec>::default();
         let did_verifier_map = DidVerifierMap::default();
 
-        let alice = ed25519_dalek::SigningKey::generate(&mut thread_rng());
-        let bob = ed25519_dalek::SigningKey::generate(&mut thread_rng());
+        let alice = &EdDidKey::generate();
+        let bob = &EdDidKey::generate();
 
         let root_ucan: Ucan<DefaultFact, DefaultCapabilityParser> = UcanBuilder::default()
-            .issued_by(did_key_str(alice.verifying_key()))
-            .for_audience(did_key_str(bob.verifying_key()))
+            .issued_by(alice)
+            .for_audience(bob)
             .claiming_capability(Capability::new(
                 UcanResource::AllProvable,
                 TopAbility,
                 EmptyCaveat {},
             ))
             .with_lifetime(60 * 60)
-            .sign(&alice)?;
+            .sign(alice)?;
 
         store.write(
             Ipld::Bytes(root_ucan.encode()?.as_bytes().to_vec()),
@@ -160,26 +172,22 @@ mod tests {
         )?;
 
         let invocation: Ucan<DefaultFact, DefaultCapabilityParser> = UcanBuilder::default()
-            .issued_by(did_key_str(bob.verifying_key()))
+            .issued_by(bob)
             .for_audience("did:web:fission.codes")
             .claiming_capability(Capability::new(
-                FissionResource {
-                    did: "did:key:sth".to_string(),
-                },
+                FissionResource::Did("did:key:sth".to_string()),
                 FissionAbility::AccountRead,
                 EmptyCaveat {},
             ))
             .witnessed_by(&root_ucan, None)
             .with_lifetime(60 * 60)
-            .sign(&bob)?;
+            .sign(bob)?;
 
         let time = time::now();
 
         let capabilities = invocation.capabilities_for(
-            did_key_str(alice.verifying_key()),
-            FissionResource {
-                did: "did:key:sth".to_string(),
-            },
+            alice.did(),
+            FissionResource::Did("did:key:sth".to_string()),
             FissionAbility::AccountRead,
             time,
             &did_verifier_map,
@@ -189,12 +197,5 @@ mod tests {
         assert_eq!(capabilities.len(), 1);
 
         Ok(())
-    }
-
-    fn did_key_str(key: VerifyingKey) -> String {
-        format!(
-            "did:key:{}",
-            Ed25519KeyPair::from_public_key(key.as_bytes()).fingerprint()
-        )
     }
 }

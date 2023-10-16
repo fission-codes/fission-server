@@ -100,27 +100,6 @@ impl Account {
             .await
     }
 
-    /// Update the controlling DID of a Fission Account
-    //
-    // Unlike the update_volume_cid method below, this could be done with one SQL query, but
-    // for consistency, we're using two; fetch the account and then update it, as separate operations.
-    //
-    // There's probably an elegant way to do that chaining with Rust and Diesel, but I don't know how
-    // to do it and (1) it's not a huge deal performance-wise, and (2) it would be a lot more complex.
-    pub async fn update_did(
-        &self,
-        conn: &mut Conn<'_>,
-        new_did: &str,
-    ) -> Result<Self, diesel::result::Error> {
-        // FIXME this needs to account for delegation and check that the correct
-        // capabilities have been delegated. Currently we only support using the root did.
-        diesel::update(accounts::dsl::accounts)
-            .filter(accounts::id.eq(self.id))
-            .set(accounts::did.eq(new_did))
-            .get_result(conn)
-            .await
-    }
-
     /// Get the volume associated with the user's account.
     //
     // Note: this doesn't use a join, but rather a separate query to the volumes table.
@@ -181,36 +160,8 @@ impl Account {
     }
 }
 
-/// Account Request Struct (for creating new accounts)
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct AccountRequest {
-    /// Username associated with the account
-    pub username: String,
-    /// Email address associated with the account
-    pub email: String,
-}
-
-/// Information about an account
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct AccountResponse {
-    /// username, if associated
-    pub username: Option<String>,
-    /// email, if associated
-    pub email: Option<String>,
-}
-
-impl AccountResponse {
-    /// Turn an account into a suitable response
-    pub fn new(account: Account) -> Self {
-        Self {
-            username: account.username,
-            email: account.email,
-        }
-    }
-}
-
 /// Account with Root Authority (UCAN)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct RootAccount {
     /// The Associated Account
     pub account: Account,
@@ -257,21 +208,6 @@ impl RootAccount {
     ) -> Result<Self, anyhow::Error> {
         let ucan = Self::issue_root_ucan(audience_did).await?;
         let account = Account::new(conn, username, email, ucan.issuer()).await?;
-
-        Ok(Self { ucan, account })
-    }
-
-    /// Update the DID associated with the account
-    ///
-    /// As with `new()` this generates an ephemeral key and delegates access to
-    /// the DID specified in `audience_did`.
-    pub async fn update(
-        conn: &mut Conn<'_>,
-        account: &Account,
-        audience_did: &str,
-    ) -> Result<Self, anyhow::Error> {
-        let ucan = Self::issue_root_ucan(audience_did).await?;
-        let account = account.update_did(conn, ucan.issuer()).await?;
 
         Ok(Self { ucan, account })
     }

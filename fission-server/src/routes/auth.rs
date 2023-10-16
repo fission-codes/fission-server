@@ -13,11 +13,11 @@ use axum::{
     extract::{Json, State},
     http::StatusCode,
 };
+use fission_core::capabilities::{did::Did, email::EmailAbility};
+use rs_ucan::{did_verifier::DidVerifierMap, semantics::caveat::EmptyCaveat};
 use serde::{Deserialize, Serialize};
-
-use utoipa::ToSchema;
-
 use tracing::log;
+use utoipa::ToSchema;
 
 /// Response for Request Token
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
@@ -50,7 +50,7 @@ impl VerificationCodeResponse {
 pub async fn request_token<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
-    Json(payload): Json<email_verification::Request>,
+    Json(mut request): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
     let server_did = state.did.as_ref().as_ref();
     let ucan_aud = authority.ucan.audience();
@@ -67,9 +67,42 @@ pub async fn request_token<S: ServerSetup>(
         return Err(AppError::new(StatusCode::BAD_REQUEST, Some(error_msg)));
     }
 
-    let mut request = payload.clone();
-    let did = authority.ucan.issuer();
-    request.compute_code_hash(did)?;
+    let root_did = authority
+        .ucan
+        .capabilities()
+        .find_map(|cap| {
+            match (
+                cap.resource().downcast_ref(),
+                cap.ability().downcast_ref(),
+                cap.caveat().downcast_ref(),
+            ) {
+                (Some(Did(did)), Some(EmailAbility::Verify), Some(EmptyCaveat)) => {
+                    Some(Did(did.clone()))
+                }
+                _ => None,
+            }
+        })
+        .ok_or_else(|| {
+            AppError::new(
+                StatusCode::FORBIDDEN,
+                Some("Missing email/verify capability in UCAN."),
+            )
+        })?;
+
+    let did = root_did.to_string();
+    if !authority.has_capability(
+        root_did,
+        EmailAbility::Verify,
+        did.clone(),
+        &DidVerifierMap::default(),
+    )? {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN,
+            Some("email/verify capability is rooted incorrectly."),
+        ));
+    }
+
+    request.compute_code_hash(&did)?;
 
     log::debug!(
         "Successfully computed code hash {}",
@@ -78,7 +111,7 @@ pub async fn request_token<S: ServerSetup>(
 
     let mut conn = db::connect(&state.db_pool).await?;
 
-    EmailVerification::new(&mut conn, request.clone(), did).await?;
+    EmailVerification::new(&mut conn, request.clone(), &did).await?;
 
     request.send_code(state.verification_code_sender).await?;
 
@@ -92,17 +125,22 @@ pub async fn request_token<S: ServerSetup>(
 
 #[cfg(test)]
 mod tests {
-    use fission_core::ed_did_key::EdDidKey;
-    use http::{Method, StatusCode};
-    use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
-    use serde_json::json;
-    use testresult::TestResult;
-
     use crate::{
         error::{AppError, ErrorResponse},
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use fission_core::{
+        capabilities::{did::Did, email::EmailAbility},
+        ed_did_key::EdDidKey,
+    };
+    use http::{Method, StatusCode};
+    use rs_ucan::{
+        builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
+        DefaultFact,
+    };
+    use serde_json::json;
+    use testresult::TestResult;
 
     #[test_log::test(tokio::test)]
     async fn test_request_code_ok() -> TestResult {
@@ -113,6 +151,11 @@ mod tests {
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                EmailAbility::Verify,
+                EmptyCaveat,
+            ))
             .sign(issuer)?;
 
         let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
@@ -130,6 +173,36 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(email, "oedipa@trystero.com");
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_no_capability_err() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+        let ucan: Ucan = UcanBuilder::default()
+            .issued_by(issuer)
+            .for_audience(ctx.server_did())
+            .sign(issuer)?;
+
+        let (status, body) =
+            RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_ucan(ucan)
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<ErrorResponse>()
+                .await?;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(matches!(
+            body.errors.as_slice(),
+            [AppError {
+                status: StatusCode::FORBIDDEN,
+                ..
+            }]
+        ));
 
         Ok(())
     }
