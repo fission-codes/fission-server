@@ -89,11 +89,10 @@ pub async fn request_token<S: ServerSetup>(
             )
         })?;
 
-    let did = root_did.to_string();
     if !authority.has_capability(
-        root_did,
+        root_did.clone(),
         EmailAbility::Verify,
-        did.clone(),
+        &root_did,
         &DidVerifierMap::default(),
     )? {
         return Err(AppError::new(
@@ -102,7 +101,7 @@ pub async fn request_token<S: ServerSetup>(
         ));
     }
 
-    request.compute_code_hash(&did)?;
+    request.compute_code_hash(root_did.as_ref())?;
 
     log::debug!(
         "Successfully computed code hash {}",
@@ -111,7 +110,7 @@ pub async fn request_token<S: ServerSetup>(
 
     let mut conn = db::connect(&state.db_pool).await?;
 
-    EmailVerification::new(&mut conn, request.clone(), &did).await?;
+    EmailVerification::new(&mut conn, &request, root_did.as_ref()).await?;
 
     request.send_code(state.verification_code_sender).await?;
 

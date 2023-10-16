@@ -78,7 +78,7 @@ pub async fn create_account<S: ServerSetup>(
     if !authority.has_capability(
         FissionResource::All,
         FissionAbility::AccountCreate,
-        ver_facts.did.clone(),
+        &ver_facts.did,
         &DidVerifierMap::default(),
     )? {
         return Err(AppError::new(

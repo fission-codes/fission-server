@@ -44,7 +44,7 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         &self,
         resource: impl Resource,
         ability: impl Ability,
-        issuer: String,
+        issuer: impl AsRef<str>,
         did_verifier_map: &DidVerifierMap,
     ) -> Result<bool> {
         let current_time = rs_ucan::time::now();

@@ -136,13 +136,13 @@ impl EmailVerification {
     /// Create a new instance of [EmailVerification]
     pub async fn new(
         conn: &mut Conn<'_>,
-        request: Request,
+        request: &Request,
         did: &str,
     ) -> Result<Self, diesel::result::Error> {
         let new_request = NewEmailVerification {
-            email: request.email,
+            email: request.email.clone(),
             did: did.to_string(),
-            code_hash: request.code_hash.unwrap(),
+            code_hash: request.code_hash.clone().unwrap(),
         };
 
         tracing::debug!("Creating new email verification request: {:?}", new_request);
