@@ -101,6 +101,7 @@ pub async fn create_account<S: ServerSetup>(
                 payload.username,
                 verification.email,
                 &verification.did,
+                state.did.as_ref(),
             )
             .await?;
 
@@ -225,7 +226,10 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
         assert_eq!(root_account.account.email, Some(email.to_string()));
-        assert_eq!(root_account.ucan.audience(), issuer.as_ref());
+        assert!(root_account
+            .ucans
+            .iter()
+            .any(|ucan| ucan.audience() == issuer.as_ref()));
 
         Ok(())
     }

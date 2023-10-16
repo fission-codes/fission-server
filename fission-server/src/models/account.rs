@@ -9,7 +9,7 @@ use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use fission_core::ed_did_key::EdDidKey;
+use fission_core::{capabilities::fission::FissionResource, ed_did_key::EdDidKey};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -17,8 +17,7 @@ use rs_ucan::{
     semantics::{ability::TopAbility, caveat::EmptyCaveat},
     ucan::Ucan,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::str::FromStr;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// New Account Struct (for creating new accounts)
@@ -165,31 +164,8 @@ impl Account {
 pub struct RootAccount {
     /// The Associated Account
     pub account: Account,
-    /// A UCAN with Root Authority
-    #[serde(serialize_with = "encode_ucan")]
-    #[serde(deserialize_with = "decode_ucan")]
-    pub ucan: Ucan,
-}
-
-/// Serialize a UCAN to a string
-fn encode_ucan<S>(ucan: &Ucan, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let encoded_ucan = ucan.encode();
-    if let Ok(encoded_ucan) = encoded_ucan {
-        serializer.serialize_str(&encoded_ucan)
-    } else {
-        Err(serde::ser::Error::custom("Failed to encode UCAN"))
-    }
-}
-
-fn decode_ucan<'de, D>(value: D) -> Result<Ucan, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ucan::from_str(&String::deserialize(value)?)
-        .map_err(|e| serde::de::Error::custom(format!("Failed to decode ucan: {e}")))
+    /// UCANs that give root access
+    pub ucans: Vec<Ucan>,
 }
 
 /// Account with Root Authority
@@ -204,26 +180,40 @@ impl RootAccount {
         conn: &mut Conn<'_>,
         username: String,
         email: String,
-        audience_did: &str,
+        user_did: &str,
+        server: &EdDidKey,
     ) -> Result<Self, anyhow::Error> {
-        let ucan = Self::issue_root_ucan(audience_did).await?;
-        let account = Account::new(conn, username, email, ucan.issuer()).await?;
+        let (ucans, root_did) = Self::issue_root_ucans(server, user_did).await?;
+        let account = Account::new(conn, username, email, &root_did).await?;
 
-        Ok(Self { ucan, account })
+        Ok(Self { ucans, account })
     }
 
-    async fn issue_root_ucan(audience_did: &str) -> Result<Ucan, anyhow::Error> {
-        let issuer = EdDidKey::generate();
+    async fn issue_root_ucans(
+        server: &EdDidKey,
+        user_did: &str,
+    ) -> Result<(Vec<Ucan>, String), anyhow::Error> {
+        let account = EdDidKey::generate(); // Zeroized on drop
 
-        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat {});
+        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat);
 
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(audience_did)
+        // Delegate all access to the fission server
+        let server_ucan: Ucan = UcanBuilder::default()
+            .issued_by(&account)
+            .for_audience(server)
             .claiming_capability(capability)
-            .sign(&issuer)?;
+            .sign(&account)?;
 
-        drop(issuer); // just to be explicit: The key material is zeroized here
-        Ok(ucan)
+        // Delegate the account to the user
+        let capability =
+            Capability::new(FissionResource::Did(account.did()), TopAbility, EmptyCaveat);
+
+        let user_ucan: Ucan = UcanBuilder::default()
+            .issued_by(server)
+            .for_audience(user_did)
+            .claiming_capability(capability)
+            .sign(server)?;
+
+        Ok((vec![server_ucan, user_ucan], account.did()))
     }
 }
