@@ -3,7 +3,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use diesel::{
-    debug_query,
     dsl::{now, IntervalDsl},
     pg::Pg,
     ExpressionMethods, Insertable, QueryDsl, Queryable, Selectable, SelectableHelper,
@@ -170,15 +169,13 @@ impl EmailVerification {
             verification.code
         );
 
-        let query = email_verifications::table
+        Ok(email_verifications::table
             .filter(email_verifications::email.eq(email))
             .filter(email_verifications::did.eq(&verification.did))
             .filter(email_verifications::code_hash.eq(&code_hash))
-            .filter(email_verifications::inserted_at.ge(now - 24.hours()));
-
-        tracing::debug!("{}", debug_query::<Pg, _>(&query));
-
-        Ok(query.first(conn).await?)
+            .filter(email_verifications::inserted_at.ge(now - 24.hours()))
+            .first(conn)
+            .await?)
     }
 }
 
