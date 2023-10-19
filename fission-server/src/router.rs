@@ -39,6 +39,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .route("/server-did", get(auth::server_did))
         .route("/account", post(account::create_account))
         .route("/account/:did", get(account::get_account))
+        .route("/account/:username/did", get(account::get_did))
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

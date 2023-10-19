@@ -39,6 +39,7 @@ struct NewAccountRecord {
     Associations,
     Serialize,
     Deserialize,
+    ToSchema,
 )]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]

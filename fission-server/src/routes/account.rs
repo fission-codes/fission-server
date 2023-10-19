@@ -48,11 +48,18 @@ pub struct AccountResponse {
     pub email: Option<String>,
 }
 
+/// Information about the DID of an account
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
+pub struct DidResponse {
+    /// The DID of this account
+    pub did: String,
+}
+
 /// POST handler for creating a new account
 #[utoipa::path(
     post,
     path = "/api/v0/account",
-    request_body = AccountRequest,
+    request_body = AccountCreationRequest,
     security(
         ("ucan_bearer" = []),
     ),
@@ -102,11 +109,13 @@ pub async fn create_account<S: ServerSetup>(
             let new_account = RootAccount::new(
                 conn,
                 payload.username,
-                verification.email,
+                verification.email.to_string(),
                 &verification.did,
                 state.did.as_ref(),
             )
             .await?;
+
+            verification.consume_token(conn).await?;
 
             Ok((StatusCode::CREATED, Json(new_account)))
         }
@@ -147,6 +156,34 @@ pub async fn get_account<S: ServerSetup>(
             email: account.email,
         }),
     ))
+}
+
+/// GET handler to retrieve account details
+#[utoipa::path(
+    get,
+    path = "/api/v0/account/{username}",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Found account", body = DidResponse),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
+    )
+)]
+pub async fn get_did<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    Path(username): Path<String>,
+) -> AppResult<(StatusCode, Json<DidResponse>)> {
+    let conn = &mut db::connect(&state.db_pool).await?;
+
+    let account: Account = accounts::dsl::accounts
+        .filter(accounts::username.eq(username))
+        .first(conn)
+        .await?;
+
+    Ok((StatusCode::OK, Json(DidResponse { did: account.did })))
 }
 
 #[cfg(test)]

@@ -178,6 +178,16 @@ impl EmailVerification {
             .first(conn)
             .await?)
     }
+
+    /// *Use* a token, making it impossible for it to be used again
+    pub async fn consume_token(self, conn: &mut Conn<'_>) -> Result<()> {
+        tracing::debug!(token = ?self, "Consuming verification token");
+
+        diesel::delete(email_verifications::table.filter(email_verifications::id.eq(&self.id)))
+            .execute(conn)
+            .await?;
+        Ok(())
+    }
 }
 
 /// Generate a code that can be sent to the user.

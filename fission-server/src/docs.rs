@@ -3,7 +3,10 @@
 use crate::{
     error::AppError,
     extract::authority_addon::UcanAddon,
-    models::{account::RootAccount, email_verification, volume::NewVolumeRecord},
+    models::{
+        account::{Account, RootAccount},
+        email_verification,
+    },
     routes::{account, auth, health, ping},
 };
 use utoipa::OpenApi;
@@ -15,8 +18,10 @@ use utoipa::OpenApi;
         health::healthcheck,
         ping::get,
         auth::request_token,
+        auth::server_did,
         account::create_account,
         account::get_account,
+        account::get_did,
     ),
     components(
         schemas(
@@ -26,7 +31,7 @@ use utoipa::OpenApi;
             account::AccountCreationRequest,
             account::AccountResponse,
             RootAccount,
-            NewVolumeRecord,
+            Account,
             health::HealthcheckResponse
         )
     ),
