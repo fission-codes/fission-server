@@ -1,1 +1,0 @@
-Fission Relay, communication channel between ODD SDK apps, ODD CLI instances or other WNFS facilitators.

@@ -195,9 +195,8 @@ impl RootAccount {
     ) -> Result<(Vec<Ucan>, String), anyhow::Error> {
         let account = EdDidKey::generate(); // Zeroized on drop
 
-        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat);
-
         // Delegate all access to the fission server
+        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat);
         let server_ucan: Ucan = UcanBuilder::default()
             .issued_by(&account)
             .for_audience(server)
@@ -207,11 +206,11 @@ impl RootAccount {
         // Delegate the account to the user
         let capability =
             Capability::new(FissionResource::Did(account.did()), TopAbility, EmptyCaveat);
-
         let user_ucan: Ucan = UcanBuilder::default()
             .issued_by(server)
             .for_audience(user_did)
             .claiming_capability(capability)
+            .witnessed_by(&server_ucan, None)
             .sign(server)?;
 
         Ok((vec![server_ucan, user_ucan], account.did()))

@@ -3,8 +3,8 @@
 use rs_ucan::semantics::resource::Resource;
 use std::fmt::Display;
 
-#[derive(Clone, Debug)]
 /// DID Resource
+#[derive(Clone, Debug)]
 pub struct Did(pub String);
 
 impl Resource for Did {

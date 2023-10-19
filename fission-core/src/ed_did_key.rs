@@ -45,6 +45,11 @@ impl EdDidKey {
     pub fn did(&self) -> String {
         self.did_key_string.clone()
     }
+
+    /// Similarly to `Self::did()`, returns the DID public key string, but without cloning.
+    pub fn as_str(&self) -> &str {
+        &self.did_key_string
+    }
 }
 
 impl Signer<Signature> for EdDidKey {
@@ -55,7 +60,7 @@ impl Signer<Signature> for EdDidKey {
 
 impl AsRef<str> for EdDidKey {
     fn as_ref(&self) -> &str {
-        &self.did_key_string
+        self.as_str()
     }
 }
 

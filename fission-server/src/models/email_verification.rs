@@ -8,10 +8,11 @@ use diesel::{
     ExpressionMethods, Insertable, QueryDsl, Queryable, Selectable, SelectableHelper,
 };
 use diesel_async::RunQueryDsl;
+use fission_core::facts::EmailVerificationFacts;
 use mailgun_rs::{EmailAddress, Mailgun, MailgunRegion, Message};
 use openssl::sha::Sha256;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::log;
 use utoipa::ToSchema;
@@ -215,11 +216,6 @@ impl Request {
     /// Computes a hash of the code (so that it can only be used by the intended
     /// recipient) and stores it in the struct.
     pub fn compute_code_hash(&mut self, did: &str) -> Result<()> {
-        if self.validate().is_err() {
-            log::error!("ERROR: Failed to validate the request.");
-            return Err(ValidationError::new("Failed to validate the request.").into());
-        }
-
         log::debug!(
             "Computing code hash for email: {} did: {} code: {}",
             self.email,
@@ -247,18 +243,4 @@ impl Request {
             .send_code(&self.email, &self.code.to_string())
             .await
     }
-}
-
-/// This stores the information a client has to provide when returning with an
-/// email verification code.
-///
-/// Email verification needs two factors:
-/// 1. Access to read emails
-/// 2. Access to the keypair on the device that originally created the email verification request
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmailVerificationFacts {
-    /// The verification code
-    pub code: u64,
-    /// The DID that was originally used to initiate the email verification
-    pub did: String,
 }

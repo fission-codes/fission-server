@@ -3,7 +3,7 @@ url = "postgres://postgres:postgres@localhost:5432/fission-server"
 connect_timeout = 3
 
 [healthcheck]
-enabled = true
+enabled = false
 interval_ms = 5000
 max_retries = 3
 

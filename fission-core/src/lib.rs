@@ -7,3 +7,4 @@
 pub mod authority;
 pub mod capabilities;
 pub mod ed_did_key;
+pub mod facts;

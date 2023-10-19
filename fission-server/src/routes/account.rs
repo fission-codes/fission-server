@@ -8,7 +8,7 @@ use crate::{
     extract::json::Json,
     models::{
         account::{Account, RootAccount},
-        email_verification::{EmailVerification, EmailVerificationFacts},
+        email_verification::EmailVerification,
     },
     traits::ServerSetup,
 };
@@ -19,7 +19,10 @@ use axum::{
 };
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
-use fission_core::capabilities::fission::{FissionAbility, FissionResource};
+use fission_core::{
+    capabilities::fission::{FissionAbility, FissionResource},
+    facts::EmailVerificationFacts,
+};
 use rs_ucan::did_verifier::DidVerifierMap;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -66,7 +69,7 @@ pub async fn create_account<S: ServerSetup>(
 ) -> AppResult<(StatusCode, Json<RootAccount>)> {
     payload
         .validate()
-        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e.to_string())))?;
+        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
     let ver_facts = authority.ucan.facts().ok_or_else(|| {
         AppError::new(
@@ -152,7 +155,7 @@ mod tests {
     use crate::{
         db::schema::accounts,
         error::{AppError, ErrorResponse},
-        models::{account::RootAccount, email_verification::EmailVerificationFacts},
+        models::account::RootAccount,
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };

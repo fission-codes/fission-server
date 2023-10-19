@@ -29,9 +29,7 @@ use crate::{
 };
 
 /// DNS Request Handler
-
 pub struct DBBackedAuthority {
-    #[allow(dead_code)]
     db_pool: Pool,
 }
 

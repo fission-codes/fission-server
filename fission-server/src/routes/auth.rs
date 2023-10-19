@@ -18,6 +18,7 @@ use rs_ucan::{did_verifier::DidVerifierMap, semantics::caveat::EmptyCaveat};
 use serde::{Deserialize, Serialize};
 use tracing::log;
 use utoipa::ToSchema;
+use validator::Validate;
 
 /// Response for Request Token
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
@@ -44,7 +45,9 @@ impl VerificationCodeResponse {
         (status = 200, description = "Successfully sent request token", body = VerificationCodeResponse),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 510, description = "Not extended")
+        (status = 403, description = "Forbidden"),
+        (status = 415, description = "Unsupported Media Type"),
+        (status = 422, description = "Unprocessable Entity"),
     )
 )]
 pub async fn request_token<S: ServerSetup>(
@@ -101,6 +104,13 @@ pub async fn request_token<S: ServerSetup>(
         ));
     }
 
+    request.validate().map_err(|e| {
+        AppError::new(
+            StatusCode::BAD_REQUEST,
+            Some(format!("Invalid request: {e}")),
+        )
+    })?;
+
     request.compute_code_hash(root_did.as_ref())?;
 
     log::debug!(
@@ -122,12 +132,25 @@ pub async fn request_token<S: ServerSetup>(
     ))
 }
 
+/// GET handler for the server's current DID
+/// TODO: Keep this? Replace with DoH & DNS?
+#[utoipa::path(
+    get,
+    path = "/api/v0/server-did",
+    responses(
+        (status = 200, description = "Responds with the server DID in the body", body = String),
+    )
+)]
+pub async fn server_did<S: ServerSetup>(State(state): State<AppState<S>>) -> String {
+    state.did.did()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         db::schema::email_verifications,
         error::{AppError, ErrorResponse},
-        models::email_verification::{hash_code, EmailVerification, EmailVerificationFacts},
+        models::email_verification::{hash_code, EmailVerification},
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
@@ -138,6 +161,7 @@ mod tests {
     use fission_core::{
         capabilities::{did::Did, email::EmailAbility},
         ed_did_key::EdDidKey,
+        facts::EmailVerificationFacts,
     };
     use http::{Method, StatusCode};
     use rs_ucan::{
