@@ -32,11 +32,20 @@ pub struct Authority<F = DefaultFact> {
 
 impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validate an authority struct
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self, server_did: &str) -> Result<()> {
         self.ucan
             .validate(rs_ucan::time::now(), &DidVerifierMap::default())?;
 
-        // TODO if self.ucan.audience() != server_did {}
+        let audience = self.ucan.audience();
+        if audience != server_did {
+            tracing::error!(
+                audience = %audience,
+                expected = %server_did,
+                token = ?self.ucan.encode(),
+                "Auth token audience doesn't match server DID"
+            );
+            bail!("Auth token audience doesn't match server DID. Expected {server_did}, but got {audience}.")
+        }
 
         Ok(())
     }
@@ -129,7 +138,7 @@ mod tests {
             proofs: vec![],
         };
 
-        assert!(authority.validate().is_ok());
+        assert!(authority.validate("did:web:runfission.com").is_ok());
 
         Ok(())
     }

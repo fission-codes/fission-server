@@ -103,6 +103,10 @@ impl TestContext {
     pub(crate) fn server_did(&self) -> &EdDidKey {
         &self.app_state.did
     }
+
+    pub(crate) fn app_state(&self) -> &AppState<TestSetup> {
+        &self.app_state
+    }
 }
 
 impl Drop for TestContext {

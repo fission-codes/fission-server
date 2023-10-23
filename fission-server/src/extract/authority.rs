@@ -20,7 +20,7 @@ use serde_json::json;
 
 // 🧬
 
-use crate::{authority::Authority, error::AppError};
+use crate::{app_state::AppState, authority::Authority, error::AppError, traits::ServerSetup};
 use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
@@ -86,35 +86,41 @@ impl Header for UcanHeader {
 ////////////
 
 #[async_trait]
-impl<S, F> FromRequestParts<S> for Authority<F>
+impl<S, F> FromRequestParts<AppState<S>> for Authority<F>
 where
-    S: Send + Sync,
+    S: ServerSetup,
     F: Clone + DeserializeOwned,
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        do_extract_authority(parts).await.map_err(|err| match err {
-            authority::Error::InsufficientCapabilityScope { .. } => {
-                AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
-            }
-            authority::Error::InvalidUcan { reason } => AppError::new(
-                StatusCode::UNAUTHORIZED,
-                Some(format!("Invalid UCAN: {reason}")),
-            ),
-            authority::Error::MissingCredentials => {
-                AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
-            }
-            authority::Error::MissingProofs { proofs_needed } => AppError::new(
-                StatusCode::NOT_EXTENDED,
-                Some(json!({ "prf": proofs_needed })),
-            ),
-        })
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState<S>,
+    ) -> Result<Self, Self::Rejection> {
+        do_extract_authority(parts, state.did.as_str())
+            .await
+            .map_err(|err| match err {
+                authority::Error::InsufficientCapabilityScope { .. } => {
+                    AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
+                }
+                authority::Error::InvalidUcan { reason } => AppError::new(
+                    StatusCode::UNAUTHORIZED,
+                    Some(format!("Invalid UCAN: {reason}")),
+                ),
+                authority::Error::MissingCredentials => {
+                    AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
+                }
+                authority::Error::MissingProofs { proofs_needed } => AppError::new(
+                    StatusCode::NOT_EXTENDED,
+                    Some(json!({ "prf": proofs_needed })),
+                ),
+            })
     }
 }
 
 async fn do_extract_authority<F: Clone + DeserializeOwned>(
     parts: &mut Parts,
+    server_did: &str,
 ) -> Result<Authority<F>, authority::Error> {
     // Extract the token from the authorization header
     let TypedHeader(Authorization(bearer)) = parts
@@ -138,7 +144,7 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 
     // Validate the authority
     authority
-        .validate()
+        .validate(server_did)
         .map_err(|reason| InvalidUcan { reason })?;
 
     Ok(authority)
@@ -151,8 +157,10 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::test_context::{TestContext, TestSetup};
     use axum::{
         body::BoxBody,
+        extract::State,
         http::StatusCode,
         routing::{get, Router},
     };
@@ -164,18 +172,25 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority() -> TestResult {
+        let ctx = TestContext::new().await;
         let issuer = &EdDidKey::generate();
 
         // Test if request requires a valid UCAN
-        async fn authorized_get(_authority: Authority) -> Response<BoxBody> {
+        async fn authorized_get(
+            _state: State<AppState<TestSetup>>,
+            _authority: Authority,
+        ) -> Response<BoxBody> {
             Response::default()
         }
-        let app: Router = Router::new().route("/", get(authorized_get));
+
+        let app: Router = Router::new()
+            .route("/", get(authorized_get))
+            .with_state(ctx.app_state().clone());
 
         // If a valid UCAN is given
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience("did:web:runfission.com")
+            .for_audience(ctx.server_did())
             .with_lifetime(100)
             .sign(issuer)?;
 
@@ -197,18 +212,25 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority_invalid_ucan() -> TestResult {
+        let ctx = TestContext::new().await;
         let issuer = &EdDidKey::generate();
 
         // Test if request requires a valid UCAN
-        let app: Router<(), axum::body::Body> = Router::new().route(
-            "/",
-            get(|_authority: Authority| async { axum::body::Empty::new() }),
-        );
+        async fn authorized_get(
+            _state: State<AppState<TestSetup>>,
+            _authority: Authority,
+        ) -> Response<BoxBody> {
+            Response::default()
+        }
+
+        let app: Router = Router::new()
+            .route("/", get(authorized_get))
+            .with_state(ctx.app_state().clone());
 
         // If an invalid UCAN is given
         let faulty_ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
-            .for_audience("did:web:runfission.com")
+            .for_audience(ctx.server_did())
             .with_expiration(0)
             .sign(issuer)?;
 
@@ -230,11 +252,19 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority_no_auth_header() -> TestResult {
+        let ctx = TestContext::new().await;
+
         // Test if request requires a valid UCAN
-        let app: Router<(), axum::body::Body> = Router::new().route(
-            "/",
-            get(|_authority: Authority| async { axum::body::Empty::new() }),
-        );
+        async fn authorized_get(
+            _state: State<AppState<TestSetup>>,
+            _authority: Authority,
+        ) -> Response<BoxBody> {
+            Response::default()
+        }
+
+        let app: Router = Router::new()
+            .route("/", get(authorized_get))
+            .with_state(ctx.app_state().clone());
 
         // If no authorization header is provided
         let not_authed = app
