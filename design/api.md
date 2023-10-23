@@ -29,9 +29,14 @@ For all UCANs that are sent to the server for authorization, following things mu
 
 These conditions won't be repeated in the route-specific authorization sections.
 
+---
+
 ### POST `/api/v0/auth/email/verify`
 
----
+- Sends an email with a 6-digit verification code to given address
+- A hash of the code and email address is stored in a database
+- The code expires after 24 hours
+- Codes will be deleted when used
 
 **Authorization**: Unauthorized
 
@@ -49,15 +54,9 @@ These conditions won't be repeated in the route-specific authorization sections.
 
 ---
 
-- Sends an email with a 6-digit verification code to given address
-- A hash of the code and email address is stored in a database
-- The code expires after 24 hours
-- Codes will be deleted when used
-
-
 ### POST `/api/v0/account`
 
----
+Registers a full account given an email verification code and delegates the account's access to given DID. In the future more UCANs may be involved in the delgation chain in the response.
 
 **Authorization**: UCAN with ability `account/create`. The resource DID will be the audience for returned UCANs.
 
@@ -78,12 +77,9 @@ These conditions won't be repeated in the route-specific authorization sections.
 
 ---
 
-This request registers a full account given an email verification code and delegates the account's access to given DID. In the future more UCANs may be involved in the delgation chain in the response.
-
-
 ### GET `/api/v0/account/:did`
 
----
+Fetches the latest account information.
 
 **Authorization**: UCAN giving access to the ability `account/info` with the account's DID as resource.
 
@@ -99,11 +95,9 @@ This request registers a full account given an email verification code and deleg
 
 ---
 
-This fetches the latest account information.
-
 ### GET `/api/v0/account/:username/did`
 
----
+Find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
 
 **Authorization**: *Unauthenticated*
 
@@ -113,14 +107,12 @@ This fetches the latest account information.
 |-------|----------|
 | `did` | `string` |
 
+
 ---
-
-Use this to find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
-
 
 ### PATCH `/api/v0/account/:did/username/:username`
 
----
+Change the account's username.
 
 **Authorization**: UCAN with ability `account/manage`.
 
@@ -132,22 +124,7 @@ Status 409 Conflict and `{ success: false }`, if the username is already taken.
 
 ---
 
-Change the account's username.
-
-
 ### GET `/api/v0/capabilities`
-
----
-
-**Authorization**: UCAN with ability `capability/find`.
-
-**Response**:
-
-| Field | Type | Comment |
-|-------|------|---------|
-| `ucans` | `Array<string>` | A set of ucans giving the DID from the resource in the authorization capabilities. |
-
----
 
 This returns the set of UCANs in UCAN chains that have the authorization UCAN's resource DID as final audience.
 
@@ -156,6 +133,14 @@ This way agents can discover new capabilities, or make use of the server as pers
 In some cases this can be useful for logging in a new devices. E.g. when passkeys are available and are synced between devices, e.g. it's easy to ask a synced passkey to sign a UCAN giving the `"ucan:*": { "*": [{}] }` capability. However, this UCAN on its own doesn't give the account access to anything yet. It can use this endpoint to fetch the `"did:key:<account>": { "*": [{}] }` capability UCANs that delegate to the passkey.
 
 In the future this endpoint will be useful for fetching new capabilities from other services that were delegated to a user's account.
+
+**Authorization**: UCAN with ability `capability/find`.
+
+**Response**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `ucans` | `Array<string>` | A set of ucans giving the DID from the resource in the authorization capabilities. |
 
 
 ## UCAN Capabilities
