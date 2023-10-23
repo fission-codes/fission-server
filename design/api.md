@@ -70,8 +70,6 @@ These conditions won't be repeated in the route-specific authorization sections.
 | `username` | `string` | |
 | `credentialID` | `string` | Optional. If present, this may be useful for better passkey UX. |
 
-This info is passed in the UCAN facts field.
-
 **Response**:
 
 | Field | Type | Comment |
