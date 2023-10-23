@@ -29,8 +29,7 @@ diesel::table! {
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         email -> Text,
-        code_hash -> Text,
-        did -> Text,
+        code -> Text,
     }
 }
 

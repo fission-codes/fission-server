@@ -2,21 +2,17 @@
 
 use crate::{
     app_state::AppState,
-    authority::Authority,
     db::{self},
     error::{AppError, AppResult},
     models::email_verification::{self, EmailVerification},
-    traits::ServerSetup,
+    traits::{ServerSetup, VerificationCodeSender},
 };
 use axum::{
     self,
     extract::{Json, State},
     http::StatusCode,
 };
-use fission_core::capabilities::{did::Did, email::EmailAbility};
-use rs_ucan::{did_verifier::DidVerifierMap, semantics::caveat::EmptyCaveat};
 use serde::{Deserialize, Serialize};
-use tracing::log;
 use utoipa::ToSchema;
 use validator::Validate;
 
@@ -52,77 +48,20 @@ impl VerificationCodeResponse {
 )]
 pub async fn request_token<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    authority: Authority,
-    Json(mut request): Json<email_verification::Request>,
+    Json(request): Json<email_verification::Request>,
 ) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
-    let server_did = state.did.as_ref().as_ref();
-    let ucan_aud = authority.ucan.audience();
-    if ucan_aud != server_did {
-        log::debug!(
-            "Incorrect UCAN `aud` used. Expected {}, got {}.",
-            server_did,
-            ucan_aud
-        );
-        let error_msg = format!(
-            "Authorization UCAN must delegate to this server's DID (expected {}, got {})",
-            server_did, ucan_aud
-        );
-        return Err(AppError::new(StatusCode::BAD_REQUEST, Some(error_msg)));
-    }
-
-    let root_did = authority
-        .ucan
-        .capabilities()
-        .find_map(|cap| {
-            match (
-                cap.resource().downcast_ref(),
-                cap.ability().downcast_ref(),
-                cap.caveat().downcast_ref(),
-            ) {
-                (Some(Did(did)), Some(EmailAbility::Verify), Some(EmptyCaveat)) => {
-                    Some(Did(did.clone()))
-                }
-                _ => None,
-            }
-        })
-        .ok_or_else(|| {
-            AppError::new(
-                StatusCode::FORBIDDEN,
-                Some("Missing email/verify capability in UCAN."),
-            )
-        })?;
-
-    if !authority.has_capability(
-        root_did.clone(),
-        EmailAbility::Verify,
-        &root_did,
-        &DidVerifierMap::default(),
-    )? {
-        return Err(AppError::new(
-            StatusCode::FORBIDDEN,
-            Some("email/verify capability is rooted incorrectly."),
-        ));
-    }
-
-    request.validate().map_err(|e| {
-        AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some(format!("Invalid request: {e}")),
-        )
-    })?;
-
-    request.compute_code_hash(root_did.as_ref())?;
-
-    log::debug!(
-        "Successfully computed code hash {}",
-        request.code_hash.clone().unwrap()
-    );
+    request
+        .validate()
+        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
     let mut conn = db::connect(&state.db_pool).await?;
 
-    EmailVerification::new(&mut conn, &request, root_did.as_ref()).await?;
+    let verification = EmailVerification::new(&mut conn, &request).await?;
 
-    request.send_code(state.verification_code_sender).await?;
+    state
+        .verification_code_sender
+        .send_code(&verification.email, &verification.code)
+        .await?;
 
     Ok((
         StatusCode::OK,
@@ -149,8 +88,7 @@ pub async fn server_did<S: ServerSetup>(State(state): State<AppState<S>>) -> Str
 mod tests {
     use crate::{
         db::schema::email_verifications,
-        error::{AppError, ErrorResponse},
-        models::email_verification::{hash_code, EmailVerification},
+        models::email_verification::EmailVerification,
         routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
@@ -158,16 +96,8 @@ mod tests {
     use assert_matches::assert_matches;
     use chrono::{Duration, Local};
     use diesel_async::RunQueryDsl;
-    use fission_core::{
-        capabilities::{did::Did, email::EmailAbility},
-        ed_did_key::EdDidKey,
-        facts::EmailVerificationFacts,
-    };
     use http::{Method, StatusCode};
-    use rs_ucan::{
-        builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
-        DefaultFact,
-    };
+    use rs_ucan::DefaultFact;
     use serde_json::json;
     use testresult::TestResult;
 
@@ -176,22 +106,12 @@ mod tests {
         let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .claiming_capability(Capability::new(
-                Did(issuer.did()),
-                EmailAbility::Verify,
-                EmptyCaveat,
-            ))
-            .sign(issuer)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<VerificationCodeResponse>()
-            .await?;
+        let (status, _) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<VerificationCodeResponse>()
+                .await?;
 
         let (email, _) = ctx
             .verification_code_sender()
@@ -211,134 +131,27 @@ mod tests {
         let ctx = TestContext::new().await;
 
         let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .claiming_capability(Capability::new(
-                Did(issuer.did()),
-                EmailAbility::Verify,
-                EmptyCaveat,
-            ))
-            .sign(issuer)?;
 
-        RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-            .with_ucan(ucan)
+        RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_json_body(json!({ "email": email }))?
             .into_json_response::<VerificationCodeResponse>()
             .await?;
 
-        let (_, email_content) = ctx
+        let (_, code) = ctx
             .verification_code_sender()
             .get_emails()
             .into_iter()
             .last()
             .expect("No email sent");
 
-        let code = email_content
-            .parse()
-            .expect("Couldn't parse validation code");
-
-        let token_result = EmailVerification::find_token(
-            &mut ctx.get_db_conn().await,
-            email,
-            &EmailVerificationFacts {
-                code,
-                did: issuer.did(),
-            },
-        )
-        .await;
+        let token_result =
+            EmailVerification::find_token(&mut ctx.get_db_conn().await, email, &code).await;
 
         assert_matches!(
             token_result,
             Ok(EmailVerification {
-                email, did, ..
-            }) if email == "oedipa@trystero.com" && did == issuer.did()
-        );
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_request_code_no_capability_err() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .sign(issuer)?;
-
-        let (status, body) =
-            RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_ucan(ucan)
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<ErrorResponse>()
-                .await?;
-
-        assert_eq!(status, StatusCode::FORBIDDEN);
-        assert_matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::FORBIDDEN,
-                ..
-            }]
-        );
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_request_code_no_ucan() -> TestResult {
-        let ctx = TestContext::new().await;
-        let email = "oedipa@trystero.com";
-
-        let (status, body) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<ErrorResponse>()
-                .await?;
-
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
-
-        assert_matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::UNAUTHORIZED,
-                ..
-            }]
-        );
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_request_code_wrong_aud() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience("did:fission:1234")
-            .sign(issuer)?;
-
-        let (status, body) =
-            RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_ucan(ucan)
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<ErrorResponse>()
-                .await?;
-
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-
-        assert_matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::BAD_REQUEST,
-                ..
-            }]
+                email, ..
+            }) if email == "oedipa@trystero.com"
         );
 
         Ok(())
@@ -350,8 +163,7 @@ mod tests {
         let mut conn = ctx.get_db_conn().await;
 
         let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-        let code = 123456;
+        let code = "123456";
 
         let inserted_at = Local::now()
             .naive_utc()
@@ -362,9 +174,8 @@ mod tests {
             id: 0,
             inserted_at,
             updated_at: inserted_at,
-            did: issuer.did(),
             email: email.to_string(),
-            code_hash: hash_code(email, issuer.as_ref(), code),
+            code: code.to_string(),
         };
 
         diesel::insert_into(email_verifications::table)
@@ -372,12 +183,7 @@ mod tests {
             .execute(&mut conn)
             .await?;
 
-        let facts = &EmailVerificationFacts {
-            code,
-            did: issuer.did(),
-        };
-
-        let token_result = EmailVerification::find_token(&mut conn, email, &facts).await;
+        let token_result = EmailVerification::find_token(&mut conn, email, code).await;
 
         assert_matches!(token_result, Err(_));
 

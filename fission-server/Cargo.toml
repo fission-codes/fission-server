@@ -109,6 +109,7 @@ validator = { version = "0.16.0", features = ["derive"] }
 ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 libipld = "0.16.0"
+blake3 = "1.4.1"
 
 [dev-dependencies]
 assert-json-diff = "2.0"

@@ -19,10 +19,7 @@ use axum::{
 };
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
-use fission_core::{
-    capabilities::fission::{FissionAbility, FissionResource},
-    facts::EmailVerificationFacts,
-};
+use fission_core::capabilities::fission::{FissionAbility, FissionResource};
 use rs_ucan::did_verifier::DidVerifierMap;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -37,6 +34,10 @@ pub struct AccountCreationRequest {
     /// Email address associated with the account
     #[validate(email)]
     pub email: String,
+    /// Email verification code
+    pub code: String,
+    /// The DID that wants to be logged in
+    pub did: String,
 }
 
 /// Information about an account
@@ -71,24 +72,17 @@ pub struct DidResponse {
 )]
 pub async fn create_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    authority: Authority<EmailVerificationFacts>,
-    Json(payload): Json<AccountCreationRequest>,
+    authority: Authority,
+    Json(request): Json<AccountCreationRequest>,
 ) -> AppResult<(StatusCode, Json<RootAccount>)> {
-    payload
+    request
         .validate()
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
-
-    let ver_facts = authority.ucan.facts().ok_or_else(|| {
-        AppError::new(
-            StatusCode::BAD_REQUEST,
-            Some("Missing UCAN facts with email code and DID."),
-        )
-    })?;
 
     if !authority.has_capability(
         FissionResource::All,
         FissionAbility::AccountCreate,
-        &ver_facts.did,
+        &request.did,
         &DidVerifierMap::default(),
     )? {
         return Err(AppError::new(
@@ -100,7 +94,7 @@ pub async fn create_account<S: ServerSetup>(
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
-            let verification = EmailVerification::find_token(conn, &payload.email, ver_facts)
+            let verification = EmailVerification::find_token(conn, &request.email, &request.code)
                 .await
                 .map_err(|err| AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())))?;
 
@@ -108,9 +102,9 @@ pub async fn create_account<S: ServerSetup>(
 
             let new_account = RootAccount::new(
                 conn,
-                payload.username,
+                request.username,
                 verification.email.to_string(),
-                &verification.did,
+                &request.did,
                 state.did.as_ref(),
             )
             .await?;
@@ -243,7 +237,7 @@ mod tests {
             .last()
             .expect("No email Sent");
 
-        let ucan2 = UcanBuilder::default()
+        let ucan2: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
             .claiming_capability(Capability::new(
@@ -251,15 +245,16 @@ mod tests {
                 FissionAbility::AccountCreate,
                 EmptyCaveat,
             ))
-            .with_fact(EmailVerificationFacts {
-                code: code.parse()?,
-                did: issuer.did(),
-            })
             .sign(issuer)?;
 
         let (status, root_account) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan2)
-            .with_json_body(json!({ "username": username, "email": email }))?
+            .with_json_body(json!({
+                "username": username,
+                "email": email,
+                "code": code,
+                "did": issuer.did(),
+            }))?
             .into_json_response::<RootAccount>()
             .await?;
 
@@ -282,18 +277,19 @@ mod tests {
         let email = "oedipa@trystero.com";
 
         let issuer = &EdDidKey::generate();
-        let ucan = UcanBuilder::default()
+        let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
-            .with_fact(EmailVerificationFacts {
-                code: 1_000_000, // wrong code
-                did: issuer.did(),
-            })
             .sign(issuer)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan)
-            .with_json_body(json!({ "username": username, "email": email }))?
+            .with_json_body(json!({
+                "username": username,
+                "email": email,
+                "code": "1000000", // wrong code
+                "did": issuer.did(),
+            }))?
             .into_json_response::<ErrorResponse>()
             .await?;
 
@@ -344,18 +340,19 @@ mod tests {
             .expect("No email sent");
 
         let wrong_issuer = &EdDidKey::generate();
-        let ucan = UcanBuilder::default()
+        let ucan: Ucan = UcanBuilder::default()
             .issued_by(wrong_issuer)
             .for_audience(ctx.server_did())
-            .with_fact(EmailVerificationFacts {
-                code: code.parse()?,
-                did: wrong_issuer.did(),
-            })
             .sign(wrong_issuer)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
             .with_ucan(ucan)
-            .with_json_body(json!({ "username": username, "email": email }))?
+            .with_json_body(json!({
+                "username": username,
+                "email": email,
+                "code": code,
+                "did": wrong_issuer.did(),
+            }))?
             .into_json_response::<ErrorResponse>()
             .await?;
 
@@ -395,12 +392,12 @@ mod tests {
             Method::GET,
             format!("/api/v0/account/{}", did),
         )
-        .into_json_response::<AccountCreationRequest>()
+        .into_json_response::<AccountResponse>()
         .await?;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.username, username);
-        assert_eq!(body.email, email);
+        assert_eq!(body.username, Some(username.to_string()));
+        assert_eq!(body.email, Some(email.to_string()));
 
         Ok(())
     }
