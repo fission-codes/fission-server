@@ -33,16 +33,24 @@ These conditions won't be repeated in the route-specific authorization sections.
 
 ---
 
-**Authorization**: UCAN with ability `verification/request`.
+**Authorization**: Unauthorized
 
-**Request**: `{ email: string }` in the UCAN's facts.
+**Request**:
 
-**Response**: `{ success: bool }`
+| Field | Type | Comment |
+|-------|------|---------|
+| `email` | `string` | The email to send the verification code to |
+
+**Response**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `success` | `bool` | True if sending the email was successful |
 
 ---
 
 - Sends an email with a 6-digit verification code to given address
-- A hash of the code, email address and resource DID is stored in a database
+- A hash of the code and email address is stored in a database
 - The code expires after 24 hours
 - Codes will be deleted when used
 
@@ -51,7 +59,7 @@ These conditions won't be repeated in the route-specific authorization sections.
 
 ---
 
-**Authorization**: UCAN with ability `verification/consume`. The resource DID will be the audience for returned UCANs and needs to be the same as the resource DID that was used with the `verification/request` ability to create the email verification code.
+**Authorization**: UCAN with ability `account/create`. The resource DID will be the audience for returned UCANs.
 
 **Request**:
 
@@ -174,8 +182,7 @@ flowchart TD
     Noncrit --> Info["account/info"]
     Star --> Manage["account/manage"]
     Star --> Delete["account/delete"]
-    VStar["verification/*"] --> VReq["verification/request"]
-    VStar --> VCons["verification/consume"]
+    CapFind["capability/find"]
 ```
 
 #### `account/noncritical` & `account/*`
@@ -201,18 +208,6 @@ Critical. Allows changing the username.
 #### `account/delete`
 
 Critical. Allows deleting an account.
-
-#### `verification/*`
-
-All email-verification-related abilities.
-
-#### `verification/request`
-
-Allows requesting email verification *for this DID*, i.e. triggering an email to be sent and having a code being associated with the DID from this resource.
-
-#### `verification/consume`
-
-Allows using an email verification code to be used. (Email verification codes are tied to DIDs.)
 
 #### `capability/find`
 
