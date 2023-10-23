@@ -4,7 +4,7 @@ use crate::{
     app_state::AppState,
     db::{self},
     error::{AppError, AppResult},
-    models::email_verification::{self, EmailVerification},
+    models::email_verification::EmailVerification,
     traits::{ServerSetup, VerificationCodeSender},
 };
 use axum::{
@@ -12,22 +12,8 @@ use axum::{
     extract::{Json, State},
     http::StatusCode,
 };
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use fission_core::common::{EmailVerifyRequest, SuccessResponse};
 use validator::Validate;
-
-/// Response for Request Token
-#[derive(Serialize, Deserialize, Debug, ToSchema)]
-pub struct VerificationCodeResponse {
-    msg: String,
-}
-
-impl VerificationCodeResponse {
-    /// Create a new Response
-    pub fn new(msg: String) -> Self {
-        Self { msg }
-    }
-}
 
 /// POST handler for requesting a new token by email
 #[utoipa::path(
@@ -38,7 +24,7 @@ impl VerificationCodeResponse {
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Successfully sent request token", body = VerificationCodeResponse),
+        (status = 200, description = "Successfully sent request token", body = SuccessResponse),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
@@ -48,8 +34,8 @@ impl VerificationCodeResponse {
 )]
 pub async fn request_token<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    Json(request): Json<email_verification::Request>,
-) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
+    Json(request): Json<EmailVerifyRequest>,
+) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
     request
         .validate()
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
@@ -63,12 +49,7 @@ pub async fn request_token<S: ServerSetup>(
         .send_code(&verification.email, &verification.code)
         .await?;
 
-    Ok((
-        StatusCode::OK,
-        Json(VerificationCodeResponse::new(
-            "Successfully sent request token".to_string(),
-        )),
-    ))
+    Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
 }
 
 /// GET handler for the server's current DID
@@ -89,7 +70,7 @@ mod tests {
     use crate::{
         db::schema::email_verifications,
         models::email_verification::EmailVerification,
-        routes::auth::VerificationCodeResponse,
+        routes::auth::SuccessResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
     use anyhow::anyhow;
@@ -110,7 +91,7 @@ mod tests {
         let (status, _) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
-                .into_json_response::<VerificationCodeResponse>()
+                .into_json_response::<SuccessResponse>()
                 .await?;
 
         let (email, _) = ctx
@@ -134,7 +115,7 @@ mod tests {
 
         RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
             .with_json_body(json!({ "email": email }))?
-            .into_json_response::<VerificationCodeResponse>()
+            .into_json_response::<SuccessResponse>()
             .await?;
 
         let (_, code) = ctx

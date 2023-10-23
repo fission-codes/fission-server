@@ -1370,6 +1370,8 @@ dependencies = [
  "signature 2.1.0",
  "tracing",
  "url",
+ "utoipa",
+ "validator",
  "zeroize",
 ]
 

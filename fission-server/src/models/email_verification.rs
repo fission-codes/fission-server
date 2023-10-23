@@ -8,14 +8,12 @@ use diesel::{
     ExpressionMethods, Insertable, QueryDsl, Queryable, Selectable, SelectableHelper,
 };
 use diesel_async::RunQueryDsl;
+use fission_core::common::EmailVerifyRequest;
 use hex::ToHex;
 use mailgun_rs::{EmailAddress, Mailgun, MailgunRegion, Message};
 use rand::Rng;
-use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::log;
-use utoipa::ToSchema;
-use validator::Validate;
 
 use crate::{
     db::{schema::email_verifications, Conn},
@@ -129,17 +127,17 @@ impl EmailVerification {
     /// Create a new instance of [EmailVerification]
     pub async fn new(
         conn: &mut Conn<'_>,
-        request: &Request,
+        request: &EmailVerifyRequest,
     ) -> Result<Self, diesel::result::Error> {
-        let new_request = NewEmailVerification {
+        let record = NewEmailVerification {
             email: request.email.clone(),
             code: generate_code(),
         };
 
-        tracing::debug!("Creating new email verification request: {:?}", new_request);
+        tracing::debug!("Creating new email verification record: {:?}", record);
 
         diesel::insert_into(email_verifications::table)
-            .values(&new_request)
+            .values(&record)
             .returning(EmailVerification::as_select())
             .get_result(conn)
             .await
@@ -189,12 +187,4 @@ pub fn hash_code(email: &str, code: u64) -> String {
         &[email.as_bytes(), &code.to_le_bytes()].concat(),
     )
     .encode_hex()
-}
-
-/// [Request] Parameters
-#[derive(Deserialize, Validate, Clone, Debug, ToSchema)]
-pub struct Request {
-    /// The email address of the user signing up
-    #[validate(email)]
-    pub email: String,
 }

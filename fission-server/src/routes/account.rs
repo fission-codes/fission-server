@@ -19,39 +19,12 @@ use axum::{
 };
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
-use fission_core::capabilities::{did::Did, fission::FissionAbility};
-use serde::{Deserialize, Serialize};
+use fission_core::{
+    capabilities::{did::Did, fission::FissionAbility},
+    common::{AccountCreationRequest, AccountResponse, DidResponse},
+};
 use tracing::debug;
-use utoipa::ToSchema;
 use validator::Validate;
-
-/// Account Request Struct (for creating new accounts)
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema, Validate)]
-pub struct AccountCreationRequest {
-    /// Username associated with the account
-    pub username: String,
-    /// Email address associated with the account
-    #[validate(email)]
-    pub email: String,
-    /// Email verification code
-    pub code: String,
-}
-
-/// Information about an account
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct AccountResponse {
-    /// username, if associated
-    pub username: Option<String>,
-    /// email, if associated
-    pub email: Option<String>,
-}
-
-/// Information about the DID of an account
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct DidResponse {
-    /// The DID of this account
-    pub did: String,
-}
 
 /// POST handler for creating a new account
 #[utoipa::path(
@@ -176,13 +149,12 @@ mod tests {
         db::schema::accounts,
         error::{AppError, ErrorResponse},
         models::account::RootAccount,
-        routes::auth::VerificationCodeResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
     use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
-    use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
+    use fission_core::{capabilities::did::Did, common::SuccessResponse, ed_did_key::EdDidKey};
     use http::{Method, StatusCode};
     use rs_ucan::{
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
@@ -199,13 +171,14 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) =
+        let (status, response) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
-                .into_json_response::<VerificationCodeResponse>()
+                .into_json_response::<SuccessResponse>()
                 .await?;
 
         assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
 
         let (_, code) = ctx
             .verification_code_sender()
@@ -256,7 +229,7 @@ mod tests {
         let (status, _) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
-                .into_json_response::<VerificationCodeResponse>()
+                .into_json_response::<SuccessResponse>()
                 .await?;
 
         assert_eq!(status, StatusCode::OK);

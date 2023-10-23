@@ -103,9 +103,9 @@ trust-dns-server = { version = "0.22.0", features = ["dns-over-rustls"] }
 rs-ucan = { workspace = true }
 ulid = { version = "1.0", features = ["serde"] }
 url = { workspace = true }
-utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
+utoipa = { workspace = true }
 utoipa-swagger-ui = { version = "3.1", features = ["axum"] }
-validator = { version = "0.16.0", features = ["derive"] }
+validator = { workspace = true }
 ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 libipld = "0.16.0"

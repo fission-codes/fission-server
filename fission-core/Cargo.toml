@@ -23,6 +23,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rs-ucan = { workspace = true }
 url = { workspace = true }
+utoipa = { workspace = true }
+validator = { workspace = true }
 erased-serde = "0.3.31"
 linkme = "0.3.15"
 ed25519 = { workspace = true }

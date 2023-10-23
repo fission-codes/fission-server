@@ -55,6 +55,7 @@
             pre-commit
             protobuf
             postgresql
+            pgcli
             direnv
             self.packages.${system}.irust
             kubo
