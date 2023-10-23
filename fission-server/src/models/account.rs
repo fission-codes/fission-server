@@ -9,7 +9,7 @@ use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use fission_core::{capabilities::fission::FissionResource, ed_did_key::EdDidKey};
+use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -205,8 +205,7 @@ impl RootAccount {
             .sign(&account)?;
 
         // Delegate the account to the user
-        let capability =
-            Capability::new(FissionResource::Did(account.did()), TopAbility, EmptyCaveat);
+        let capability = Capability::new(Did(account.did()), TopAbility, EmptyCaveat);
         let user_ucan: Ucan = UcanBuilder::default()
             .issued_by(server)
             .for_audience(user_did)

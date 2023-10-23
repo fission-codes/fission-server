@@ -14,7 +14,7 @@ use axum::{
 };
 
 use http::{HeaderValue, StatusCode};
-use rs_ucan::{did_verifier::DidVerifierMap, ucan::Ucan};
+use rs_ucan::ucan::Ucan;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
@@ -138,7 +138,7 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 
     // Validate the authority
     authority
-        .validate(&DidVerifierMap::default())
+        .validate()
         .map_err(|reason| InvalidUcan { reason })?;
 
     Ok(authority)

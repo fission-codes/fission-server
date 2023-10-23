@@ -1,11 +1,12 @@
 //! Authority struct and functions
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
+use fission_core::capabilities::did::Did;
 use libipld::{raw::RawCodec, Ipld};
 use rs_ucan::{
     builder::DEFAULT_MULTIHASH,
     did_verifier::DidVerifierMap,
-    semantics::{ability::Ability, resource::Resource},
+    semantics::ability::Ability,
     store::{InMemoryStore, Store},
     ucan::Ucan,
     DefaultFact,
@@ -31,8 +32,11 @@ pub struct Authority<F = DefaultFact> {
 
 impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validate an authority struct
-    pub fn validate(&self, did_verifier_map: &DidVerifierMap) -> Result<()> {
-        self.ucan.validate(rs_ucan::time::now(), did_verifier_map)?;
+    pub fn validate(&self) -> Result<()> {
+        self.ucan
+            .validate(rs_ucan::time::now(), &DidVerifierMap::default())?;
+
+        // TODO if self.ucan.audience() != server_did {}
 
         Ok(())
     }
@@ -40,13 +44,7 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validates whether or not the UCAN and proofs have the capability to
     /// perform the given action, with the given issuer as the root of that
     /// authority.
-    pub fn has_capability(
-        &self,
-        resource: impl Resource,
-        ability: impl Ability,
-        issuer: impl AsRef<str>,
-        did_verifier_map: &DidVerifierMap,
-    ) -> Result<bool> {
+    pub fn get_capability(&self, ability: impl Ability) -> Result<Did> {
         let current_time = rs_ucan::time::now();
 
         let mut store = InMemoryStore::<RawCodec>::default();
@@ -59,17 +57,49 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
             )?;
         }
 
+        let caps = self.ucan.capabilities().collect::<Vec<_>>();
+        let [cap] = caps[..] else {
+            if caps.is_empty() {
+                tracing::error!("No capabilities provided.");
+                bail!("Invocation UCAN without capabilities provided.");
+            }
+            tracing::error!(caps = ?caps, "Invocation UCAN with multiple capabilities is ambiguous.");
+            bail!("Invocation UCAN with multiple capabilities is ambiguous.");
+        };
+
+        if !cap.ability().is_valid_attenuation(&ability) {
+            bail!(
+                "Invalid authorization. Expected ability {ability}, but got {}",
+                cap.ability()
+            );
+        }
+
+        let Some(Did(did)) = cap.resource().downcast_ref() else {
+            bail!("Invalid authorization. Expected resource to be DID, but got {}", cap.resource());
+        };
+
+        let ability_str = ability.to_string();
+
         let caps = self.ucan.capabilities_for(
-            issuer,
-            resource,
+            did,
+            Did(did.clone()),
             ability,
             current_time,
-            did_verifier_map,
+            &DidVerifierMap::default(),
             &store,
         )?;
 
         // TODO(matheus23): Not yet handling caveats.
-        Ok(!caps.is_empty())
+        caps.first()
+            .ok_or_else(|| {
+                anyhow!(
+                "Invalid authorization. Couldn't find proof for {ability_str} as issued from {did}."
+            )
+            })?
+            .resource()
+            .downcast_ref()
+            .cloned()
+            .ok_or_else(|| anyhow!("Invalid authorization. Something went wrong. Capability resource is not a DID."))
     }
 }
 
@@ -99,7 +129,7 @@ mod tests {
             proofs: vec![],
         };
 
-        assert!(authority.validate(&DidVerifierMap::default()).is_ok());
+        assert!(authority.validate().is_ok());
 
         Ok(())
     }

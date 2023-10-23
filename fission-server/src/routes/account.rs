@@ -19,8 +19,7 @@ use axum::{
 };
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
-use fission_core::capabilities::fission::{FissionAbility, FissionResource};
-use rs_ucan::did_verifier::DidVerifierMap;
+use fission_core::capabilities::{did::Did, fission::FissionAbility};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use utoipa::ToSchema;
@@ -36,8 +35,6 @@ pub struct AccountCreationRequest {
     pub email: String,
     /// Email verification code
     pub code: String,
-    /// The DID that wants to be logged in
-    pub did: String,
 }
 
 /// Information about an account
@@ -79,17 +76,9 @@ pub async fn create_account<S: ServerSetup>(
         .validate()
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
-    if !authority.has_capability(
-        FissionResource::All,
-        FissionAbility::AccountCreate,
-        &request.did,
-        &DidVerifierMap::default(),
-    )? {
-        return Err(AppError::new(
-            StatusCode::FORBIDDEN,
-            Some("Missing UCAN capability to `account/create` `fission:*` resources."),
-        ));
-    }
+    let Did(did) = authority
+        .get_capability(FissionAbility::AccountCreate)
+        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
@@ -104,7 +93,7 @@ pub async fn create_account<S: ServerSetup>(
                 conn,
                 request.username,
                 verification.email.to_string(),
-                &request.did,
+                &did,
                 state.did.as_ref(),
             )
             .await?;
@@ -193,10 +182,7 @@ mod tests {
     use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
-    use fission_core::{
-        capabilities::{did::Did, email::EmailAbility},
-        ed_did_key::EdDidKey,
-    };
+    use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
     use http::{Method, StatusCode};
     use rs_ucan::{
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
@@ -212,21 +198,12 @@ mod tests {
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .claiming_capability(Capability::new(
-                Did(issuer.did()),
-                EmailAbility::Verify,
-                EmptyCaveat,
-            ))
-            .sign(issuer)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<VerificationCodeResponse>()
-            .await?;
+        let (status, _) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<VerificationCodeResponse>()
+                .await?;
 
         assert_eq!(status, StatusCode::OK);
 
@@ -237,23 +214,22 @@ mod tests {
             .last()
             .expect("No email Sent");
 
-        let ucan2: Ucan = UcanBuilder::default()
+        let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
             .claiming_capability(Capability::new(
-                FissionResource::All,
+                Did(issuer.did()),
                 FissionAbility::AccountCreate,
                 EmptyCaveat,
             ))
             .sign(issuer)?;
 
         let (status, root_account) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
-            .with_ucan(ucan2)
+            .with_ucan(ucan)
             .with_json_body(json!({
                 "username": username,
                 "email": email,
                 "code": code,
-                "did": issuer.did(),
             }))?
             .into_json_response::<RootAccount>()
             .await?;
@@ -275,11 +251,30 @@ mod tests {
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
-
         let issuer = &EdDidKey::generate();
+
+        let (status, _) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<VerificationCodeResponse>()
+                .await?;
+
+        assert_eq!(status, StatusCode::OK);
+
+        ctx.verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email Sent");
+
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience(ctx.server_did())
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                FissionAbility::AccountCreate,
+                EmptyCaveat,
+            ))
             .sign(issuer)?;
 
         let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
@@ -288,70 +283,6 @@ mod tests {
                 "username": username,
                 "email": email,
                 "code": "1000000", // wrong code
-                "did": issuer.did(),
-            }))?
-            .into_json_response::<ErrorResponse>()
-            .await?;
-
-        assert_eq!(status, StatusCode::FORBIDDEN);
-
-        assert_matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::FORBIDDEN,
-                ..
-            }]
-        );
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_create_account_err_wrong_issuer() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let username = "oedipa";
-        let email = "oedipa@trystero.com";
-
-        let issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(ctx.server_did())
-            .claiming_capability(Capability::new(
-                Did(issuer.did()),
-                EmailAbility::Verify,
-                EmptyCaveat,
-            ))
-            .sign(issuer)?;
-
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<VerificationCodeResponse>()
-            .await?;
-
-        assert_eq!(status, StatusCode::OK);
-
-        let (_, code) = ctx
-            .verification_code_sender()
-            .get_emails()
-            .into_iter()
-            .last()
-            .expect("No email sent");
-
-        let wrong_issuer = &EdDidKey::generate();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(wrong_issuer)
-            .for_audience(ctx.server_did())
-            .sign(wrong_issuer)?;
-
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
-            .with_ucan(ucan)
-            .with_json_body(json!({
-                "username": username,
-                "email": email,
-                "code": code,
-                "did": wrong_issuer.did(),
             }))?
             .into_json_response::<ErrorResponse>()
             .await?;

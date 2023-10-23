@@ -1,27 +1,18 @@
 //! Fission account capabilities
 
-use std::fmt::Display;
-
+use super::did::Did;
 use anyhow::Result;
 use rs_ucan::{
-    plugins::{ucan::UcanResource, Plugin},
-    semantics::{ability::Ability, caveat::EmptyCaveat, resource::Resource},
+    plugins::Plugin,
+    semantics::{ability::Ability, caveat::EmptyCaveat},
 };
+use std::fmt::Display;
 
 /// An rs-ucan plugin for handling fission server capabilities
 #[derive(Debug)]
 pub struct FissionPlugin;
 
 rs_ucan::register_plugin!(FISSION, &FissionPlugin);
-
-/// Resources supported by the fission server.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FissionResource {
-    /// The resource encoded as `fission:*`, giving access to all current or future owned accounts
-    All,
-    /// The resource encoded as `fission:did:key:zABC` for a specific fission account
-    Did(String),
-}
 
 /// Abilities for fission accounts
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,31 +24,21 @@ pub enum FissionAbility {
 }
 
 impl Plugin for FissionPlugin {
-    type Resource = FissionResource;
+    type Resource = Did;
     type Ability = FissionAbility;
     type Caveat = EmptyCaveat;
 
     type Error = anyhow::Error;
 
     fn scheme(&self) -> &'static str {
-        "fission"
+        "did"
     }
 
     fn try_handle_resource(
         &self,
         resource_uri: &url::Url,
     ) -> Result<Option<Self::Resource>, Self::Error> {
-        let path = resource_uri.path();
-
-        if path == "*" {
-            return Ok(Some(FissionResource::All));
-        }
-
-        if !path.starts_with("did:key:") {
-            return Ok(None);
-        }
-
-        Ok(Some(FissionResource::Did(path.to_string())))
+        Ok(Did::try_handle_as_resource(resource_uri))
     }
 
     fn try_handle_ability(
@@ -81,33 +62,6 @@ impl Plugin for FissionPlugin {
         Ok(Some(
             erased_serde::deserialize(deserializer).map_err(|e| anyhow::anyhow!(e))?,
         ))
-    }
-}
-
-impl Resource for FissionResource {
-    fn is_valid_attenuation(&self, other: &dyn Resource) -> bool {
-        if let Some(UcanResource::AllProvable) = other.downcast_ref() {
-            return true;
-        }
-
-        match other.downcast_ref() {
-            Some(Self::All) => true,
-            Some(Self::Did(did)) => match self {
-                Self::All => false,
-                Self::Did(self_did) => self_did == did,
-            },
-            _ => false,
-        }
-    }
-}
-
-impl Display for FissionResource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("fission:")?;
-        f.write_str(match self {
-            Self::All => "*",
-            Self::Did(did) => did,
-        })
     }
 }
 
@@ -175,7 +129,7 @@ mod tests {
             .issued_by(bob)
             .for_audience("did:web:fission.codes")
             .claiming_capability(Capability::new(
-                FissionResource::Did("did:key:sth".to_string()),
+                Did("did:key:sth".to_string()),
                 FissionAbility::AccountRead,
                 EmptyCaveat {},
             ))
@@ -187,7 +141,7 @@ mod tests {
 
         let capabilities = invocation.capabilities_for(
             alice.did(),
-            FissionResource::Did("did:key:sth".to_string()),
+            Did("did:key:sth".to_string()),
             FissionAbility::AccountRead,
             time,
             &did_verifier_map,
