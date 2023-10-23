@@ -17,7 +17,7 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | POST | [`/api/v0/account`](#post-apiv0account) | Create a full account |
 | GET | [`/api/v0/account/:did`](#get-apiv0accountdid) | Get account information by DID |
 | GET | [`/api/v0/account/:username/did`](#get-apiv0accountusernamedid) | Get the did of an account by username |
-| PUT | [`/api/v0/account/:did/username/:username`](#put-apiv0accountdidusernameusername) | Change an account's username |
+| PATCH | [`/api/v0/account/:did/username/:username`](#patch-apiv0accountdidusernameusername) | Change an account's username |
 | GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
 
 A note on authorization:
@@ -118,7 +118,7 @@ This fetches the latest account information.
 Use this to find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
 
 
-### PUT `/api/v0/account/:did/username/:username`
+### PATCH `/api/v0/account/:did/username/:username`
 
 ---
 
