@@ -84,7 +84,10 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         }
 
         let Some(Did(did)) = cap.resource().downcast_ref() else {
-            bail!("Invalid authorization. Expected resource to be DID, but got {}", cap.resource());
+            bail!(
+                "Invalid authorization. Expected resource to be DID, but got {}",
+                cap.resource()
+            );
         };
 
         let ability_str = ability.to_string();
