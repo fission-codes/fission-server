@@ -20,6 +20,8 @@ use rs_ucan::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::capability_indexing::index_ucan;
+
 /// New Account Struct (for creating new accounts)
 #[derive(Insertable)]
 #[diesel(table_name = accounts)]
@@ -176,7 +178,7 @@ impl RootAccount {
     /// This creates an account and generates a keypair that has top-level
     /// authority over the account. The private key is immediately discarded,
     /// and authority is delegated via a UCAN to the DID provided in
-    /// `audience_did`
+    /// `user_did`
     pub async fn new(
         conn: &mut Conn<'_>,
         username: String,
@@ -184,7 +186,7 @@ impl RootAccount {
         user_did: &str,
         server: &EdDidKey,
     ) -> Result<Self, anyhow::Error> {
-        let (ucans, root_did) = Self::issue_root_ucans(server, user_did).await?;
+        let (ucans, root_did) = Self::issue_root_ucans(server, user_did, conn).await?;
         let account = Account::new(conn, username, email, &root_did).await?;
 
         Ok(Self { ucans, account })
@@ -193,6 +195,7 @@ impl RootAccount {
     async fn issue_root_ucans(
         server: &EdDidKey,
         user_did: &str,
+        conn: &mut Conn<'_>,
     ) -> Result<(Vec<Ucan>, String), anyhow::Error> {
         let account = EdDidKey::generate(); // Zeroized on drop
 
@@ -212,6 +215,10 @@ impl RootAccount {
             .claiming_capability(capability)
             .witnessed_by(&server_ucan, None)
             .sign(server)?;
+
+        // Persist UCANs in the DB
+        index_ucan(&server_ucan, conn).await?;
+        index_ucan(&user_ucan, conn).await?;
 
         Ok((vec![server_ucan, user_ucan], account.did()))
     }

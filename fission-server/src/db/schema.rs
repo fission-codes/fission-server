@@ -24,12 +24,34 @@ diesel::table! {
 }
 
 diesel::table! {
+    capabilities (id) {
+        id -> Int4,
+        resource -> Text,
+        ability -> Text,
+        caveats -> Jsonb,
+        ucan_id -> Int4,
+    }
+}
+
+diesel::table! {
     email_verifications (id) {
         id -> Int4,
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         email -> Text,
         code -> Text,
+    }
+}
+
+diesel::table! {
+    ucans (id) {
+        id -> Int4,
+        cid -> Bytea,
+        encoded -> Bytea,
+        issuer -> Text,
+        audience -> Text,
+        not_before -> Nullable<Timestamp>,
+        expires_at -> Nullable<Timestamp>,
     }
 }
 
@@ -45,5 +67,13 @@ diesel::table! {
 diesel::joinable!(accounts -> volumes (volume_id));
 diesel::joinable!(apps -> accounts (owner_id));
 diesel::joinable!(apps -> volumes (volume_id));
+diesel::joinable!(capabilities -> ucans (ucan_id));
 
-diesel::allow_tables_to_appear_in_same_query!(accounts, apps, email_verifications, volumes,);
+diesel::allow_tables_to_appear_in_same_query!(
+    accounts,
+    apps,
+    capabilities,
+    email_verifications,
+    ucans,
+    volumes,
+);

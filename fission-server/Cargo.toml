@@ -49,7 +49,7 @@ console-subscriber = { version = "0.1", default-features = false, features = [ "
 const_format = "0.2"
 dashmap = "5.5.0"
 did-key = "0.2.1"
-diesel = { version = "2.0.4", features = ["postgres", "chrono"] }
+diesel = { version = "2.0.4", features = ["postgres", "chrono", "serde_json"] }
 diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
 diesel_migrations = "2.1"
 fission-core = { path = "../fission-core", version = "0.1" }
@@ -110,6 +110,7 @@ ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 libipld = "0.16.0"
 blake3 = "1.4.1"
+erased-serde = "0.3.31"
 
 [dev-dependencies]
 assert-json-diff = "2.0"
