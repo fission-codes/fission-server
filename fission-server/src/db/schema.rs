@@ -46,8 +46,8 @@ diesel::table! {
 diesel::table! {
     ucans (id) {
         id -> Int4,
-        cid -> Bytea,
-        encoded -> Bytea,
+        cid -> Text,
+        encoded -> Text,
         issuer -> Text,
         audience -> Text,
         not_before -> Nullable<Timestamp>,

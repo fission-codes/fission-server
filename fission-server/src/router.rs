@@ -3,10 +3,11 @@
 use crate::{
     app_state::AppState,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, doh, fallback::notfound_404, health, ipfs, ping, ws},
+    routes::{
+        account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping, ws,
+    },
     traits::ServerSetup,
 };
-
 use axum::{
     routing::{get, post},
     Router,
@@ -40,6 +41,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .route("/account", post(account::create_account))
         .route("/account/:did", get(account::get_account))
         .route("/account/:username/did", get(account::get_did))
+        .route("/capabilities", get(capability_indexing::get_capabilities))
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

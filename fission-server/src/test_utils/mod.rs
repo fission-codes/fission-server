@@ -47,6 +47,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
         self
     }
 
+    #[allow(unused)]
     pub(crate) fn with_ucan_proof(mut self, ucan: Ucan) -> Self {
         self.ucan_proof = Some(ucan);
         self

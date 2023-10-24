@@ -1,7 +1,7 @@
 CREATE TABLE ucans (
     id SERIAL PRIMARY KEY,
-    cid BYTEA NOT NULL UNIQUE,
-    encoded BYTEA NOT NULL,
+    cid TEXT NOT NULL UNIQUE,
+    encoded TEXT NOT NULL,
 
     issuer TEXT NOT NULL,
     audience TEXT NOT NULL,
