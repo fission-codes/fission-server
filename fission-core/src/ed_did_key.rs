@@ -8,6 +8,7 @@ use ed25519::{
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::thread_rng;
 use signature::Signer;
+use std::fmt::Display;
 use zeroize::ZeroizeOnDrop;
 
 /// An Ed25519 EdDSA `did:key:zM...` with the signing key stored in-memory and zeroized on drop
@@ -23,6 +24,12 @@ impl std::fmt::Debug for EdDidKey {
         f.debug_tuple("EdDidKey")
             .field(&self.did_key_string)
             .finish()
+    }
+}
+
+impl Display for EdDidKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.did_key_string)
     }
 }
 

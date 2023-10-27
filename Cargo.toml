@@ -1,5 +1,5 @@
 [workspace]
-members = ["fission-server"]
+members = ["fission-cli", "fission-server"]
 resolver = "2"
 
 [workspace.dependencies]

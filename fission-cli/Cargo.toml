@@ -1,0 +1,41 @@
+[package]
+name = "fission-cli"
+version = "0.1.0"
+description = "A CLI for working with the fission service"
+keywords = []
+categories = []
+include = ["/src", "README.md", "../LICENSE"]
+license = "Apache-2.0"
+readme = "README.md"
+edition = "2021"
+rust-version = "1.69"
+documentation = "https://docs.rs/fission-cli"
+repository = "https://github.com/fission-codes/fission-server"
+authors = ["Philipp Krüger <philipp@fission.codes>"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rs-ucan = { workspace = true }
+url = { workspace = true }
+ed25519 = { workspace = true }
+ed25519-dalek = { workspace = true }
+fission-core = { path = "../fission-core", version = "0.1.0" }
+clap = { version = "4.4.6", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "json",
+    "parking_lot",
+    "registry",
+] }
+tracing = "0.1"
+config = "0.13.3"
+toml = "0.8.2"
+directories = "5.0.1"
+reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+inquire = "0.6.2"

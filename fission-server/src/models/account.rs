@@ -13,7 +13,6 @@ use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
-    plugins::ucan::UcanResource,
     semantics::{ability::TopAbility, caveat::EmptyCaveat},
     ucan::Ucan,
 };
@@ -200,7 +199,7 @@ impl RootAccount {
         let account = EdDidKey::generate(); // Zeroized on drop
 
         // Delegate all access to the fission server
-        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat);
+        let capability = Capability::new(Did(account.did()), TopAbility, EmptyCaveat);
         let server_ucan: Ucan = UcanBuilder::default()
             .issued_by(&account)
             .for_audience(server)
