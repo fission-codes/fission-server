@@ -25,7 +25,9 @@ CREATE TABLE capabilities (
 
     caveats JSONB NOT NULL,
 
-    ucan_id INTEGER NOT NULL REFERENCES ucans(id)
+    ucan_id INTEGER NOT NULL
+        REFERENCES ucans(id)
+        ON DELETE CASCADE
 );
 
 CREATE INDEX idx_capabilities_resource ON capabilities (resource);

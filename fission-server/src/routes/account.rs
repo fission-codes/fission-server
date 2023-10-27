@@ -8,6 +8,7 @@ use crate::{
     extract::json::Json,
     models::{
         account::{Account, RootAccount},
+        capability_indexing::IndexedCapability,
         email_verification::EmailVerification,
     },
     traits::ServerSetup,
@@ -17,11 +18,11 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
-    common::{AccountCreationRequest, AccountResponse, DidResponse},
+    common::{AccountCreationRequest, AccountResponse, DidResponse, SuccessResponse},
 };
 use tracing::debug;
 use validator::Validate;
@@ -140,6 +141,92 @@ pub async fn get_did<S: ServerSetup>(
         .await?;
 
     Ok((StatusCode::OK, Json(DidResponse { did: account.did })))
+}
+
+/// Handler for changing the username
+#[utoipa::path(
+    patch,
+    path = "/api/v0/account/username/{username}",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Found account", body = DidResponse),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
+        (status = 429, description = "Conflict"),
+    )
+)]
+pub async fn patch_username<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+    Path(username): Path<String>,
+) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
+    let Did(did) = authority.get_capability(FissionAbility::AccountManage)?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+
+    use crate::db::schema::*;
+    diesel::update(accounts::table)
+        .filter(accounts::did.eq(&did))
+        .set(accounts::username.eq(&username))
+        .execute(conn)
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(SuccessResponse { success: true })))
+}
+
+/// Handler for deleting an account
+#[utoipa::path(
+    delete,
+    path = "/api/v0/account",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Deleted", body = Account),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
+    )
+)]
+pub async fn delete_account<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+) -> AppResult<(StatusCode, Json<Account>)> {
+    let Did(did) = authority.get_capability(FissionAbility::AccountDelete)?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+    conn.transaction(|conn| {
+        async move {
+            use crate::db::schema::*;
+            let row: Option<Account> = diesel::delete(accounts::table)
+                .filter(accounts::did.eq(&did))
+                .get_result::<Account>(conn)
+                .await
+                .optional()?;
+
+            let Some(account) = row else {
+                return Err(AppError::new(StatusCode::NOT_FOUND, Some("Couldn't find an account with this DID.")));
+            };
+
+            let indexed_caps: Vec<IndexedCapability> = capabilities::table
+                .filter(capabilities::resource.eq(&did))
+                .get_results(conn)
+                .await?;
+
+            // TODO: Actually revoke associated UCANs
+            diesel::delete(ucans::table)
+                .filter(ucans::id.eq_any(indexed_caps.iter().map(|cap| cap.ucan_id)))
+                .execute(conn)
+                .await?;
+
+            Ok((StatusCode::CREATED, Json(account)))
+        }
+        .scope_boxed()
+    })
+    .await
 }
 
 #[cfg(test)]
