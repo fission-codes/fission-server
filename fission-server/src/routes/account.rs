@@ -208,7 +208,10 @@ pub async fn delete_account<S: ServerSetup>(
                 .optional()?;
 
             let Some(account) = row else {
-                return Err(AppError::new(StatusCode::NOT_FOUND, Some("Couldn't find an account with this DID.")));
+                return Err(AppError::new(
+                    StatusCode::NOT_FOUND,
+                    Some("Couldn't find an account with this DID.")
+                ));
             };
 
             let indexed_caps: Vec<IndexedCapability> = capabilities::table

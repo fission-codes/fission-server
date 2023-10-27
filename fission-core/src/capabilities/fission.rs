@@ -29,11 +29,11 @@ pub enum FissionAbility {
     AccountDelete,
 }
 
-const ACCOUNT_READ: &'static str = "account/read";
-const ACCOUNT_CREATE: &'static str = "account/create";
-const ACCOUNT_MANAGE: &'static str = "account/manage";
-const ACCOUNT_NONCRITICAL: &'static str = "account/noncritical";
-const ACCOUNT_DELETE: &'static str = "account/delete";
+const ACCOUNT_READ: &str = "account/read";
+const ACCOUNT_CREATE: &str = "account/create";
+const ACCOUNT_MANAGE: &str = "account/manage";
+const ACCOUNT_NONCRITICAL: &str = "account/noncritical";
+const ACCOUNT_DELETE: &str = "account/delete";
 
 impl Plugin for FissionPlugin {
     type Resource = Did;
