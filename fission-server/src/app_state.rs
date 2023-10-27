@@ -3,6 +3,7 @@
 use anyhow::{anyhow, Result};
 use axum::extract::ws;
 use dashmap::DashMap;
+use fission_core::ed_did_key::EdDidKey;
 use futures::channel::mpsc::Sender;
 use std::{net::SocketAddr, sync::Arc};
 
@@ -27,6 +28,8 @@ pub struct AppState<S: ServerSetup> {
     pub verification_code_sender: S::VerificationCodeSender,
     /// The currently connected websocket peers
     pub ws_peer_map: WsPeerMap,
+    /// The server's decentralized identity (signing/private key)
+    pub did: Arc<EdDidKey>,
 }
 
 /// Builder for [`AppState`]
@@ -35,6 +38,7 @@ pub struct AppStateBuilder<S: ServerSetup> {
     ipfs_peers: Vec<String>,
     ipfs_db: Option<S::IpfsDatabase>,
     verification_code_sender: Option<S::VerificationCodeSender>,
+    did: Option<EdDidKey>,
 }
 
 impl<S: ServerSetup> Default for AppStateBuilder<S> {
@@ -44,6 +48,7 @@ impl<S: ServerSetup> Default for AppStateBuilder<S> {
             ipfs_peers: Default::default(),
             ipfs_db: None,
             verification_code_sender: None,
+            did: None,
         }
     }
 }
@@ -61,12 +66,15 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             .verification_code_sender
             .ok_or_else(|| anyhow!("verification_code_sender is required"))?;
 
+        let did = self.did.ok_or_else(|| anyhow!("did is required"))?;
+
         Ok(AppState {
             db_pool,
             ipfs_peers,
             ipfs_db,
             verification_code_sender,
             ws_peer_map: Default::default(),
+            did: Arc::new(did),
         })
     }
 
@@ -94,6 +102,12 @@ impl<S: ServerSetup> AppStateBuilder<S> {
         verification_code_sender: S::VerificationCodeSender,
     ) -> Self {
         self.verification_code_sender = Some(verification_code_sender);
+        self
+    }
+
+    /// Set the server's DID
+    pub fn with_did(mut self, did: EdDidKey) -> Self {
+        self.did = Some(did);
         self
     }
 }

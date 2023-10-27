@@ -22,7 +22,7 @@ use wiremock::{
 #[test]
 fn test_settings() {
     let settings = Settings::load().unwrap();
-    assert_eq!(settings.environment(), AppEnvironment::Local);
+    assert_eq!(settings.server.environment, AppEnvironment::Local);
 }
 
 #[serde_as]

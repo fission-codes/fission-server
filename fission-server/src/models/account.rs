@@ -1,7 +1,6 @@
 //! Fission Account Model
 
 use crate::{
-    authority::generate_ed25519_issuer,
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
     traits::IpfsDatabase,
@@ -10,6 +9,7 @@ use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -17,8 +17,7 @@ use rs_ucan::{
     semantics::{ability::TopAbility, caveat::EmptyCaveat},
     ucan::Ucan,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::str::FromStr;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// New Account Struct (for creating new accounts)
@@ -40,6 +39,7 @@ struct NewAccountRecord {
     Associations,
     Serialize,
     Deserialize,
+    ToSchema,
 )]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]
@@ -52,10 +52,10 @@ pub struct Account {
     pub did: String,
 
     /// Username associated with the account
-    pub username: String,
+    pub username: Option<String>,
 
     /// Email address associated with the account
-    pub email: String,
+    pub email: Option<String>,
 
     /// Inserted at timestamp
     pub inserted_at: NaiveDateTime,
@@ -97,27 +97,6 @@ impl Account {
         accounts::dsl::accounts
             .filter(accounts::username.eq(username))
             .first::<Account>(conn)
-            .await
-    }
-
-    /// Update the controlling DID of a Fission Account
-    //
-    // Unlike the update_volume_cid method below, this could be done with one SQL query, but
-    // for consistency, we're using two; fetch the account and then update it, as separate operations.
-    //
-    // There's probably an elegant way to do that chaining with Rust and Diesel, but I don't know how
-    // to do it and (1) it's not a huge deal performance-wise, and (2) it would be a lot more complex.
-    pub async fn update_did(
-        &self,
-        conn: &mut Conn<'_>,
-        new_did: &str,
-    ) -> Result<Self, diesel::result::Error> {
-        // FIXME this needs to account for delegation and check that the correct
-        // capabilities have been delegated. Currently we only support using the root did.
-        diesel::update(accounts::dsl::accounts)
-            .filter(accounts::id.eq(self.id))
-            .set(accounts::did.eq(new_did))
-            .get_result(conn)
             .await
     }
 
@@ -181,54 +160,13 @@ impl Account {
     }
 }
 
-/// Account Request Struct (for creating new accounts)
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct AccountRequest {
-    /// Username associated with the account
-    pub username: String,
-    /// Email address associated with the account
-    pub email: String,
-}
-
-impl From<Account> for AccountRequest {
-    fn from(account: Account) -> Self {
-        Self {
-            username: account.username,
-            email: account.email,
-        }
-    }
-}
-
 /// Account with Root Authority (UCAN)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct RootAccount {
     /// The Associated Account
     pub account: Account,
-    /// A UCAN with Root Authority
-    #[serde(serialize_with = "encode_ucan")]
-    #[serde(deserialize_with = "decode_ucan")]
-    pub ucan: Ucan,
-}
-
-/// Serialize a UCAN to a string
-fn encode_ucan<S>(ucan: &Ucan, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let encoded_ucan = ucan.encode();
-    if let Ok(encoded_ucan) = encoded_ucan {
-        serializer.serialize_str(&encoded_ucan)
-    } else {
-        Err(serde::ser::Error::custom("Failed to encode UCAN"))
-    }
-}
-
-fn decode_ucan<'de, D>(value: D) -> Result<Ucan, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ucan::from_str(&String::deserialize(value)?)
-        .map_err(|e| serde::de::Error::custom(format!("Failed to decode ucan: {e}")))
+    /// UCANs that give root access
+    pub ucans: Vec<Ucan>,
 }
 
 /// Account with Root Authority
@@ -243,40 +181,38 @@ impl RootAccount {
         conn: &mut Conn<'_>,
         username: String,
         email: String,
-        audience_did: &str,
+        user_did: &str,
+        server: &EdDidKey,
     ) -> Result<Self, anyhow::Error> {
-        let ucan = Self::issue_root_ucan(audience_did).await?;
-        let account = Account::new(conn, username, email, ucan.issuer()).await?;
+        let (ucans, root_did) = Self::issue_root_ucans(server, user_did).await?;
+        let account = Account::new(conn, username, email, &root_did).await?;
 
-        Ok(Self { ucan, account })
+        Ok(Self { ucans, account })
     }
 
-    /// Update the DID associated with the account
-    ///
-    /// As with `new()` this generates an ephemeral key and delegates access to
-    /// the DID specified in `audience_did`.
-    pub async fn update(
-        conn: &mut Conn<'_>,
-        account: &Account,
-        audience_did: &str,
-    ) -> Result<Self, anyhow::Error> {
-        let ucan = Self::issue_root_ucan(audience_did).await?;
-        let account = account.update_did(conn, ucan.issuer()).await?;
+    async fn issue_root_ucans(
+        server: &EdDidKey,
+        user_did: &str,
+    ) -> Result<(Vec<Ucan>, String), anyhow::Error> {
+        let account = EdDidKey::generate(); // Zeroized on drop
 
-        Ok(Self { ucan, account })
-    }
-
-    async fn issue_root_ucan(audience_did: &str) -> Result<Ucan, anyhow::Error> {
-        let (issuer, key) = generate_ed25519_issuer();
-
-        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat {});
-
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
-            .for_audience(audience_did)
+        // Delegate all access to the fission server
+        let capability = Capability::new(UcanResource::AllProvable, TopAbility, EmptyCaveat);
+        let server_ucan: Ucan = UcanBuilder::default()
+            .issued_by(&account)
+            .for_audience(server)
             .claiming_capability(capability)
-            .sign(&key)?;
+            .sign(&account)?;
 
-        Ok(ucan)
+        // Delegate the account to the user
+        let capability = Capability::new(Did(account.did()), TopAbility, EmptyCaveat);
+        let user_ucan: Ucan = UcanBuilder::default()
+            .issued_by(server)
+            .for_audience(user_did)
+            .claiming_capability(capability)
+            .witnessed_by(&server_ucan, None)
+            .sign(server)?;
+
+        Ok((vec![server_ucan, user_ucan], account.did()))
     }
 }

@@ -4,6 +4,7 @@ use axum::{extract::connect_info::MockConnectInfo, Router};
 use axum_server::service::SendService;
 use diesel::{Connection, PgConnection, RunQueryDsl};
 use diesel_migrations::MigrationHarness;
+use fission_core::ed_did_key::EdDidKey;
 use uuid::Uuid;
 
 use crate::{
@@ -66,7 +67,8 @@ impl TestContext {
         let builder = AppStateBuilder::default()
             .with_db_pool(db_pool)
             .with_ipfs_db(TestIpfsDatabase::default())
-            .with_verification_code_sender(TestVerificationCodeSender::default());
+            .with_verification_code_sender(TestVerificationCodeSender::default())
+            .with_did(EdDidKey::generate());
 
         let app_state = f(builder).finalize().unwrap();
 
@@ -96,6 +98,14 @@ impl TestContext {
 
     pub(crate) fn verification_code_sender(&self) -> &TestVerificationCodeSender {
         &self.app_state.verification_code_sender
+    }
+
+    pub(crate) fn server_did(&self) -> &EdDidKey {
+        &self.app_state.did
+    }
+
+    pub(crate) fn app_state(&self) -> &AppState<TestSetup> {
+        &self.app_state
     }
 }
 

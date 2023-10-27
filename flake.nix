@@ -55,6 +55,7 @@
             pre-commit
             protobuf
             postgresql
+            pgcli
             direnv
             self.packages.${system}.irust
             kubo
@@ -111,6 +112,9 @@
           echo -e "To run Kubo as a local IPFS node, use the following command:"
           echo -e " ipfs --repo-dir ./.ipfs --offline daemon"
           echo
+
+          # Setup env variables for easier diesel CLI usage:
+          export DATABASE_URL="$PGURL"
         '';
       };
 

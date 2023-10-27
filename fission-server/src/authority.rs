@@ -1,14 +1,12 @@
 //! Authority struct and functions
 
-use anyhow::Result;
-use did_key::{Ed25519KeyPair, Fingerprint};
-use ed25519_dalek::SigningKey;
+use anyhow::{anyhow, bail, Result};
+use fission_core::capabilities::did::Did;
 use libipld::{raw::RawCodec, Ipld};
-use rand::thread_rng;
 use rs_ucan::{
     builder::DEFAULT_MULTIHASH,
     did_verifier::DidVerifierMap,
-    semantics::{ability::Ability, resource::Resource},
+    semantics::ability::Ability,
     store::{InMemoryStore, Store},
     ucan::Ucan,
     DefaultFact,
@@ -34,8 +32,20 @@ pub struct Authority<F = DefaultFact> {
 
 impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validate an authority struct
-    pub fn validate(&self, did_verifier_map: &DidVerifierMap) -> Result<()> {
-        self.ucan.validate(rs_ucan::time::now(), did_verifier_map)?;
+    pub fn validate(&self, server_did: &str) -> Result<()> {
+        self.ucan
+            .validate(rs_ucan::time::now(), &DidVerifierMap::default())?;
+
+        let audience = self.ucan.audience();
+        if audience != server_did {
+            tracing::error!(
+                audience = %audience,
+                expected = %server_did,
+                token = ?self.ucan.encode(),
+                "Auth token audience doesn't match server DID"
+            );
+            bail!("Auth token audience doesn't match server DID. Expected {server_did}, but got {audience}.")
+        }
 
         Ok(())
     }
@@ -43,13 +53,7 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validates whether or not the UCAN and proofs have the capability to
     /// perform the given action, with the given issuer as the root of that
     /// authority.
-    pub fn has_capability(
-        &self,
-        resource: impl Resource,
-        ability: impl Ability,
-        issuer: String,
-        did_verifier_map: &DidVerifierMap,
-    ) -> Result<bool> {
+    pub fn get_capability(&self, ability: impl Ability) -> Result<Did> {
         let current_time = rs_ucan::time::now();
 
         let mut store = InMemoryStore::<RawCodec>::default();
@@ -62,27 +66,53 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
             )?;
         }
 
+        let caps = self.ucan.capabilities().collect::<Vec<_>>();
+        let [cap] = caps[..] else {
+            if caps.is_empty() {
+                tracing::error!("No capabilities provided.");
+                bail!("Invocation UCAN without capabilities provided.");
+            }
+            tracing::error!(caps = ?caps, "Invocation UCAN with multiple capabilities is ambiguous.");
+            bail!("Invocation UCAN with multiple capabilities is ambiguous.");
+        };
+
+        if !cap.ability().is_valid_attenuation(&ability) {
+            bail!(
+                "Invalid authorization. Expected ability {ability}, but got {}",
+                cap.ability()
+            );
+        }
+
+        let Some(Did(did)) = cap.resource().downcast_ref() else {
+            bail!(
+                "Invalid authorization. Expected resource to be DID, but got {}",
+                cap.resource()
+            );
+        };
+
+        let ability_str = ability.to_string();
+
         let caps = self.ucan.capabilities_for(
-            issuer,
-            resource,
+            did,
+            Did(did.clone()),
             ability,
             current_time,
-            did_verifier_map,
+            &DidVerifierMap::default(),
             &store,
         )?;
 
         // TODO(matheus23): Not yet handling caveats.
-        Ok(!caps.is_empty())
+        caps.first()
+            .ok_or_else(|| {
+                anyhow!(
+                "Invalid authorization. Couldn't find proof for {ability_str} as issued from {did}."
+            )
+            })?
+            .resource()
+            .downcast_ref()
+            .cloned()
+            .ok_or_else(|| anyhow!("Invalid authorization. Something went wrong. Capability resource is not a DID."))
     }
-}
-
-pub(crate) fn generate_ed25519_issuer() -> (String, SigningKey) {
-    let key = ed25519_dalek::SigningKey::generate(&mut thread_rng());
-    let did_key_str = format!(
-        "did:key:{}",
-        Ed25519KeyPair::from_public_key(key.verifying_key().as_bytes()).fingerprint()
-    );
-    (did_key_str, key)
 }
 
 //-------//
@@ -93,39 +123,42 @@ pub(crate) fn generate_ed25519_issuer() -> (String, SigningKey) {
 mod tests {
     use super::*;
 
+    use fission_core::ed_did_key::EdDidKey;
     use rs_ucan::builder::UcanBuilder;
+    use testresult::TestResult;
 
-    #[tokio::test]
-    async fn validation_test() {
-        let (issuer, key) = generate_ed25519_issuer();
+    #[test_log::test(tokio::test)]
+    async fn validation_test() -> TestResult {
+        let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
             .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_lifetime(100)
-            .sign(&key)
-            .unwrap();
+            .sign(issuer)?;
 
         let authority = Authority {
             ucan,
             proofs: vec![],
         };
 
-        assert!(authority.validate(&DidVerifierMap::default()).is_ok());
+        assert!(authority.validate("did:web:runfission.com").is_ok());
+
+        Ok(())
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn invalid_ucan_test() {
         panic!("pending")
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn incomplete_proofs_test() {
         panic!("pending")
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn invalid_delegation_test() {
         panic!("pending")

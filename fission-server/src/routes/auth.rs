@@ -2,146 +2,97 @@
 
 use crate::{
     app_state::AppState,
-    authority::Authority,
     db::{self},
     error::{AppError, AppResult},
-    models::email_verification::{self, EmailVerification},
-    settings::Settings,
-    traits::ServerSetup,
+    models::email_verification::EmailVerification,
+    traits::{ServerSetup, VerificationCodeSender},
 };
 use axum::{
     self,
     extract::{Json, State},
     http::StatusCode,
 };
-use serde::{Deserialize, Serialize};
-
-use utoipa::ToSchema;
-
-use tracing::log;
-
-/// Response for Request Token
-#[derive(Serialize, Deserialize, Debug, ToSchema)]
-pub struct VerificationCodeResponse {
-    msg: String,
-}
-
-impl VerificationCodeResponse {
-    /// Create a new Response
-    pub fn new(msg: String) -> Self {
-        Self { msg }
-    }
-}
+use fission_core::common::{EmailVerifyRequest, SuccessResponse};
+use validator::Validate;
 
 /// POST handler for requesting a new token by email
 #[utoipa::path(
     post,
-    path = "/api/auth/email/verify",
+    path = "/api/v0/auth/email/verify",
     request_body = email_verification::Request,
     security(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Successfully sent request token", body=Response),
+        (status = 200, description = "Successfully sent request token", body = SuccessResponse),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 510, description = "Not extended")
+        (status = 403, description = "Forbidden"),
+        (status = 415, description = "Unsupported Media Type"),
+        (status = 422, description = "Unprocessable Entity"),
     )
 )]
 pub async fn request_token<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    authority: Authority,
-    Json(payload): Json<email_verification::Request>,
-) -> AppResult<(StatusCode, Json<VerificationCodeResponse>)> {
-    /*
-
-    The age-old question, should this be an invocation, or is the REST endpoint enough here?
-
-    For now, we're using regular UCANs. This check can be done within the authority extractor,
-    but we're going to repeat ourselves for now until we're sure that we don't need different
-    audiences for different methods.
-
-    */
-
-    let settings = Settings::load().map_err(|e| {
-        log::error!("Failed to load settings: {e}");
-        AppError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Some("Internal Server Error."),
-        )
-    })?;
-
-    let server_did = settings.server().did.clone();
-    let ucan_aud = authority.ucan.audience();
-    if ucan_aud != server_did {
-        log::debug!(
-            "Incorrect UCAN `aud` used. Expected {}, got {}.",
-            server_did,
-            ucan_aud
-        );
-        let error_msg = format!(
-            "Authorization UCAN must delegate to this server's DID (expected {}, got {})",
-            server_did, ucan_aud
-        );
-        return Err(AppError::new(StatusCode::BAD_REQUEST, Some(error_msg)));
-    }
-
-    let mut request = payload.clone();
-    let did = authority.ucan.issuer();
-    request.compute_code_hash(did)?;
-
-    log::debug!(
-        "Successfully computed code hash {}",
-        request.code_hash.clone().unwrap()
-    );
+    Json(request): Json<EmailVerifyRequest>,
+) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
+    request
+        .validate()
+        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
     let mut conn = db::connect(&state.db_pool).await?;
 
-    EmailVerification::new(&mut conn, request.clone(), did).await?;
+    let verification = EmailVerification::new(&mut conn, &request).await?;
 
-    request.send_code(state.verification_code_sender).await?;
+    state
+        .verification_code_sender
+        .send_code(&verification.email, &verification.code)
+        .await?;
 
-    Ok((
-        StatusCode::OK,
-        Json(VerificationCodeResponse::new(
-            "Successfully sent request token".to_string(),
-        )),
-    ))
+    Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
+}
+
+/// GET handler for the server's current DID
+/// TODO: Keep this? Replace with DoH & DNS?
+#[utoipa::path(
+    get,
+    path = "/api/v0/server-did",
+    responses(
+        (status = 200, description = "Responds with the server DID in the body", body = String),
+    )
+)]
+pub async fn server_did<S: ServerSetup>(State(state): State<AppState<S>>) -> String {
+    state.did.did()
 }
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Result;
-    use http::{Method, StatusCode};
-    use rs_ucan::{builder::UcanBuilder, ucan::Ucan, DefaultFact};
-    use serde_json::json;
-
     use crate::{
-        authority::generate_ed25519_issuer,
-        error::{AppError, ErrorResponse},
-        routes::auth::VerificationCodeResponse,
-        settings::Settings,
+        db::schema::email_verifications,
+        models::email_verification::EmailVerification,
+        routes::auth::SuccessResponse,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use anyhow::anyhow;
+    use assert_matches::assert_matches;
+    use chrono::{Duration, Local};
+    use diesel_async::RunQueryDsl;
+    use http::{Method, StatusCode};
+    use rs_ucan::DefaultFact;
+    use serde_json::json;
+    use testresult::TestResult;
 
-    #[tokio::test]
-    async fn test_request_code_ok() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let server_did = Settings::load()?.server().did.clone();
-
         let email = "oedipa@trystero.com";
-        let (issuer, key) = generate_ed25519_issuer();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience(&server_did)
-            .sign(&key)?;
 
-        let (status, _) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<VerificationCodeResponse>()
-            .await?;
+        let (status, _) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<SuccessResponse>()
+                .await?;
 
         let (email, _) = ctx
             .verification_code_sender()
@@ -156,56 +107,66 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_request_code_no_ucan() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_email_verification_fetch_token() -> TestResult {
         let ctx = TestContext::new().await;
+
         let email = "oedipa@trystero.com";
 
-        let (status, body) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/auth/email/verify")
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<ErrorResponse>()
-                .await?;
+        RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<SuccessResponse>()
+            .await?;
 
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (_, code) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email sent");
 
-        assert!(matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::UNAUTHORIZED,
-                ..
-            }]
-        ));
+        let token_result =
+            EmailVerification::find_token(&mut ctx.get_db_conn().await, email, &code).await;
+
+        assert_matches!(
+            token_result,
+            Ok(EmailVerification {
+                email, ..
+            }) if email == "oedipa@trystero.com"
+        );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_request_code_wrong_aud() -> Result<()> {
+    #[test_log::test(tokio::test)]
+    async fn test_request_code_expires() -> TestResult {
         let ctx = TestContext::new().await;
+        let mut conn = ctx.get_db_conn().await;
 
         let email = "oedipa@trystero.com";
-        let (issuer, key) = generate_ed25519_issuer();
-        let ucan: Ucan = UcanBuilder::default()
-            .issued_by(&issuer)
-            .for_audience("did:fission:1234")
-            .sign(&key)?;
+        let code = "123456";
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/auth/email/verify")
-            .with_ucan(ucan)
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<ErrorResponse>()
+        let inserted_at = Local::now()
+            .naive_utc()
+            .checked_sub_signed(Duration::hours(25))
+            .ok_or_else(|| anyhow!("Couldn't construct old date."))?;
+
+        let record = EmailVerification {
+            id: 0,
+            inserted_at,
+            updated_at: inserted_at,
+            email: email.to_string(),
+            code: code.to_string(),
+        };
+
+        diesel::insert_into(email_verifications::table)
+            .values(&record)
+            .execute(&mut conn)
             .await?;
 
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let token_result = EmailVerification::find_token(&mut conn, email, code).await;
 
-        assert!(matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::BAD_REQUEST,
-                ..
-            }]
-        ));
+        assert_matches!(token_result, Err(_));
 
         Ok(())
     }

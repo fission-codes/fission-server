@@ -6,3 +6,5 @@
 
 pub mod authority;
 pub mod capabilities;
+pub mod common;
+pub mod ed_did_key;

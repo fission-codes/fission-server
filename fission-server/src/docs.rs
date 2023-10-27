@@ -3,8 +3,11 @@
 use crate::{
     error::AppError,
     extract::authority_addon::UcanAddon,
-    models::{account::AccountRequest, email_verification, volume::NewVolumeRecord},
+    models::account::{Account, RootAccount},
     routes::{account, auth, health, ping},
+};
+use fission_core::common::{
+    AccountCreationRequest, AccountResponse, EmailVerifyRequest, SuccessResponse,
 };
 use utoipa::OpenApi;
 
@@ -15,11 +18,23 @@ use utoipa::OpenApi;
         health::healthcheck,
         ping::get,
         auth::request_token,
+        auth::server_did,
         account::create_account,
         account::get_account,
-        account::update_did
+        account::get_did,
     ),
-    components(schemas(AppError, email_verification::Request, auth::VerificationCodeResponse, AccountRequest, NewVolumeRecord, health::HealthcheckResponse)),
+    components(
+        schemas(
+            AppError,
+            EmailVerifyRequest,
+            SuccessResponse,
+            AccountCreationRequest,
+            AccountResponse,
+            RootAccount,
+            Account,
+            health::HealthcheckResponse
+        )
+    ),
     modifiers(&UcanAddon),
     tags(
         (name = "", description = "fission-server service/middleware")
