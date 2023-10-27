@@ -5,7 +5,7 @@ use std::fmt::Display;
 use url::Url;
 
 /// DID Resource
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Did(pub String);
 
 impl Did {

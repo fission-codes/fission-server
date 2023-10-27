@@ -124,79 +124,20 @@ impl Cli {
                     AccountCommands::Rename(rename) => {
                         let accounts = state.find_accounts(state.find_capabilities()?);
 
-                        let (_info, did, chain) = match &rename.username {
-                            Some(username) => accounts
-                                .into_iter()
-                                .find(|(info, _, _)| info.username.as_ref() == Some(username))
-                                .ok_or_else(|| {
-                                    anyhow!(
-                                        "Couldn't find access to an account with this username."
-                                    )
-                                })?,
-                            None => {
-                                // TODO pick the account in this case.
-                                if accounts.len() > 1 {
-                                    bail!("Account to operate on is ambiguous. Please provide the username in the command argument.");
-                                }
-
-                                accounts.into_iter().next().ok_or_else(|| {
-                                    anyhow!("Please provide the username in the command argument.")
-                                })?
-                            }
-                        };
+                        let (_info, did, chain) = state.pick_account(accounts, &rename.username)?;
 
                         let new_username = inquire::Text::new("Pick a new username:").prompt()?;
 
-                        let ucan =
-                            state.issue_ucan_with(did.0, FissionAbility::AccountManage, &chain)?;
-
-                        handle_failure(
-                            state
-                                .server_request(
-                                    Method::PATCH,
-                                    &format!("/api/v0/account/username/{new_username}"),
-                                )?
-                                .bearer_auth(ucan.encode()?)
-                                .header("ucan", encode_ucan_header(&chain)?)
-                                .send()?,
-                        )?;
+                        state.rename_account(did, chain, new_username)?;
 
                         println!("Successfully changed your username.");
                     }
                     AccountCommands::Delete(delete) => {
                         let accounts = state.find_accounts(state.find_capabilities()?);
 
-                        let (_info, did, chain) = match &delete.username {
-                            Some(username) => accounts
-                                .into_iter()
-                                .find(|(info, _, _)| info.username.as_ref() == Some(username))
-                                .ok_or_else(|| {
-                                    anyhow!(
-                                        "Couldn't find access to an account with this username."
-                                    )
-                                })?,
-                            None => {
-                                // TODO pick the account in this case.
-                                if accounts.len() > 1 {
-                                    bail!("Account to operate on is ambiguous. Please provide the username in the command argument.");
-                                }
+                        let (_info, did, chain) = state.pick_account(accounts, &delete.username)?;
 
-                                accounts.into_iter().next().ok_or_else(|| {
-                                    anyhow!("Please provide the username in the command argument.")
-                                })?
-                            }
-                        };
-
-                        let ucan =
-                            state.issue_ucan_with(did.0, FissionAbility::AccountDelete, &chain)?;
-
-                        handle_failure(
-                            state
-                                .server_request(Method::DELETE, &format!("/api/v0/account"))?
-                                .bearer_auth(ucan.encode()?)
-                                .header("ucan", encode_ucan_header(&chain)?)
-                                .send()?,
-                        )?;
+                        state.delete_account(did, chain)?;
 
                         println!("Successfully deleted your account.");
                     }
@@ -247,8 +188,12 @@ impl<'s> LoadedKeyState<'s> {
         })
     }
 
+    fn device_did(&self) -> Did {
+        Did(self.key.did())
+    }
+
     fn fetch_ucans(&mut self) -> Result<()> {
-        let (ucan, proofs) = self.issue_ucan(self.key.did(), IndexingAbility::Find)?;
+        let (ucan, proofs) = self.issue_ucan(self.device_did(), IndexingAbility::Find)?;
 
         let ucans_response: UcansResponse = handle_failure(
             self.server_request(Method::GET, "/api/v0/capabilities")?
@@ -279,7 +224,7 @@ impl<'s> LoadedKeyState<'s> {
         // TODO verify it's a 6 digit number. Allow retries.
         let code = inquire::Text::new("Please enter the verification code:").prompt()?;
 
-        let (ucan, proofs) = self.issue_ucan(self.key.did(), FissionAbility::AccountCreate)?;
+        let (ucan, proofs) = self.issue_ucan(self.device_did(), FissionAbility::AccountCreate)?;
 
         // TODO Check for availablility. Allow retries.
         let username = inquire::Text::new("Choose a username:").prompt()?;
@@ -314,16 +259,18 @@ impl<'s> LoadedKeyState<'s> {
                         continue;
                     };
 
+                    let subject_did = Did(subject_did.to_string());
+
                     tracing::debug!(%subject_did, "Found capability, checking delegation chain");
 
                     if let Some(chain) = find_delegation_chain(
-                        subject_did,
+                        &subject_did,
                         cap.ability(),
                         self.key.as_str(),
                         &self.ucans,
                     ) {
                         tracing::debug!("Delegation chain found.");
-                        caps.push((Did(subject_did.to_string()), chain));
+                        caps.push((subject_did, chain));
                     }
                 }
             }
@@ -337,7 +284,7 @@ impl<'s> LoadedKeyState<'s> {
         caps: Vec<(Did, Vec<&'u Ucan>)>,
     ) -> Vec<(AccountInfo, Did, Vec<&'u Ucan>)> {
         caps.into_iter()
-            .map(|(Did(did), chain)| {
+            .map(|(did, chain)| {
                 let ucan =
                     self.issue_ucan_with(did.clone(), FissionAbility::AccountRead, &chain)?;
 
@@ -348,7 +295,7 @@ impl<'s> LoadedKeyState<'s> {
                     .send()?;
                 let account_info: AccountInfo = response.json()?;
 
-                Ok::<_, anyhow::Error>((account_info, Did(did), chain))
+                Ok::<_, anyhow::Error>((account_info, did, chain))
             })
             .filter_map(|e| match e {
                 Ok(ok) => Some(ok),
@@ -360,6 +307,73 @@ impl<'s> LoadedKeyState<'s> {
             .collect::<Vec<_>>()
     }
 
+    fn pick_account<'u>(
+        &'u self,
+        accounts: Vec<(AccountInfo, Did, Vec<&'u Ucan>)>,
+        user_choice: &Option<String>,
+    ) -> Result<(AccountInfo, Did, Vec<&Ucan>)> {
+        Ok(match user_choice {
+            Some(username) => accounts
+                .into_iter()
+                .find(|(info, _, _)| info.username.as_ref() == Some(username))
+                .ok_or_else(|| anyhow!("Couldn't find access to an account with this username."))?,
+            None => {
+                if accounts.len() > 1 {
+                    let account_names = accounts
+                        .iter()
+                        .map(|(info, Did(did), _)| info.username.as_ref().unwrap_or(did))
+                        .collect();
+                    let account_name =
+                        inquire::Select::new("Which account do you want to rename?", account_names)
+                            .prompt()?
+                            .clone();
+
+                    accounts
+                        .into_iter()
+                        .find(|(info, Did(did), _)| {
+                            info.username.as_ref().unwrap_or(did) == &account_name
+                        })
+                        .ok_or_else(|| {
+                            anyhow!("Something went wrong. Couldn't selected account.")
+                        })?
+                } else {
+                    accounts.into_iter().next().ok_or_else(|| {
+                        anyhow!("Please provide the username in the command argument.")
+                    })?
+                }
+            }
+        })
+    }
+
+    fn rename_account(&self, did: Did, chain: Vec<&Ucan>, new_username: String) -> Result<()> {
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, &chain)?;
+
+        handle_failure(
+            self.server_request(
+                Method::PATCH,
+                &format!("/api/v0/account/username/{new_username}"),
+            )?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(&chain)?)
+            .send()?,
+        )?;
+
+        Ok(())
+    }
+
+    fn delete_account(&self, did: Did, chain: Vec<&Ucan>) -> Result<()> {
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, &chain)?;
+
+        handle_failure(
+            self.server_request(Method::DELETE, "/api/v0/account")?
+                .bearer_auth(ucan.encode()?)
+                .header("ucan", encode_ucan_header(&chain)?)
+                .send()?,
+        )?;
+
+        Ok(())
+    }
+
     fn server_request(&self, method: reqwest::Method, path: &str) -> Result<RequestBuilder> {
         let mut url = Url::parse(&self.settings.api_endpoint)?;
         url.set_path(path);
@@ -367,7 +381,7 @@ impl<'s> LoadedKeyState<'s> {
         Ok(self.client.request(method, url))
     }
 
-    fn issue_ucan(&self, subject_did: String, ability: impl Ability) -> Result<(Ucan, Vec<&Ucan>)> {
+    fn issue_ucan(&self, subject_did: Did, ability: impl Ability) -> Result<(Ucan, Vec<&Ucan>)> {
         let Some(chain) = find_delegation_chain(&subject_did, &ability, self.key.as_str(), &self.ucans) else {
             bail!("Couldn't find proof for ability {ability} on subject {subject_did}.");
         };
@@ -379,7 +393,7 @@ impl<'s> LoadedKeyState<'s> {
 
     fn issue_ucan_with(
         &self,
-        subject_did: String,
+        subject_did: Did,
         ability: impl Ability,
         chain: &[&Ucan],
     ) -> Result<Ucan> {
@@ -387,7 +401,7 @@ impl<'s> LoadedKeyState<'s> {
             .issued_by(&self.key)
             .for_audience(&self.server_did)
             .with_lifetime(360)
-            .claiming_capability(Capability::new(Did(subject_did), ability, EmptyCaveat));
+            .claiming_capability(Capability::new(subject_did, ability, EmptyCaveat));
 
         if let Some(first) = chain.first() {
             builder = builder.witnessed_by(first, None);
@@ -399,7 +413,7 @@ impl<'s> LoadedKeyState<'s> {
 
 #[tracing::instrument(skip(ucans, ability))]
 fn find_delegation_chain<'u>(
-    subject_did: &str,
+    subject_did: &Did,
     ability: &(impl Ability + ?Sized),
     target_did: &str,
     ucans: &'u [Ucan],
@@ -412,7 +426,7 @@ fn find_delegation_chain<'u>(
     let mut current_target = target_did;
     let mut chain = Vec::new();
     loop {
-        if current_target == subject_did {
+        if current_target == subject_did.as_ref() {
             return Some(chain); // no proofs needed
         }
 
@@ -422,16 +436,19 @@ fn find_delegation_chain<'u>(
         let Some(ucan) = ucans.iter().find(|ucan| {
             if ucan.audience() == current_target {
                 tracing::debug!(ucan = ucan.encode().unwrap(), "Found UCAN proof chain candidate");
+
                 ucan.capabilities().any(|cap| {
                     let valid_attenuation = ability.is_valid_attenuation(cap.ability());
                     let matching_resource = cap.resource()
-                    .downcast_ref::<Did>()
-                    .map_or(false, |Did(did)| did == subject_did);
+                        .downcast_ref::<Did>()
+                        .map_or(false, |did| did == subject_did);
+
                     tracing::debug!(
                         valid_attenuation,
                         matching_resource,
                         "Checking capability attenuation"
                     );
+
                     valid_attenuation && matching_resource
                     // Not handling caveats yet
                 })
@@ -447,7 +464,7 @@ fn find_delegation_chain<'u>(
 
         chain.push(ucan);
 
-        if current_target == subject_did {
+        if current_target == subject_did.as_ref() {
             tracing::debug!("Finished chain");
             return Some(chain);
         }
