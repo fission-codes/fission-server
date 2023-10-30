@@ -134,7 +134,7 @@ In some cases this can be useful for logging in a new devices. E.g. when passkey
 
 In the future this endpoint will be useful for fetching new capabilities from other services that were delegated to a user's account.
 
-**Authorization**: UCAN with ability `capability/find`.
+**Authorization**: UCAN with ability `capability/fetch`.
 
 **Response**:
 
@@ -165,7 +165,7 @@ flowchart TD
     Noncrit --> Info["account/info"]
     Star --> Manage["account/manage"]
     Star --> Delete["account/delete"]
-    CapFind["capability/find"]
+    CapFind["capability/fetch"]
 ```
 
 #### `account/noncritical` & `account/*`
@@ -192,7 +192,7 @@ Critical. Allows changing the username.
 
 Critical. Allows deleting an account.
 
-#### `capability/find`
+#### `capability/fetch`
 
 Allows finding UCANs known to the server to give capabilities to the associated resource DID.
 
