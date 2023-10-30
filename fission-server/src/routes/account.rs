@@ -84,7 +84,7 @@ pub async fn create_account<S: ServerSetup>(
 /// GET handler to retrieve account details
 #[utoipa::path(
     get,
-    path = "/api/v0/account/{username}",
+    path = "/api/v0/account/{did}",
     security(
         ("ucan_bearer" = []),
     ),
@@ -118,7 +118,7 @@ pub async fn get_account<S: ServerSetup>(
 /// GET handler to retrieve account details
 #[utoipa::path(
     get,
-    path = "/api/v0/account/{username}",
+    path = "/api/v0/account/{username}/did",
     security(
         ("ucan_bearer" = []),
     ),
@@ -241,6 +241,7 @@ mod tests {
         models::account::RootAccount,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use anyhow::Result;
     use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
@@ -253,14 +254,12 @@ mod tests {
     use serde_json::json;
     use testresult::TestResult;
 
-    #[test_log::test(tokio::test)]
-    async fn test_create_account_ok() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let username = "oedipa";
-        let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-
+    async fn create_account(
+        username: &str,
+        email: &str,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, RootAccount)> {
         let (status, response) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
@@ -296,6 +295,19 @@ mod tests {
             }))?
             .into_json_response::<RootAccount>()
             .await?;
+
+        Ok((status, root_account))
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_create_account_ok() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -384,7 +396,7 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/v0/account/{}", did),
+            format!("/api/v0/account/{did}"),
         )
         .into_json_response::<AccountResponse>()
         .await?;
@@ -404,7 +416,7 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/v0/account/{}", username),
+            format!("/api/v0/account/{username}"),
         )
         .into_json_response::<ErrorResponse>()
         .await?;
@@ -418,6 +430,29 @@ mod tests {
                 ..
             }]
         );
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_get_account_did_by_username() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let issuer = &EdDidKey::generate();
+
+        let (_, account) = create_account(username, email, issuer, &ctx).await?;
+
+        let (_, response) = RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::GET,
+            format!("/api/v0/account/{username}/did"),
+        )
+        .into_json_response::<DidResponse>()
+        .await?;
+
+        assert_eq!(response.did, account.account.did);
 
         Ok(())
     }
