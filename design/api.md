@@ -11,119 +11,110 @@ This spec describes
 
 Today we use a REST API. In the future we may switch to an RPC-based design. When/if this happens mostly depends on a plan for implementing the UCAN invocation spec.
 
+| Method | Path | Comment |
+|--------|------|---------|
+| POST | [`/api/v0/auth/email/verify`](#post-apiv0authemailverify) | Trigger email verification |
+| POST | [`/api/v0/account`](#post-apiv0account) | Create a full account |
+| GET | [`/api/v0/account/:did`](#get-apiv0accountdid) | Get account information by DID |
+| GET | [`/api/v0/account/:username/did`](#get-apiv0accountusernamedid) | Get the did of an account by username |
+| PATCH | [`/api/v0/account/:did/username/:username`](#patch-apiv0accountdidusernameusername) | Change an account's username |
+| GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
+
+A note on authorization:
+
+For all UCANs that are sent to the server for authorization, following things must hold:
+- All capability resources need to be DID URIs.
+- A UCAN with a resource DID that's not equal to its issuer DID needs a valid proof chain to a UCAN where this condition holds.
+- The final link in the UCAN chain needs to have the server DID as the audience.
+
+These conditions won't be repeated in the route-specific authorization sections.
+
+---
+
 ### POST `/api/v0/auth/email/verify`
-
----
-
-**Authentication**: *Unauthenticated*
-
-**Request**: `{ email: string }`
-
-**Response**: `{ success: bool }`
-
----
 
 - Sends an email with a 6-digit verification code to given address
 - A hash of the code and email address is stored in a database
 - The code expires after 24 hours
+- Codes will be deleted when used
 
+**Authorization**: Unauthorized
+
+**Request**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `email` | `string` | The email to send the verification code to |
+
+**Response**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `success` | `bool` | True if sending the email was successful |
+
+---
 
 ### POST `/api/v0/account`
 
----
+Registers a full account given an email verification code and delegates the account's access to given DID. In the future more UCANs may be involved in the delgation chain in the response.
 
-**Authentication**:
-
-UCAN giving access to the capability
-- with resource `fission:*`
-- with ability `account/create` (without caveats)
-- originating in `did:key:<device>`.
-Its audience must be `did:<server DID>`.
+**Authorization**: UCAN with ability `account/create`. The resource DID will be the audience for returned UCANs.
 
 **Request**:
-```ts
-{
-  code: number,
-  email: string,
-  username: string,
-  did: "did:key:<device>",
-  credentialID?: string,
-}
-```
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `code` | `number` | The code from the verification email |
+| `email` | `string` | |
+| `username` | `string` | |
+| `credentialID` | `string` | Optional. If present, this may be useful for better passkey UX. |
 
 **Response**:
 
-```ts
-{ ucans: Array<string> }
-```
-
-The response consists of two UCANs:
-- ```json
-  {
-    "iss": "did:key:<account>",
-    "aud": "did:<server DID>",
-    "cap": { "fission:did:key:<account>": { "*": [{}] } }
-  }
-  ```
-- ```json
-  {
-    "iss": "did:<server DID>",
-    "aud": "did:key:<device>",
-    "cap": { "fission:did:key:<account>": { "*": [{}] } }
-  }
-  ```
+| Field | Type | Comment |
+|-------|------|---------|
+| `ucans` | `Array<string>` | A set of UCAN delegations that delegate the account's unique DID to the resource DID from the request authorization. |
 
 ---
-
-This request registers a full account given an email verification code and delegates the account's access to given DID. In the future more UCANs may be involved in the delgation chain.
-
 
 ### GET `/api/v0/account/:did`
 
----
+Fetches the latest account information.
 
-**Authentication**:
+**Authorization**: UCAN giving access to the ability `account/info` with the account's DID as resource.
 
-UCAN giving access to the capability `"fission:did:key:<account>": { "account/info": [{}] }` originating in `did:key:<account>`.
-The UCAN's audience needs to be `did:key:<account>`.
+**Request**: Two optional query parameters: `?resource=<resource did>&ability=<ability>` to filter/look for specific resources or abilities.
 
 **Response**:
 
-```ts
-{
-  email: string,
-  did: string,
-  username: string,
-}
-```
+| Field      | Type     |
+|------------|----------|
+| `email`    | `string` |
+| `did`      | `string` |
+| `username` | `string` |
 
 ---
-
-This fetches the latest account information.
 
 ### GET `/api/v0/account/:username/did`
 
----
+Find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
 
-**Authentication**: *Unauthenticated*
+**Authorization**: *Unauthenticated*
 
-**Response**: `{ did: string }`
+**Response**:
 
----
+| Field | Type     |
+|-------|----------|
+| `did` | `string` |
 
-Use this to find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
-
-
-
-
-### PUT `/api/v0/account/:did/username/:username`
 
 ---
 
-**Authentication**:
+### PATCH `/api/v0/account/:did/username/:username`
 
-UCAN giving access to the capability `"fission:did:key:<account>": { "account/manage": [{}] }` originating in `did:key:<account>`.
-The UCAN's audience needs to be `did:key:<account>`.
+Change the account's username.
+
+**Authorization**: UCAN with ability `account/manage`.
 
 **Response**:
 
@@ -133,51 +124,38 @@ Status 409 Conflict and `{ success: false }`, if the username is already taken.
 
 ---
 
-Change the account's username.
+### GET `/api/v0/capabilities`
 
+This returns the set of UCANs in UCAN chains that have the authorization UCAN's resource DID as final audience.
 
-### POST `/api/v0/fetch-capabilities/:did`
+This way agents can discover new capabilities, or make use of the server as persistent storage for their UCANs, e.g. when their storage gets wiped, but they manage to keep or recover their DID.
 
----
-
-**Authentication**:
-
-```json
-{
-  "iss": "did:<from the path>",
-  "aud": "did:<server DID>",
-  "cap": {}, // Note: Should we introduce a capability? "did:key:zABC": { "capability/fetch": [{}] }?
-  "nnc": "<randomly generated>"
-}
-```
-
-**Request**: `{ ucans: string[] }`
-
-**Response**: `{ ucans: string[] }`
-
----
-
-This returns a set of UCANs, that, combined with the UCAN from the request body will give the given DID access to new capabilities.
-
-In some cases this can be useful for logging in a new devices. E.g. when passkeys are available and are synced between devices, e.g. it's easy to ask a synced passkey to sign a UCAN giving the `"ucan:*": { "*": [{}] }` capability. However, this UCAN on its own doesn't give the account access to anything yet. It can use this endpoint to fetch the `fission:did:key:<account>` capability UCANs that delegate to the passkey.
+In some cases this can be useful for logging in a new devices. E.g. when passkeys are available and are synced between devices, e.g. it's easy to ask a synced passkey to sign a UCAN giving the `"ucan:*": { "*": [{}] }` capability. However, this UCAN on its own doesn't give the account access to anything yet. It can use this endpoint to fetch the `"did:key:<account>": { "*": [{}] }` capability UCANs that delegate to the passkey.
 
 In the future this endpoint will be useful for fetching new capabilities from other services that were delegated to a user's account.
+
+**Authorization**: UCAN with ability `capability/fetch`.
+
+**Response**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `ucans` | `Array<string>` | A set of ucans giving the DID from the resource in the authorization capabilities. |
 
 
 ## UCAN Capabilities
 
 ### Resources
 
-The fission server understands one main resource, which is scoped to the `fission` URL scheme.
+Anticipating the upcoming changes to the UCAN spec, where each capability is associated with a "subject" that's *always a DID*, resources for the fission server are also always DIDs.
 
 Examples:
-- `fission:did:key:z6Mkw5d3acoQqn97UjRcGit7J7uWunixxxDKTgkr58CFHLfo`
-- `fission:did:key:z6Mkh5xiFmvPkWeHYZYnBLS4jVjsCjtpBS7D4thq1stdyEBK`
-- `fission:*`
+- `did:key:z6Mkw5d3acoQqn97UjRcGit7J7uWunixxxDKTgkr58CFHLfo`
+- `did:key:z6Mkh5xiFmvPkWeHYZYnBLS4jVjsCjtpBS7D4thq1stdyEBK`
 
-The URI's path identifies an account by DID. This DID is unique for every account and after delegating rights to the main server DID, the associated private key is deleted.
+Often, these DIDs represent an identifier that is unique for every account and after delegating rights to the main server DID, the associated private key is deleted.
 
-The `fission:*` scheme subsumes any other resource schemes. It allows you to delegate account capabilities in cases where you don't know the account DIDs (e.g. when they're not generated yet).
+Sometimes, these DIDs are generated by clients and represent one of their devices.
 
 ### Abilities
 
@@ -187,11 +165,12 @@ flowchart TD
     Noncrit --> Info["account/info"]
     Star --> Manage["account/manage"]
     Star --> Delete["account/delete"]
+    CapFind["capability/fetch"]
 ```
 
 #### `account/noncritical` & `account/*`
 
-Abilities on the fission server are grouped into two categories: critical and noncritical abilities.
+Account abilities on the fission server are grouped into two categories: critical and non-critical.
 
 This destinction allows delegating only non-critical capabilities to a user session, while requiring e.g. a second factor/biometrics for access to any critical capabilities.
 
@@ -213,6 +192,9 @@ Critical. Allows changing the username.
 
 Critical. Allows deleting an account.
 
+#### `capability/fetch`
+
+Allows finding UCANs known to the server to give capabilities to the associated resource DID.
 
 
 [UCAN]: https://github.com/ucan-wg
