@@ -188,4 +188,22 @@ mod tests {
 
         Ok(())
     }
+
+    #[test_log::test(tokio::test)]
+    async fn test_get_server_did() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let (status, bytes) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/server-did")
+                .into_raw_response()
+                .await?;
+
+        assert_eq!(status, StatusCode::OK);
+
+        let parsed = String::from_utf8(bytes.to_vec())?;
+
+        assert_eq!(parsed, ctx.app_state().did.did());
+
+        Ok(())
+    }
 }
