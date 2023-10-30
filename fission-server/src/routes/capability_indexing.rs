@@ -36,7 +36,7 @@ pub async fn get_capabilities<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<UcansResponse>)> {
-    let Did(audience_needle) = authority.get_capability(IndexingAbility::Find)?;
+    let Did(audience_needle) = authority.get_capability(IndexingAbility::Fetch)?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {

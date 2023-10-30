@@ -16,9 +16,11 @@ rs_ucan::register_plugin!(INDEXING, &IndexingPlugin);
 /// Abilities for the UCAN and capability indexing endpoints
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IndexingAbility {
-    /// `capability/find` ability
-    Find,
+    /// `capability/fetch` ability
+    Fetch,
 }
+
+const CAPABILITY_FETCH: &str = "capability/fetch";
 
 impl Plugin for IndexingPlugin {
     type Resource = Did;
@@ -44,7 +46,7 @@ impl Plugin for IndexingPlugin {
         ability: &str,
     ) -> std::result::Result<Option<Self::Ability>, Self::Error> {
         Ok(match ability {
-            "capability/find" => Some(IndexingAbility::Find),
+            CAPABILITY_FETCH => Some(IndexingAbility::Fetch),
             _ => None,
         })
     }
@@ -74,7 +76,7 @@ impl Ability for IndexingAbility {
 impl Display for IndexingAbility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Find => "capability/find",
+            Self::Fetch => CAPABILITY_FETCH,
         })
     }
 }
