@@ -210,7 +210,7 @@ pub async fn delete_account<S: ServerSetup>(
             let Some(account) = row else {
                 return Err(AppError::new(
                     StatusCode::NOT_FOUND,
-                    Some("Couldn't find an account with this DID.")
+                    Some("Couldn't find an account with this DID."),
                 ));
             };
 
