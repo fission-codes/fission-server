@@ -4193,7 +4193,7 @@ dependencies = [
 [[package]]
 name = "rs-ucan"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-ucan/?branch=matheus23/allow-same-resource-scheme#5d272de3b49c233448d1e460812895c7d7f671b9"
+source = "git+https://github.com/fission-codes/rs-ucan/?branch=quinn-wip-rework#240549b77ec409d57dd0d25790e4a7e85ec47b87"
 dependencies = [
  "anyhow",
  "async-trait",
