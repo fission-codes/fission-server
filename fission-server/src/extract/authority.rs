@@ -189,7 +189,6 @@ mod tests {
 
         // If a valid UCAN is given
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
             .for_audience(ctx.server_did())
             .with_lifetime(100)
             .sign(issuer)?;
@@ -229,7 +228,6 @@ mod tests {
 
         // If an invalid UCAN is given
         let faulty_ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
             .for_audience(ctx.server_did())
             .with_expiration(0)
             .sign(issuer)?;

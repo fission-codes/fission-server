@@ -80,7 +80,6 @@ mod tests {
         conn: &mut Conn<'_>,
     ) -> Result<Ucan> {
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
             .for_audience(audience)
             .claiming_capability(Capability::new(Did(issuer.did()), TopAbility, EmptyCaveat))
             .sign(issuer)?;
@@ -95,7 +94,6 @@ mod tests {
         ctx: &TestContext,
     ) -> Result<(StatusCode, UcansResponse)> {
         let auth: Ucan = UcanBuilder::default()
-            .issued_by(requestor)
             .for_audience(ctx.server_did())
             .claiming_capability(Capability::new(
                 Did(requestor.did()),
@@ -140,7 +138,6 @@ mod tests {
         let server = ctx.server_did();
 
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(server)
             .for_audience(device)
             .claiming_capability(Capability::new(Did(server.did()), TopAbility, EmptyCaveat))
             .sign(server)?;

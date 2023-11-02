@@ -4,7 +4,6 @@ use anyhow::{anyhow, bail, Result};
 use fission_core::capabilities::did::Did;
 use libipld::{raw::RawCodec, Ipld};
 use rs_ucan::{
-    builder::DEFAULT_MULTIHASH,
     did_verifier::DidVerifierMap,
     semantics::ability::Ability,
     store::{InMemoryStore, Store},
@@ -60,10 +59,7 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
 
         for proof in &self.proofs {
             // TODO(matheus23): we assume SHA2-256 atm. The spec says to hash with all CID formats used in proofs >.<
-            store.write(
-                Ipld::Bytes(proof.encode()?.as_bytes().to_vec()),
-                DEFAULT_MULTIHASH,
-            )?;
+            store.write(Ipld::Bytes(proof.encode()?.as_bytes().to_vec()), None)?;
         }
 
         let caps = self.ucan.capabilities().collect::<Vec<_>>();
@@ -131,7 +127,6 @@ mod tests {
     async fn validation_test() -> TestResult {
         let issuer = &EdDidKey::generate();
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
             .for_audience("did:web:runfission.com")
             .with_lifetime(100)
             .sign(issuer)?;
