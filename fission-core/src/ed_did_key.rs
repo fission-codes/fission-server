@@ -7,6 +7,7 @@ use ed25519::{
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::thread_rng;
+use rs_ucan::crypto::SignerDid;
 use signature::Signer;
 use std::fmt::Display;
 use zeroize::ZeroizeOnDrop;
@@ -86,6 +87,12 @@ impl EncodePrivateKey for EdDidKey {
 impl EncodePublicKey for EdDidKey {
     fn to_public_key_der(&self) -> ed25519::pkcs8::spki::Result<ed25519::pkcs8::Document> {
         self.signing_key.verifying_key().to_public_key_der()
+    }
+}
+
+impl SignerDid<Signature> for EdDidKey {
+    fn did(&self) -> Result<String, anyhow::Error> {
+        Ok(self.did())
     }
 }
 

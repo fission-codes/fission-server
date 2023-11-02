@@ -201,7 +201,6 @@ impl RootAccount {
         // Delegate all access to the fission server
         let capability = Capability::new(Did(account.did()), TopAbility, EmptyCaveat);
         let server_ucan: Ucan = UcanBuilder::default()
-            .issued_by(&account)
             .for_audience(server)
             .claiming_capability(capability)
             .sign(&account)?;
@@ -209,7 +208,6 @@ impl RootAccount {
         // Delegate the account to the user
         let capability = Capability::new(Did(account.did()), TopAbility, EmptyCaveat);
         let user_ucan: Ucan = UcanBuilder::default()
-            .issued_by(server)
             .for_audience(user_did)
             .claiming_capability(capability)
             .witnessed_by(&server_ucan, None)

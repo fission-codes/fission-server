@@ -118,7 +118,7 @@ mod tests {
     use crate::ed_did_key::EdDidKey;
     use libipld::{raw::RawCodec, Ipld};
     use rs_ucan::{
-        builder::{UcanBuilder, DEFAULT_MULTIHASH},
+        builder::UcanBuilder,
         capability::{Capability, DefaultCapabilityParser},
         did_verifier::DidVerifierMap,
         plugins::ucan::UcanResource,
@@ -138,7 +138,6 @@ mod tests {
         let bob = &EdDidKey::generate();
 
         let root_ucan: Ucan<DefaultFact, DefaultCapabilityParser> = UcanBuilder::default()
-            .issued_by(alice)
             .for_audience(bob)
             .claiming_capability(Capability::new(
                 UcanResource::AllProvable,
@@ -148,13 +147,9 @@ mod tests {
             .with_lifetime(60 * 60)
             .sign(alice)?;
 
-        store.write(
-            Ipld::Bytes(root_ucan.encode()?.as_bytes().to_vec()),
-            DEFAULT_MULTIHASH,
-        )?;
+        store.write(Ipld::Bytes(root_ucan.encode()?.as_bytes().to_vec()), None)?;
 
         let invocation: Ucan<DefaultFact, DefaultCapabilityParser> = UcanBuilder::default()
-            .issued_by(bob)
             .for_audience("did:web:fission.codes")
             .claiming_capability(Capability::new(
                 Did("did:key:sth".to_string()),

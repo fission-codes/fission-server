@@ -276,7 +276,6 @@ mod tests {
             .expect("No email Sent");
 
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
             .for_audience(ctx.server_did())
             .claiming_capability(Capability::new(
                 Did(issuer.did()),
@@ -342,7 +341,6 @@ mod tests {
             .expect("No email Sent");
 
         let ucan: Ucan = UcanBuilder::default()
-            .issued_by(issuer)
             .for_audience(ctx.server_did())
             .claiming_capability(Capability::new(
                 Did(issuer.did()),

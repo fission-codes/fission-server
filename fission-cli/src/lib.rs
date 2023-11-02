@@ -400,7 +400,6 @@ impl<'s> LoadedKeyState<'s> {
         chain: &[&Ucan],
     ) -> Result<Ucan> {
         let mut builder = UcanBuilder::default()
-            .issued_by(&self.key)
             .for_audience(&self.server_did)
             .with_lifetime(360)
             .claiming_capability(Capability::new(subject_did, ability, EmptyCaveat));
