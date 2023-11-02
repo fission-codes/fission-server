@@ -193,7 +193,7 @@ impl<'s> LoadedKeyState<'s> {
     }
 
     fn fetch_ucans(&mut self) -> Result<()> {
-        let (ucan, proofs) = self.issue_ucan(self.device_did(), IndexingAbility::Find)?;
+        let (ucan, proofs) = self.issue_ucan(self.device_did(), IndexingAbility::Fetch)?;
 
         let ucans_response: UcansResponse = handle_failure(
             self.server_request(Method::GET, "/api/v0/capabilities")?
@@ -382,7 +382,9 @@ impl<'s> LoadedKeyState<'s> {
     }
 
     fn issue_ucan(&self, subject_did: Did, ability: impl Ability) -> Result<(Ucan, Vec<&Ucan>)> {
-        let Some(chain) = find_delegation_chain(&subject_did, &ability, self.key.as_str(), &self.ucans) else {
+        let Some(chain) =
+            find_delegation_chain(&subject_did, &ability, self.key.as_str(), &self.ucans)
+        else {
             bail!("Couldn't find proof for ability {ability} on subject {subject_did}.");
         };
 
@@ -435,11 +437,15 @@ fn find_delegation_chain<'u>(
         // Find a UCAN that 'proves' the corrent subject
         let Some(ucan) = ucans.iter().find(|ucan| {
             if ucan.audience() == current_target {
-                tracing::debug!(ucan = ucan.encode().unwrap(), "Found UCAN proof chain candidate");
+                tracing::debug!(
+                    ucan = ucan.encode().unwrap(),
+                    "Found UCAN proof chain candidate"
+                );
 
                 ucan.capabilities().any(|cap| {
                     let valid_attenuation = ability.is_valid_attenuation(cap.ability());
-                    let matching_resource = cap.resource()
+                    let matching_resource = cap
+                        .resource()
                         .downcast_ref::<Did>()
                         .map_or(false, |did| did == subject_did);
 
@@ -452,7 +458,9 @@ fn find_delegation_chain<'u>(
                     valid_attenuation && matching_resource
                     // Not handling caveats yet
                 })
-            } else { false }
+            } else {
+                false
+            }
         }) else {
             tracing::debug!("Couldn't prove this step, aborting");
             return None;

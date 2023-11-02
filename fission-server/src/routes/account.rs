@@ -201,18 +201,17 @@ pub async fn delete_account<S: ServerSetup>(
     conn.transaction(|conn| {
         async move {
             use crate::db::schema::*;
-            let row: Option<Account> = diesel::delete(accounts::table)
+            let account = diesel::delete(accounts::table)
                 .filter(accounts::did.eq(&did))
                 .get_result::<Account>(conn)
                 .await
-                .optional()?;
-
-            let Some(account) = row else {
-                return Err(AppError::new(
-                    StatusCode::NOT_FOUND,
-                    Some("Couldn't find an account with this DID."),
-                ));
-            };
+                .optional()?
+                .ok_or_else(|| {
+                    AppError::new(
+                        StatusCode::NOT_FOUND,
+                        Some("Couldn't find an account with this DID."),
+                    )
+                })?;
 
             let indexed_caps: Vec<IndexedCapability> = capabilities::table
                 .filter(capabilities::resource.eq(&did))
