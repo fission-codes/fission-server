@@ -8,7 +8,6 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{
     pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection, RunQueryDsl,
 };
-use tracing::log;
 
 // 🧬
 
@@ -22,10 +21,10 @@ pub type Conn<'a> = PooledConnection<'a, AsyncDieselConnectionManager<AsyncPgCon
 
 /// Build the database pool
 pub async fn pool(url: &str, connect_timeout: u64) -> Result<Pool> {
-    log::info!(
-        "Connecting to database: {}, connect_timeout={}",
-        &url,
-        connect_timeout
+    tracing::info!(
+        %url,
+        %connect_timeout,
+        "Connecting to database via pool",
     );
 
     let config = AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(url);
@@ -41,10 +40,10 @@ pub async fn pool(url: &str, connect_timeout: u64) -> Result<Pool> {
 
 /// Establish a connection
 pub async fn connect(pool: &Pool) -> Result<Conn<'_>> {
-    log::debug!("Connecting to the database");
+    tracing::debug!("Creating a db connection from connection pool");
     pool.get()
         .await
-        .map_err(|_| anyhow::anyhow!("Failed to connect to database"))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to the database: {e}"))
 }
 
 /// Get the current schema version

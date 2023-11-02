@@ -18,10 +18,12 @@ pub(crate) struct TestIpfsDatabase {
 #[derive(Debug, Default)]
 struct State {
     pinned_cids: HashSet<Cid>,
+    #[allow(unused)]
     blocks: HashMap<Cid, Bytes>,
 }
 
 impl TestIpfsDatabase {
+    #[allow(unused)]
     pub(crate) fn add(&self, mut data: impl Read) -> Result<Cid> {
         let mut bytes = Vec::new();
         data.read_to_end(&mut bytes)?;

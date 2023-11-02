@@ -993,6 +993,7 @@ dependencies = [
  "diesel_derives",
  "itoa",
  "pq-sys",
+ "serde_json",
 ]
 
 [[package]]
@@ -1405,6 +1406,7 @@ dependencies = [
  "diesel_migrations",
  "ed25519 2.2.2",
  "ed25519-dalek 2.0.0",
+ "erased-serde",
  "fission-core",
  "futures",
  "futures-util",
@@ -3957,7 +3959,7 @@ dependencies = [
 [[package]]
 name = "rs-ucan"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-ucan/?branch=matheus23/expose-serde#eb58bbe1b88b0fc53facf1ee5e3e63e2919626f4"
+source = "git+https://github.com/fission-codes/rs-ucan/?branch=matheus23/allow-same-resource-scheme#5d272de3b49c233448d1e460812895c7d7f671b9"
 dependencies = [
  "anyhow",
  "async-trait",

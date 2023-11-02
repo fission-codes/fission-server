@@ -1,5 +1,6 @@
 //! Request and response data types that are common and useful between clients of and the fission server
 
+use rs_ucan::ucan::Ucan;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use validator::Validate;
@@ -45,4 +46,11 @@ pub struct DidResponse {
 pub struct SuccessResponse {
     /// Whether the response was successful
     pub success: bool,
+}
+
+/// Response type containing UCANs
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+pub struct UcansResponse {
+    /// A list of UCANs returned from the request
+    pub ucans: Vec<Ucan>,
 }

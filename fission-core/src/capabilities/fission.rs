@@ -21,7 +21,19 @@ pub enum FissionAbility {
     AccountRead,
     /// `account/create`, the ability to create an account
     AccountCreate,
+    /// `account/manage`, the ability to change e.g. the username or email address
+    AccountManage,
+    /// `account/noncritical`, any non-destructive abilities like adding data or querying data
+    AccountNonrcitical,
+    /// `account/delete`, the abilit to delete an account
+    AccountDelete,
 }
+
+const ACCOUNT_READ: &str = "account/read";
+const ACCOUNT_CREATE: &str = "account/create";
+const ACCOUNT_MANAGE: &str = "account/manage";
+const ACCOUNT_NONCRITICAL: &str = "account/noncritical";
+const ACCOUNT_DELETE: &str = "account/delete";
 
 impl Plugin for FissionPlugin {
     type Resource = Did;
@@ -47,8 +59,11 @@ impl Plugin for FissionPlugin {
         ability: &str,
     ) -> Result<Option<Self::Ability>, Self::Error> {
         Ok(match ability {
-            "account/read" => Some(FissionAbility::AccountRead),
-            "account/create" => Some(FissionAbility::AccountCreate),
+            ACCOUNT_READ => Some(FissionAbility::AccountRead),
+            ACCOUNT_CREATE => Some(FissionAbility::AccountCreate),
+            ACCOUNT_MANAGE => Some(FissionAbility::AccountManage),
+            ACCOUNT_NONCRITICAL => Some(FissionAbility::AccountNonrcitical),
+            ACCOUNT_DELETE => Some(FissionAbility::AccountDelete),
             _ => None,
         })
     }
@@ -67,9 +82,19 @@ impl Plugin for FissionPlugin {
 
 impl Ability for FissionAbility {
     fn is_valid_attenuation(&self, other: &dyn Ability) -> bool {
-        let Some(other) = other.downcast_ref::<FissionAbility>() else {
+        let Some(other) = other.downcast_ref::<Self>() else {
             return false;
         };
+
+        if matches!(other, Self::AccountNonrcitical) {
+            return match self {
+                Self::AccountRead => true,
+                Self::AccountCreate => true,
+                Self::AccountManage => false,
+                Self::AccountNonrcitical => true,
+                Self::AccountDelete => false,
+            };
+        }
 
         self == other
     }
@@ -78,8 +103,11 @@ impl Ability for FissionAbility {
 impl Display for FissionAbility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::AccountRead => "account/read",
-            Self::AccountCreate => "account/create",
+            Self::AccountRead => ACCOUNT_READ,
+            Self::AccountCreate => ACCOUNT_CREATE,
+            Self::AccountManage => ACCOUNT_MANAGE,
+            Self::AccountNonrcitical => ACCOUNT_NONCRITICAL,
+            Self::AccountDelete => ACCOUNT_DELETE,
         })
     }
 }

@@ -3,12 +3,13 @@
 use crate::{
     app_state::AppState,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
-    routes::{account, auth, doh, fallback::notfound_404, health, ipfs, ping, ws},
+    routes::{
+        account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping, ws,
+    },
     traits::ServerSetup,
 };
-
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, patch, post},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -38,8 +39,14 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .route("/auth/email/verify", post(auth::request_token))
         .route("/server-did", get(auth::server_did))
         .route("/account", post(account::create_account))
+        .route("/account", delete(account::delete_account))
         .route("/account/:did", get(account::get_account))
+        .route(
+            "/account/username/:username",
+            patch(account::patch_username),
+        )
         .route("/account/:username/did", get(account::get_did))
+        .route("/capabilities", get(capability_indexing::get_capabilities))
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

@@ -92,6 +92,7 @@ impl TestContext {
         self.app_state.db_pool.get().await.unwrap()
     }
 
+    #[allow(unused)]
     pub(crate) fn ipfs_db(&self) -> &TestIpfsDatabase {
         &self.app_state.ipfs_db
     }

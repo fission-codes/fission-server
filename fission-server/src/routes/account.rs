@@ -8,6 +8,7 @@ use crate::{
     extract::json::Json,
     models::{
         account::{Account, RootAccount},
+        capability_indexing::IndexedCapability,
         email_verification::EmailVerification,
     },
     traits::ServerSetup,
@@ -17,11 +18,11 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
-    common::{AccountCreationRequest, AccountResponse, DidResponse},
+    common::{AccountCreationRequest, AccountResponse, DidResponse, SuccessResponse},
 };
 use tracing::debug;
 use validator::Validate;
@@ -83,7 +84,7 @@ pub async fn create_account<S: ServerSetup>(
 /// GET handler to retrieve account details
 #[utoipa::path(
     get,
-    path = "/api/v0/account/{username}",
+    path = "/api/v0/account/{did}",
     security(
         ("ucan_bearer" = []),
     ),
@@ -117,7 +118,7 @@ pub async fn get_account<S: ServerSetup>(
 /// GET handler to retrieve account details
 #[utoipa::path(
     get,
-    path = "/api/v0/account/{username}",
+    path = "/api/v0/account/{username}/did",
     security(
         ("ucan_bearer" = []),
     ),
@@ -142,6 +143,95 @@ pub async fn get_did<S: ServerSetup>(
     Ok((StatusCode::OK, Json(DidResponse { did: account.did })))
 }
 
+/// Handler for changing the username
+#[utoipa::path(
+    patch,
+    path = "/api/v0/account/username/{username}",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Found account", body = DidResponse),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
+        (status = 429, description = "Conflict"),
+    )
+)]
+pub async fn patch_username<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+    Path(username): Path<String>,
+) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
+    let Did(did) = authority.get_capability(FissionAbility::AccountManage)?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+
+    use crate::db::schema::*;
+    diesel::update(accounts::table)
+        .filter(accounts::did.eq(&did))
+        .set(accounts::username.eq(&username))
+        .execute(conn)
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(SuccessResponse { success: true })))
+}
+
+/// Handler for deleting an account
+#[utoipa::path(
+    delete,
+    path = "/api/v0/account",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Deleted", body = Account),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
+    )
+)]
+pub async fn delete_account<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+) -> AppResult<(StatusCode, Json<Account>)> {
+    let Did(did) = authority.get_capability(FissionAbility::AccountDelete)?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+    conn.transaction(|conn| {
+        async move {
+            use crate::db::schema::*;
+            let row: Option<Account> = diesel::delete(accounts::table)
+                .filter(accounts::did.eq(&did))
+                .get_result::<Account>(conn)
+                .await
+                .optional()?;
+
+            let Some(account) = row else {
+                return Err(AppError::new(
+                    StatusCode::NOT_FOUND,
+                    Some("Couldn't find an account with this DID."),
+                ));
+            };
+
+            let indexed_caps: Vec<IndexedCapability> = capabilities::table
+                .filter(capabilities::resource.eq(&did))
+                .get_results(conn)
+                .await?;
+
+            // TODO: Actually revoke associated UCANs
+            diesel::delete(ucans::table)
+                .filter(ucans::id.eq_any(indexed_caps.iter().map(|cap| cap.ucan_id)))
+                .execute(conn)
+                .await?;
+
+            Ok((StatusCode::CREATED, Json(account)))
+        }
+        .scope_boxed()
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +241,7 @@ mod tests {
         models::account::RootAccount,
         test_utils::{test_context::TestContext, RouteBuilder},
     };
+    use anyhow::Result;
     use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
@@ -163,14 +254,12 @@ mod tests {
     use serde_json::json;
     use testresult::TestResult;
 
-    #[test_log::test(tokio::test)]
-    async fn test_create_account_ok() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let username = "oedipa";
-        let email = "oedipa@trystero.com";
-        let issuer = &EdDidKey::generate();
-
+    async fn create_account(
+        username: &str,
+        email: &str,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, RootAccount)> {
         let (status, response) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
@@ -206,6 +295,19 @@ mod tests {
             }))?
             .into_json_response::<RootAccount>()
             .await?;
+
+        Ok((status, root_account))
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_create_account_ok() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -294,7 +396,7 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/v0/account/{}", did),
+            format!("/api/v0/account/{did}"),
         )
         .into_json_response::<AccountResponse>()
         .await?;
@@ -314,7 +416,7 @@ mod tests {
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
             Method::GET,
-            format!("/api/v0/account/{}", username),
+            format!("/api/v0/account/{username}"),
         )
         .into_json_response::<ErrorResponse>()
         .await?;
@@ -328,6 +430,29 @@ mod tests {
                 ..
             }]
         );
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_get_account_did_by_username() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "donnie";
+        let email = "donnie@example.com";
+        let issuer = &EdDidKey::generate();
+
+        let (_, account) = create_account(username, email, issuer, &ctx).await?;
+
+        let (_, response) = RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::GET,
+            format!("/api/v0/account/{username}/did"),
+        )
+        .into_json_response::<DidResponse>()
+        .await?;
+
+        assert_eq!(response.did, account.account.did);
 
         Ok(())
     }
