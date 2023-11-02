@@ -203,7 +203,7 @@ impl<'s> LoadedKeyState<'s> {
         )?
         .json()?;
 
-        self.ucans.extend(ucans_response.ucans.into_iter());
+        self.ucans.extend(ucans_response.ucans);
 
         Ok(())
     }
