@@ -183,7 +183,7 @@ async fn setup_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun.clone()))
         .with_ipfs_db(IpfsHttpApiDatabase::default())
-        .with_did(server_keypair)
+        .with_server_keypair(server_keypair)
         .with_dns_server(dns_server)
         .finalize()?;
 

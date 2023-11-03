@@ -117,7 +117,7 @@ impl<S: ServerSetup> AppStateBuilder<S> {
     }
 
     /// Set the server's keypair
-    pub fn with_did(mut self, server_keypair: EdDidKey) -> Self {
+    pub fn with_server_keypair(mut self, server_keypair: EdDidKey) -> Self {
         self.server_keypair = Some(server_keypair);
         self
     }
