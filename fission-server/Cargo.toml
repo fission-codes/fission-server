@@ -11,7 +11,11 @@ edition = "2021"
 rust-version = "1.70"
 documentation = "https://docs.rs/fission-server"
 repository = "https://github.com/fission-codes/fission-server"
-authors = ["Steven Vandevelde <icid.asset@gmail.com>", "Blaine Cook <blaine@fission.codes>"]
+authors = [
+    "Philipp Krüger <philipp@fission.codes>",
+    "Steven Vandevelde <icid.asset@gmail.com>",
+    "Blaine Cook <blaine@fission.codes>",
+]
 default-run = "fission-server-app"
 
 [lib]
