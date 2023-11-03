@@ -61,6 +61,8 @@ struct DNSJsonQuery {
     edns_client_subnet: Option<String>,
     #[allow(dead_code)]
     random_padding: Option<String>,
+    #[serde(rename = "rd")]
+    recursion_desired: Option<bool>,
 }
 
 /// A DNS request encoded in the query string
@@ -181,6 +183,8 @@ where
         .set_message_type(proto::op::MessageType::Query)
         .set_op_code(proto::op::OpCode::Query)
         .set_checking_disabled(params.cd.unwrap_or(false))
+        .set_recursion_desired(params.recursion_desired.unwrap_or(true))
+        .set_recursion_available(true)
         .set_authentic_data(params.dnssec_ok.unwrap_or(false));
 
     // This is kind of a hack, but the only way I can find to

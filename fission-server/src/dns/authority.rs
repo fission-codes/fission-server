@@ -1,334 +1,178 @@
 //! DNS Request Handler
 
-use async_trait::async_trait;
-use core::fmt;
-use futures::Future;
-use std::{borrow::Borrow, str::FromStr};
-use tracing::error;
-use trust_dns_server::{
-    authority::{
-        AuthLookup, Authority, LookupError, LookupOptions, LookupRecords, MessageResponseBuilder,
-        ZoneType,
-    },
-    client::op::LowerQuery,
-    proto::{
-        op::{Edns, Header, ResponseCode},
-        rr::{
-            rdata::{SOA, TXT},
-            RData, Record,
-        },
-    },
-    resolver::Name,
-    server::{Request, RequestHandler, RequestInfo, ResponseHandler, ResponseInfo},
-    store::in_memory::InMemoryAuthority,
-};
-
 use crate::{
     db::{self, Pool},
     models::account::Account,
 };
+use anyhow::Result;
+use async_trait::async_trait;
+use std::{borrow::Borrow, sync::Arc};
+use trust_dns_server::{
+    authority::{
+        AuthLookup, Authority, LookupError, LookupOptions, LookupRecords, MessageRequest,
+        UpdateResult, ZoneType,
+    },
+    client::rr::LowerName,
+    proto::{
+        op::ResponseCode,
+        rr::{rdata::TXT, RData, Record, RecordSet, RecordType},
+    },
+    resolver::{error::ResolveError, Name},
+    server::RequestInfo,
+};
 
 /// DNS Request Handler
+#[derive(Debug)]
 pub struct DBBackedAuthority {
     db_pool: Pool,
+    origin: LowerName,
 }
 
-impl fmt::Debug for DBBackedAuthority {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Handler").finish()
-    }
-}
+/// serial field for this server's primary zone DNS records
+pub const SERIAL: u32 = 2023000701;
 
 impl DBBackedAuthority {
     /// Create a new database backed authority
-    pub fn new(db_pool: Pool) -> Self {
-        DBBackedAuthority { db_pool }
-    }
-}
-
-/// Handle a DNS request for the Fission Server
-impl DBBackedAuthority {
-    async fn do_handle_request<R: ResponseHandler>(
-        &self,
-        request: &Request,
-        mut response_handle: R,
-    ) -> ResponseInfo {
-        let mut authority = InMemoryAuthority::empty(
-            Name::from_str("fission.app.").expect("invalid zone name"),
-            ZoneType::Primary,
-            false,
-        );
-
-        authority.upsert_mut(
-            Record::from_rdata(
-                Name::from_str("fission.app.").expect("invalid record name"),
-                3600,
-                RData::SOA(SOA::new(
-                    Name::from_str("dns1.fission.app.").expect("invalid mname"),
-                    Name::from_str("hostmaster.fission.codes.").expect("invalid rname"),
-                    2023000701,
-                    7200,
-                    3600,
-                    1209600,
-                    3600,
-                )),
-            ),
-            0,
-        );
-
-        authority.upsert_mut(
-            Record::from_rdata(
-                Name::from_ascii("gateway.fission.app").expect("invalid record name"),
-                3600,
-                RData::CNAME(
-                    Name::from_ascii("prod-ipfs-gateway-1937066547.us-east-1.elb.amazonaws.com.")
-                        .expect("invalid record name"),
-                ),
-            ),
-            0,
-        );
-
-        let request_info = request.request_info();
-        let query = request_info.query;
-
-        let (prefix, base) = {
-            let name: &Name = query.name().borrow();
-            let mut iter = name.iter();
-
-            (iter.next(), name.base_name())
-        };
-
-        if let Some(prefix) = prefix {
-            match prefix {
-                b"_did" => self.insert_did_records(&mut authority, base).await,
-                b"_dnslink" => self.insert_dnslink_records(&mut authority, base).await,
-                b"_atproto" => self.insert_atproto_records(&mut authority, base).await,
-                _ => (),
-            }
-        }
-
-        let (response_header, sections) = build_response(
-            &authority,
-            request_info,
-            request.id(),
-            request.header(),
-            query,
-            request.edns(),
-        )
-        .await;
-
-        let response = MessageResponseBuilder::from_message_request(request).build(
-            response_header,
-            sections.answers.iter(),
-            sections.ns.iter(),
-            sections.soa.iter(),
-            sections.additionals.iter(),
-        );
-
-        let result = response_handle.send_response(response).await;
-
-        match result {
-            Ok(i) => i,
-            Err(e) => {
-                error!("Error sending response: {}", e);
-
-                let mut header = Header::new();
-                header.set_response_code(ResponseCode::ServFail);
-                header.into()
-            }
-        }
+    pub fn new(db_pool: Pool, origin: LowerName) -> Self {
+        DBBackedAuthority { db_pool, origin }
     }
 
-    async fn insert_did_records(&self, authority: &mut InMemoryAuthority, base: Name) {
-        let mut conn = db::connect(&self.db_pool).await.unwrap();
-
-        let Some(Ok(username)) = ({
-            let mut iter = base.iter();
-
-            iter.next().map(std::str::from_utf8)
-        }) else {
-            return;
-        };
-
-        let Ok(account) = Account::find_by_username(&mut conn, username).await else {
-            return;
-        };
-
-        let name = Name::from_ascii("_did")
-            .expect("invalid record name")
-            .append_domain(&base)
-            .expect("invalid record name");
-
-        dbg!(&account.did);
-
-        authority.upsert_mut(
-            Record::from_rdata(name, 60, RData::TXT(TXT::new(vec![account.did]))),
-            0,
-        );
-    }
-
-    async fn insert_dnslink_records(&self, authority: &mut InMemoryAuthority, base: Name) {
-        let mut conn = db::connect(&self.db_pool).await.unwrap();
-
-        let Some(Ok(username)) = ({
-            let mut iter = base.iter();
-
-            iter.next().map(std::str::from_utf8)
-        }) else {
-            return;
-        };
-
-        let Ok(account) = Account::find_by_username(&mut conn, username).await else {
-            return;
-        };
-
-        let Ok(Some(volume)) = account.get_volume(&mut conn).await else {
-            return;
-        };
-
-        let name = Name::from_ascii("_dnslink")
-            .expect("invalid record name")
-            .append_domain(&base)
-            .expect("invalid record name");
-
-        authority.upsert_mut(
-            Record::from_rdata(
-                name,
-                60,
-                RData::TXT(TXT::new(vec!["dnslink=/ipfs/".to_string(), volume.cid])),
-            ),
-            0,
-        );
-    }
-
-    async fn insert_atproto_records(&self, _authority: &mut InMemoryAuthority, _base: Name) {
-        todo!();
+    async fn db_lookup_user_did(&self, username: String) -> Result<String> {
+        let conn = &mut db::connect(&self.db_pool).await?;
+        let account = Account::find_by_username(conn, username).await?;
+        Ok(account.did)
     }
 }
 
 #[async_trait]
-impl RequestHandler for DBBackedAuthority {
-    async fn handle_request<R: ResponseHandler>(
+impl Authority for DBBackedAuthority {
+    type Lookup = AuthLookup;
+
+    fn zone_type(&self) -> ZoneType {
+        ZoneType::Primary
+    }
+
+    fn is_axfr_allowed(&self) -> bool {
+        false
+    }
+
+    async fn update(&self, _update: &MessageRequest) -> UpdateResult<bool> {
+        Err(ResponseCode::NotImp)
+    }
+
+    fn origin(&self) -> &LowerName {
+        &self.origin
+    }
+
+    async fn lookup(
         &self,
-        request: &Request,
-        responder: R,
-    ) -> ResponseInfo {
-        self.do_handle_request(request, responder).await
+        name: &LowerName,
+        _query_type: RecordType,
+        lookup_options: LookupOptions,
+    ) -> Result<Self::Lookup, LookupError> {
+        tracing::debug!(?name, "Trying DB-based DNS lookup");
+
+        let name: &Name = name.borrow();
+        let mut name_parts = name.iter();
+
+        match name_parts.next() {
+            // Serve requests for e.g. _did.alice.fission.name
+            Some(b"_did") => {
+                let Some(user_bytes) = name_parts.next() else {
+                    return Ok(AuthLookup::Empty);
+                };
+
+                let base = Name::from_labels(name_parts)
+                    .map_err(|e| LookupError::ResolveError(ResolveError::from(e)))?;
+
+                // base needs to be fission.name, if the request was _did.alice.fission.name
+                if base != self.origin().clone().into() {
+                    return Ok(AuthLookup::Empty);
+                }
+
+                let username = String::from_utf8(user_bytes.to_vec()).map_err(|e| {
+                    LookupError::ResolveError(
+                        format!("Failed decoding non-utf8 subdomain segment: {e}").into(),
+                    )
+                })?;
+
+                tracing::info!(%name, %username, "Looking up DID record");
+
+                let account_did = match self.db_lookup_user_did(username).await {
+                    Ok(account_did) => account_did,
+                    Err(err) => {
+                        tracing::debug!(?err, "Account lookup failed during _did DNS entry lookup");
+                        return Ok(AuthLookup::Empty);
+                    }
+                };
+
+                Ok(AuthLookup::answers(
+                    LookupRecords::new(lookup_options, Arc::new(did_record_set(name, account_did))),
+                    None,
+                ))
+            }
+            Some(b"_dnslink") => {
+                tracing::warn!(?name, "DNSLink lookup not yet implemented. Ignoring");
+
+                Ok(AuthLookup::Empty)
+            }
+            _ => Ok(AuthLookup::Empty),
+        }
+    }
+
+    async fn search(
+        &self,
+        request_info: RequestInfo<'_>,
+        lookup_options: LookupOptions,
+    ) -> Result<Self::Lookup, LookupError> {
+        tracing::debug!(query = ?request_info.query, "DNS query running against DB.");
+
+        let lookup_name = request_info.query.name();
+        let record_type: RecordType = request_info.query.query_type();
+
+        // TODO match record_type, support SOA record type?
+        // We may not need to support it though. It's possible it just gets picked up
+        // by other "Authority" implementations in the "Catalog". E.g. putting
+        // SOA records into a zone file.
+        if !matches!(record_type, RecordType::TXT) {
+            tracing::debug!(
+                %record_type,
+                "Aborting query: only TXT record type supported."
+            );
+
+            return Ok(AuthLookup::Empty);
+        }
+
+        self.lookup(lookup_name, record_type, lookup_options).await
+    }
+
+    async fn get_nsec_records(
+        &self,
+        _name: &LowerName,
+        _lookup_options: LookupOptions,
+    ) -> Result<Self::Lookup, LookupError> {
+        Ok(AuthLookup::Empty)
     }
 }
 
-async fn build_response(
-    authority: &InMemoryAuthority,
-    request_info: RequestInfo<'_>,
-    request_id: u16,
-    request_header: &Header,
-    query: &LowerQuery,
-    _edns: Option<&Edns>,
-) -> (Header, LookupSections) {
-    let lookup_options = LookupOptions::default();
-
-    let mut response_header = Header::response_from_request(request_header);
-    response_header.set_authoritative(authority.zone_type().is_authoritative());
-
-    let future = authority.search(request_info, lookup_options);
-
-    #[allow(deprecated)]
-    let sections = match authority.zone_type() {
-        ZoneType::Primary | ZoneType::Secondary | ZoneType::Master | ZoneType::Slave => {
-            send_authoritative_response(
-                future,
-                authority,
-                &mut response_header,
-                lookup_options,
-                request_id,
-                query,
-            )
-            .await
-        }
-        ZoneType::Forward | ZoneType::Hint => {
-            send_forwarded_response(future, request_header, &mut response_header).await
-        }
-    };
-
-    (response_header, sections)
+/// Create a DID DNS entry represented as a RecordSet
+pub(crate) fn did_record_set(name: &Name, did: String) -> RecordSet {
+    let record = Record::from_rdata(
+        name.clone(),
+        60 * 60, // 60 * 60 seconds = 1 hour
+        RData::TXT(TXT::new(vec![did])),
+    );
+    record_set(name, RecordType::TXT, SERIAL, record)
 }
 
-async fn send_authoritative_response(
-    future: impl Future<Output = Result<AuthLookup, LookupError>>,
-    authority: &InMemoryAuthority,
-    response_header: &mut Header,
-    lookup_options: LookupOptions,
-    _request_id: u16,
-    query: &LowerQuery,
-) -> LookupSections {
-    let answers = match future.await {
-        Ok(records) => {
-            response_header.set_response_code(ResponseCode::NoError);
-            response_header.set_authoritative(true);
-
-            Some(records)
-        }
-        Err(LookupError::ResponseCode(ResponseCode::Refused)) => {
-            response_header.set_response_code(ResponseCode::Refused);
-
-            return LookupSections {
-                answers: AuthLookup::default(),
-                ns: AuthLookup::default(),
-                soa: AuthLookup::default(),
-                additionals: LookupRecords::default(),
-            };
-        }
-        Err(e) => {
-            if e.is_nx_domain() {
-                response_header.set_response_code(ResponseCode::NXDomain);
-            } else if e.is_name_exists() {
-                response_header.set_response_code(ResponseCode::NoError);
-            }
-
-            None
-        }
-    };
-
-    let (ns, soa) = if answers.is_some() {
-        if query.query_type().is_soa() {
-            match authority.ns(lookup_options).await {
-                Ok(ns) => (Some(ns), None),
-                Err(_) => (None, None),
-            }
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
-
-    let (answers, additionals) = match answers {
-        Some(mut answers) => match answers.take_additionals() {
-            Some(additionals) => (answers, additionals),
-            None => (answers, LookupRecords::default()),
-        },
-        None => (AuthLookup::default(), LookupRecords::default()),
-    };
-
-    LookupSections {
-        answers,
-        ns: ns.unwrap_or_default(),
-        soa: soa.unwrap_or_default(),
-        additionals,
-    }
-}
-
-async fn send_forwarded_response(
-    _future: impl Future<Output = Result<AuthLookup, LookupError>>,
-    _request_header: &Header,
-    _response_header: &mut Header,
-) -> LookupSections {
-    todo!();
-}
-
-struct LookupSections {
-    answers: AuthLookup,
-    ns: AuthLookup,
-    soa: AuthLookup,
-    additionals: LookupRecords,
+/// Create a record set with a single record inside
+pub(crate) fn record_set(
+    name: &Name,
+    record_type: RecordType,
+    serial: u32,
+    record: Record,
+) -> RecordSet {
+    let mut record_set = RecordSet::new(name, record_type, serial);
+    record_set.insert(record, SERIAL);
+    record_set
 }

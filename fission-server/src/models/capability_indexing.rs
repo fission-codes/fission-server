@@ -131,8 +131,8 @@ pub async fn index_ucan(ucan: &Ucan, conn: &mut Conn<'_>) -> Result<IndexedUcan>
     let new_indexed_ucan = NewIndexedUcan::new(ucan)?;
 
     let existing_ucan_id: Option<i32> = ucans::table
-        .filter(ucans::dsl::cid.eq(&new_indexed_ucan.cid))
-        .select(ucans::dsl::id)
+        .filter(ucans::cid.eq(&new_indexed_ucan.cid))
+        .select(ucans::id)
         .get_result::<i32>(conn)
         .await
         .optional()?;
@@ -145,7 +145,7 @@ pub async fn index_ucan(ucan: &Ucan, conn: &mut Conn<'_>) -> Result<IndexedUcan>
 
     let ucan_id = diesel::insert_into(ucans::table)
         .values(&new_indexed_ucan)
-        .returning(ucans::dsl::id)
+        .returning(ucans::id)
         .get_result(conn)
         .await?;
 
@@ -177,11 +177,11 @@ pub async fn find_ucans_for_audience(audience: String, conn: &mut Conn<'_>) -> R
         );
 
         let ids_and_issuers: Vec<(i32, String)> = ucans::table
-            .filter(ucans::dsl::audience.eq_any(&audience_dids_frontier))
-            .filter(ucans::dsl::id.ne_all(&visited_ids_set))
-            // TODO Also filter by not_before & expires_at
+            .filter(ucans::audience.eq_any(&audience_dids_frontier))
+            .filter(ucans::id.ne_all(&visited_ids_set))
+            // TODO Also filter by not_before & expires_at. Or should it?
             // TODO only follow edges when they have a common resource/the resource is subsumed
-            .select((ucans::dsl::id, ucans::dsl::issuer))
+            .select((ucans::id, ucans::issuer))
             .get_results(conn)
             .await?;
 
@@ -200,7 +200,7 @@ pub async fn find_ucans_for_audience(audience: String, conn: &mut Conn<'_>) -> R
     tracing::debug!(visited_ids_set = ?visited_ids_set, "Finished UCAN graph search");
 
     let indexed_ucans = ucans::table
-        .filter(ucans::dsl::id.eq_any(&visited_ids_set))
+        .filter(ucans::id.eq_any(&visited_ids_set))
         .select(IndexedUcan::as_select())
         .get_results(conn)
         .await?;

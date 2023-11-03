@@ -37,6 +37,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     path::PathBuf,
     process::exit,
+    str::FromStr,
     time::Duration,
 };
 use tokio::{
@@ -59,6 +60,7 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
+use trust_dns_server::client::rr::LowerName;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -103,7 +105,7 @@ async fn main() -> Result<()> {
         db_pool.clone(),
         cancellation_token.clone(),
     ));
-    let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
+    // let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
 
     tokio::spawn(async move {
         capture_sigterm().await;
@@ -116,7 +118,7 @@ async fn main() -> Result<()> {
         exit(130)
     });
 
-    let (metrics, app, dns) = tokio::try_join!(metrics_server, app_server, dns_server)?;
+    let (metrics, app) = tokio::try_join!(metrics_server, app_server)?;
 
     if let Err(e) = metrics {
         log::error!("metrics server crashed: {}", e);
@@ -126,9 +128,9 @@ async fn main() -> Result<()> {
         log::error!("app server crashed: {}", e);
     }
 
-    if let Err(e) = dns {
-        log::error!("dns server crashed: {}", e);
-    }
+    // if let Err(e) = dns {
+    //     log::error!("dns server crashed: {}", e);
+    // }
 
     Ok(())
 }
@@ -252,25 +254,28 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
     Ok(())
 }
 
-async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
-    let mut server = trust_dns_server::ServerFuture::new(dns::DBBackedAuthority::new(db_pool));
+// async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
+//     let mut server = trust_dns_server::ServerFuture::new(dns::DBBackedAuthority::new(
+//         db_pool,
+//         LowerName::from_str("localhost")?,
+//     ));
 
-    let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
-    let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
+//     let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
+//     let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
 
-    server.register_socket(UdpSocket::bind(sock_addr).await?);
-    server.register_listener(
-        TcpListener::bind(sock_addr).await?,
-        Duration::from_millis(settings.server.timeout_ms),
-    );
+//     server.register_socket(UdpSocket::bind(sock_addr).await?);
+//     server.register_listener(
+//         TcpListener::bind(sock_addr).await?,
+//         Duration::from_millis(settings.server.timeout_ms),
+//     );
 
-    tokio::select! {
-        _ = server.block_until_done() => {},
-        _ = token.cancelled() => {},
-    };
+//     tokio::select! {
+//         _ = server.block_until_done() => {},
+//         _ = token.cancelled() => {},
+//     };
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 async fn serve(name: &str, app: Router, port: u16) -> (Handle, SocketAddr) {
     let bind_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
