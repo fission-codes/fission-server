@@ -5,8 +5,8 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use hickory_server::proto::{self, serialize::binary::BinDecodable};
 use http::{header::CONTENT_TYPE, StatusCode};
-use trust_dns_server::proto::{self, serialize::binary::BinDecodable};
 
 use crate::{
     app_state::AppState,

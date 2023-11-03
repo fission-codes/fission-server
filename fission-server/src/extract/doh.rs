@@ -12,9 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use bytes::Bytes;
-use http::{header, request::Parts, StatusCode};
-use serde::Deserialize;
-use trust_dns_server::{
+use hickory_server::{
     authority::MessageRequest,
     proto::{
         self,
@@ -22,6 +20,8 @@ use trust_dns_server::{
     },
     server::{Protocol, Request as DNSRequest},
 };
+use http::{header, request::Parts, StatusCode};
+use serde::Deserialize;
 
 /// A DNS packet encoding type
 #[derive(Debug)]

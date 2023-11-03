@@ -8,12 +8,12 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
-use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::broadcast;
-use trust_dns_server::{
+use hickory_server::{
     authority::{Authority, Catalog, ZoneType},
-    client::{rr::RrKey, serialize::txt::RDataParser},
-    proto::rr::{rdata, RData, Record, RecordType},
+    proto::{
+        rr::{rdata, RData, Record, RecordType, RrKey},
+        serialize::txt::RDataParser,
+    },
     resolver::{config::NameServerConfigGroup, Name},
     server::{Request, RequestHandler, ResponseHandler, ResponseInfo},
     store::{
@@ -21,6 +21,8 @@ use trust_dns_server::{
         in_memory::InMemoryAuthority,
     },
 };
+use std::{collections::BTreeMap, sync::Arc};
+use tokio::sync::broadcast;
 
 pub mod response;
 pub mod response_handler;

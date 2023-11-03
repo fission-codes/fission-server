@@ -276,7 +276,7 @@ async fn serve_dns(
     dns_server: DnsServer,
     token: CancellationToken,
 ) -> Result<()> {
-    let mut server = trust_dns_server::ServerFuture::new(dns_server);
+    let mut server = hickory_server::ServerFuture::new(dns_server);
 
     let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
     let sock_addr = SocketAddrV4::new(ip4_addr, settings.dns.server_port);

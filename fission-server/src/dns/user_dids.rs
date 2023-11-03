@@ -6,23 +6,22 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use std::{borrow::Borrow, sync::Arc};
-use trust_dns_server::{
+use hickory_server::{
     authority::{
         AuthLookup, Authority, LookupError, LookupOptions, LookupRecords, MessageRequest,
         UpdateResult, ZoneType,
     },
-    client::rr::LowerName,
     proto::{
         op::ResponseCode,
         rr::{
             rdata::{SOA, TXT},
-            RData, Record, RecordSet, RecordType,
+            LowerName, RData, Record, RecordSet, RecordType,
         },
     },
     resolver::{error::ResolveError, Name},
     server::RequestInfo,
 };
+use std::{borrow::Borrow, sync::Arc};
 
 /// DNS Request Handler for user DIDs of the form `_did.<username>.<server origin>`
 #[derive(Debug)]
