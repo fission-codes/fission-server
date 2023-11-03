@@ -95,7 +95,7 @@ impl DnsServer {
         let server_origin = Name::parse(&settings.origin, Some(&Name::root()))?;
         let server_did_name = Name::parse("_did", Some(&server_origin))?;
         let serial = default_soa.serial();
-        let did_rset = did_record_set(&server_did_name, server_did, serial);
+        let did_rset = did_record_set(&server_did_name, server_did, settings.default_ttl, serial);
         let server_did_authority = InMemoryAuthority::new(
             server_did_name.clone(),
             BTreeMap::from([
@@ -135,6 +135,7 @@ impl DnsServer {
             db_pool,
             origin_name.into(),
             default_soa,
+            settings.default_ttl,
         ))
     }
 

@@ -1,7 +1,6 @@
 //! fission-server
 
 use anyhow::{anyhow, Result};
-
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};

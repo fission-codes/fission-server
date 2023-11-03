@@ -52,6 +52,8 @@ pub struct Dns {
     pub server_port: u16,
     /// SOA record data for any authoritative DNS records
     pub default_soa: String,
+    /// Default time to live for returned DNS records (TXT & SOA)
+    pub default_ttl: u32,
     /// Domain used for serving the `_did.<origin>` DNS TXT entry
     pub origin: String,
     /// Domain used for serving the `_did.<username>.users_origin>` DNS TXT entry

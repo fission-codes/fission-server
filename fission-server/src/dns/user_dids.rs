@@ -30,15 +30,17 @@ pub struct UserDidsAuthority {
     db_pool: Pool,
     origin: LowerName,
     default_soa: SOA,
+    default_ttl: u32,
 }
 
 impl UserDidsAuthority {
     /// Create a new database backed authority
-    pub fn new(db_pool: Pool, origin: LowerName, default_soa: SOA) -> Self {
+    pub fn new(db_pool: Pool, origin: LowerName, default_soa: SOA, default_ttl: u32) -> Self {
         UserDidsAuthority {
             db_pool,
             origin,
             default_soa,
+            default_ttl,
         }
     }
 
@@ -78,7 +80,7 @@ impl Authority for UserDidsAuthority {
         if !matches!(query_type, RecordType::TXT) {
             tracing::debug!(
                 ?query_type,
-                "Aborting DNS query on user DIDs, only TXT supported."
+                "Aborting DNS lookup on user DIDs, only TXT supported."
             );
             return Ok(AuthLookup::Empty);
         }
@@ -122,7 +124,12 @@ impl Authority for UserDidsAuthority {
                 Ok(AuthLookup::answers(
                     LookupRecords::new(
                         lookup_options,
-                        Arc::new(did_record_set(name, account_did, self.default_soa.serial())),
+                        Arc::new(did_record_set(
+                            name,
+                            account_did,
+                            self.default_ttl,
+                            self.default_soa.serial(),
+                        )),
                     ),
                     None,
                 ))
@@ -141,25 +148,37 @@ impl Authority for UserDidsAuthority {
         request_info: RequestInfo<'_>,
         lookup_options: LookupOptions,
     ) -> Result<Self::Lookup, LookupError> {
-        tracing::debug!(query = ?request_info.query, "DNS query matching for user dids.");
+        tracing::debug!(query = ?request_info.query, "DNS search matching for user dids.");
 
         let lookup_name = request_info.query.name();
         let record_type: RecordType = request_info.query.query_type();
 
-        // TODO match record_type, support SOA record type?
-        // We may not need to support it though. It's possible it just gets picked up
-        // by other "Authority" implementations in the "Catalog". E.g. putting
-        // SOA records into a zone file.
-        if !matches!(record_type, RecordType::TXT) {
-            tracing::debug!(
-                %record_type,
-                "Aborting query: only TXT record type supported."
-            );
-
-            return Ok(AuthLookup::Empty);
+        match record_type {
+            RecordType::TXT => self.lookup(lookup_name, record_type, lookup_options).await,
+            RecordType::SOA => Ok(AuthLookup::answers(
+                LookupRecords::new(
+                    lookup_options,
+                    Arc::new(record_set(
+                        &self.origin().into(),
+                        record_type,
+                        self.default_soa.serial(),
+                        Record::from_rdata(
+                            self.origin().into(),
+                            self.default_ttl,
+                            RData::SOA(self.default_soa.clone()),
+                        ),
+                    )),
+                ),
+                None,
+            )),
+            _ => {
+                tracing::debug!(
+                    %record_type,
+                    "Aborting query: only TXT (and SOA) record type(s) supported."
+                );
+                Ok(AuthLookup::Empty)
+            }
         }
-
-        self.lookup(lookup_name, record_type, lookup_options).await
     }
 
     async fn get_nsec_records(
@@ -172,12 +191,8 @@ impl Authority for UserDidsAuthority {
 }
 
 /// Create a DID DNS entry represented as a RecordSet
-pub(crate) fn did_record_set(name: &Name, did: String, serial: u32) -> RecordSet {
-    let record = Record::from_rdata(
-        name.clone(),
-        60 * 60, // 60 * 60 seconds = 1 hour
-        RData::TXT(TXT::new(vec![did])),
-    );
+pub(crate) fn did_record_set(name: &Name, did: String, ttl: u32, serial: u32) -> RecordSet {
+    let record = Record::from_rdata(name.clone(), ttl, RData::TXT(TXT::new(vec![did])));
     record_set(name, RecordType::TXT, serial, record)
 }
 
