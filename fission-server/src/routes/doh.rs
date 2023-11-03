@@ -20,7 +20,7 @@ pub async fn get<S: ServerSetup>(
     State(state): State<AppState<S>>,
     DNSRequestQuery(request, accept_type): DNSRequestQuery,
 ) -> Response {
-    let response = match dns::handle_request(request, state.db_pool, state.did.did()).await {
+    let response = match dns::handle_request(request, state.db_pool, state.server_key.did()).await {
         Ok(response) => response,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     };
@@ -51,7 +51,7 @@ pub async fn post<S: ServerSetup>(
     State(state): State<AppState<S>>,
     DNSRequestBody(request): DNSRequestBody,
 ) -> Response {
-    let response = match dns::handle_request(request, state.db_pool, state.did.did()).await {
+    let response = match dns::handle_request(request, state.db_pool, state.server_key.did()).await {
         Ok(response) => response,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     };

@@ -62,7 +62,7 @@ pub async fn request_token<S: ServerSetup>(
     )
 )]
 pub async fn server_did<S: ServerSetup>(State(state): State<AppState<S>>) -> String {
-    state.did.did()
+    state.server_key.did()
 }
 
 #[cfg(test)]
@@ -202,7 +202,7 @@ mod tests {
 
         let parsed = String::from_utf8(bytes.to_vec())?;
 
-        assert_eq!(parsed, ctx.app_state().did.did());
+        assert_eq!(parsed, ctx.app_state().server_key.did());
 
         Ok(())
     }

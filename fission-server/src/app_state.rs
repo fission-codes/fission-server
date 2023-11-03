@@ -29,7 +29,7 @@ pub struct AppState<S: ServerSetup> {
     /// The currently connected websocket peers
     pub ws_peer_map: WsPeerMap,
     /// The server's decentralized identity (signing/private key)
-    pub did: Arc<EdDidKey>,
+    pub server_key: Arc<EdDidKey>,
 }
 
 /// Builder for [`AppState`]
@@ -74,7 +74,7 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             ipfs_db,
             verification_code_sender,
             ws_peer_map: Default::default(),
-            did: Arc::new(did),
+            server_key: Arc::new(did),
         })
     }
 

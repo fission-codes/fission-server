@@ -68,7 +68,7 @@ pub async fn create_account<S: ServerSetup>(
                 request.username,
                 verification.email.to_string(),
                 &did,
-                state.did.as_ref(),
+                state.server_key.as_ref(),
             )
             .await?;
 

@@ -8,7 +8,7 @@ use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trac
 use ed25519::pkcs8::DecodePrivateKey;
 use fission_core::ed_did_key::EdDidKey;
 use fission_server::{
-    app_state::AppStateBuilder,
+    app_state::{AppState, AppStateBuilder},
     db::{self, Pool},
     dns,
     docs::ApiDoc,
@@ -37,7 +37,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     path::PathBuf,
     process::exit,
-    str::FromStr,
     time::Duration,
 };
 use tokio::{
@@ -60,7 +59,6 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
-use trust_dns_server::client::rr::LowerName;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -87,10 +85,12 @@ async fn main() -> Result<()> {
     info!(
         subject = "app_settings",
         category = "init",
-        "starting with settings: {:?}",
-        settings,
+        ?settings,
+        "starting server",
     );
 
+    let app_state = setup_app_state(&settings, db_pool.clone()).await?;
+    let server_did = app_state.server_key.did();
     let recorder_handle = setup_metrics_recorder()?;
     let cancellation_token = CancellationToken::new();
 
@@ -101,11 +101,17 @@ async fn main() -> Result<()> {
     ));
 
     let app_server = tokio::spawn(serve_app(
+        app_state,
         settings.clone(),
-        db_pool.clone(),
         cancellation_token.clone(),
     ));
-    // let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
+
+    let dns_server = tokio::spawn(serve_dns(
+        settings.clone(),
+        db_pool.clone(),
+        server_did,
+        cancellation_token.clone(),
+    ));
 
     tokio::spawn(async move {
         capture_sigterm().await;
@@ -115,10 +121,12 @@ async fn main() -> Result<()> {
 
         capture_sigterm().await;
 
+        println!("Shutdown forced.");
+
         exit(130)
     });
 
-    let (metrics, app) = tokio::try_join!(metrics_server, app_server)?;
+    let (metrics, app, dns) = tokio::try_join!(metrics_server, app_server, dns_server)?;
 
     if let Err(e) = metrics {
         log::error!("metrics server crashed: {}", e);
@@ -128,9 +136,9 @@ async fn main() -> Result<()> {
         log::error!("app server crashed: {}", e);
     }
 
-    // if let Err(e) = dns {
-    //     log::error!("dns server crashed: {}", e);
-    // }
+    if let Err(e) = dns {
+        log::error!("dns server crashed: {}", e);
+    }
 
     Ok(())
 }
@@ -159,9 +167,7 @@ async fn serve_metrics(
     Ok(())
 }
 
-async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
-    let req_id = HeaderName::from_static(REQUEST_ID);
-
+async fn setup_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
     let did_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")
         .join(&settings.server.did_path);
@@ -179,6 +185,16 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
         .with_ipfs_db(IpfsHttpApiDatabase::default())
         .with_did(did)
         .finalize()?;
+
+    Ok(app_state)
+}
+
+async fn serve_app(
+    app_state: AppState<ProdSetup>,
+    settings: Settings,
+    token: CancellationToken,
+) -> Result<()> {
+    let req_id = HeaderName::from_static(REQUEST_ID);
 
     let router = router::setup_app_router(app_state)
         .route_layer(axum::middleware::from_fn(middleware::metrics::track))
@@ -254,28 +270,32 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
     Ok(())
 }
 
-// async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
-//     let mut server = trust_dns_server::ServerFuture::new(dns::DBBackedAuthority::new(
-//         db_pool,
-//         LowerName::from_str("localhost")?,
-//     ));
+async fn serve_dns(
+    settings: Settings,
+    db_pool: Pool,
+    server_did: String,
+    token: CancellationToken,
+) -> Result<()> {
+    let mut server = trust_dns_server::ServerFuture::new(dns::setup_catalog(db_pool, server_did)?);
 
-//     let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
-//     let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
+    let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
+    let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
 
-//     server.register_socket(UdpSocket::bind(sock_addr).await?);
-//     server.register_listener(
-//         TcpListener::bind(sock_addr).await?,
-//         Duration::from_millis(settings.server.timeout_ms),
-//     );
+    server.register_socket(UdpSocket::bind(sock_addr).await?);
+    server.register_listener(
+        TcpListener::bind(sock_addr).await?,
+        Duration::from_millis(settings.server.timeout_ms),
+    );
 
-//     tokio::select! {
-//         _ = server.block_until_done() => {},
-//         _ = token.cancelled() => {},
-//     };
+    tokio::select! {
+        _ = server.block_until_done() => {
+            info!("Background tasks for DNS server all terminated.")
+        },
+        _ = token.cancelled() => {},
+    };
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 async fn serve(name: &str, app: Router, port: u16) -> (Handle, SocketAddr) {
     let bind_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);

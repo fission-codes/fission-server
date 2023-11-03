@@ -30,6 +30,22 @@ pub async fn handle_request(request: Request, db_pool: Pool, did: String) -> Res
     let (tx, mut rx) = broadcast::channel(1);
     let response_handle = Handle(tx);
 
+    let catalog = setup_catalog(db_pool, did)?;
+
+    catalog.handle_request(&request, response_handle).await;
+
+    tracing::info!("Fulfilled DNS request");
+
+    Ok(rx.recv().await?)
+}
+
+/// Setup the main DNS catalog, which can function as a RequestHandler for DNS requests.
+///
+/// This sets up three DNS resolving things:
+/// - Something that resolves `TXT _did.<thisserver.com>` to return the server's DID
+/// - Something that resolves `TXT _did.<username>.<thisserver.com>` to return user DIDs
+/// - Something that forwards any DNS requests to cloudflare via DNS-over-TLS.
+pub fn setup_catalog(db_pool: Pool, server_did: String) -> Result<Catalog> {
     let fission_soa = RData::parse(
         RecordType::SOA,
         [
@@ -49,21 +65,21 @@ pub async fn handle_request(request: Request, db_pool: Pool, did: String) -> Res
     let origin_name = Name::from_ascii("localhost.").expect("Invalid hardcoded domain name.");
     let server_did_name =
         Name::from_ascii("_did.localhost.").expect("Invalid hardcoded domain name.");
-    let did_rset = did_record_set(&server_did_name, did);
+    let did_rset = did_record_set(&server_did_name, server_did);
     let server_did_authority = InMemoryAuthority::new(
         server_did_name.clone(),
         BTreeMap::from([
             (
-                RrKey::new(server_did_name.into(), RecordType::TXT),
+                RrKey::new(server_did_name.clone().into(), RecordType::TXT),
                 did_rset,
             ),
             (
-                RrKey::new(origin_name.clone().into(), RecordType::SOA),
+                RrKey::new(server_did_name.clone().into(), RecordType::SOA),
                 record_set(
-                    &origin_name,
+                    &server_did_name,
                     RecordType::SOA,
                     SERIAL,
-                    Record::from_rdata(origin_name.clone(), 1209600, fission_soa),
+                    Record::from_rdata(server_did_name.clone(), 1209600, fission_soa),
                 ),
             ),
         ]),
@@ -72,7 +88,7 @@ pub async fn handle_request(request: Request, db_pool: Pool, did: String) -> Res
     )
     .map_err(|e| anyhow!(e))?;
 
-    let db_authority = DBBackedAuthority::new(db_pool, origin_name.clone().into());
+    let db_authority = DBBackedAuthority::new(db_pool, origin_name.into());
 
     let config = ForwardConfig {
         name_servers: NameServerConfigGroup::cloudflare_tls(),
@@ -93,9 +109,5 @@ pub async fn handle_request(request: Request, db_pool: Pool, did: String) -> Res
     );
     catalog.upsert(Name::root().into(), Box::new(Arc::new(forwarder)));
 
-    catalog.handle_request(&request, response_handle).await;
-
-    tracing::info!("Fulfilled DNS request");
-
-    Ok(rx.recv().await?)
+    Ok(catalog)
 }
