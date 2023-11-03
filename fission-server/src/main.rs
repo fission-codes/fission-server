@@ -10,7 +10,7 @@ use fission_core::ed_did_key::EdDidKey;
 use fission_server::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Pool},
-    dns,
+    dns::DnsServer,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
     );
 
     let app_state = setup_app_state(&settings, db_pool.clone()).await?;
-    let server_did = app_state.server_key.did();
+    let dns_server = app_state.dns_server.clone();
     let recorder_handle = setup_metrics_recorder()?;
     let cancellation_token = CancellationToken::new();
 
@@ -108,8 +108,7 @@ async fn main() -> Result<()> {
 
     let dns_server = tokio::spawn(serve_dns(
         settings.clone(),
-        db_pool.clone(),
-        server_did,
+        dns_server,
         cancellation_token.clone(),
     ));
 
@@ -168,22 +167,25 @@ async fn serve_metrics(
 }
 
 async fn setup_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
-    let did_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let server_keypair = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")
-        .join(&settings.server.did_path);
+        .join(&settings.server.keypair_path);
 
-    let did = fs::read_to_string(&did_path)
+    let server_keypair = fs::read_to_string(&server_keypair)
         .await
         .map_err(|e| anyhow!(e))
         .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
-        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", did_path.to_string_lossy(), e, did_path.to_string_lossy()))?;
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", server_keypair.to_string_lossy(), e, server_keypair.to_string_lossy()))?;
+
+    let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
     let app_state = AppStateBuilder::<ProdSetup>::default()
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun.clone()))
         .with_ipfs_db(IpfsHttpApiDatabase::default())
-        .with_did(did)
+        .with_did(server_keypair)
+        .with_dns_server(dns_server)
         .finalize()?;
 
     Ok(app_state)
@@ -272,14 +274,13 @@ async fn serve_app(
 
 async fn serve_dns(
     settings: Settings,
-    db_pool: Pool,
-    server_did: String,
+    dns_server: DnsServer,
     token: CancellationToken,
 ) -> Result<()> {
-    let mut server = trust_dns_server::ServerFuture::new(dns::setup_catalog(db_pool, server_did)?);
+    let mut server = trust_dns_server::ServerFuture::new(dns_server);
 
     let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
-    let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
+    let sock_addr = SocketAddrV4::new(ip4_addr, settings.dns.server_port);
 
     server.register_socket(UdpSocket::bind(sock_addr).await?);
     server.register_listener(

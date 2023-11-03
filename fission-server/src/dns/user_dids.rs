@@ -15,26 +15,31 @@ use trust_dns_server::{
     client::rr::LowerName,
     proto::{
         op::ResponseCode,
-        rr::{rdata::TXT, RData, Record, RecordSet, RecordType},
+        rr::{
+            rdata::{SOA, TXT},
+            RData, Record, RecordSet, RecordType,
+        },
     },
     resolver::{error::ResolveError, Name},
     server::RequestInfo,
 };
 
-/// DNS Request Handler
+/// DNS Request Handler for user DIDs of the form `_did.<username>.<server origin>`
 #[derive(Debug)]
-pub struct DBBackedAuthority {
+pub struct UserDidsAuthority {
     db_pool: Pool,
     origin: LowerName,
+    default_soa: SOA,
 }
 
-/// serial field for this server's primary zone DNS records
-pub const SERIAL: u32 = 2023000701;
-
-impl DBBackedAuthority {
+impl UserDidsAuthority {
     /// Create a new database backed authority
-    pub fn new(db_pool: Pool, origin: LowerName) -> Self {
-        DBBackedAuthority { db_pool, origin }
+    pub fn new(db_pool: Pool, origin: LowerName, default_soa: SOA) -> Self {
+        UserDidsAuthority {
+            db_pool,
+            origin,
+            default_soa,
+        }
     }
 
     async fn db_lookup_user_did(&self, username: String) -> Result<String> {
@@ -45,7 +50,7 @@ impl DBBackedAuthority {
 }
 
 #[async_trait]
-impl Authority for DBBackedAuthority {
+impl Authority for UserDidsAuthority {
     type Lookup = AuthLookup;
 
     fn zone_type(&self) -> ZoneType {
@@ -67,10 +72,18 @@ impl Authority for DBBackedAuthority {
     async fn lookup(
         &self,
         name: &LowerName,
-        _query_type: RecordType,
+        query_type: RecordType,
         lookup_options: LookupOptions,
     ) -> Result<Self::Lookup, LookupError> {
-        tracing::debug!(?name, "Trying DB-based DNS lookup");
+        if !matches!(query_type, RecordType::TXT) {
+            tracing::debug!(
+                ?query_type,
+                "Aborting DNS query on user DIDs, only TXT supported."
+            );
+            return Ok(AuthLookup::Empty);
+        }
+
+        tracing::debug!(?name, "Starting user DID DNS lookup");
 
         let name: &Name = name.borrow();
         let mut name_parts = name.iter();
@@ -107,7 +120,10 @@ impl Authority for DBBackedAuthority {
                 };
 
                 Ok(AuthLookup::answers(
-                    LookupRecords::new(lookup_options, Arc::new(did_record_set(name, account_did))),
+                    LookupRecords::new(
+                        lookup_options,
+                        Arc::new(did_record_set(name, account_did, self.default_soa.serial())),
+                    ),
                     None,
                 ))
             }
@@ -125,7 +141,7 @@ impl Authority for DBBackedAuthority {
         request_info: RequestInfo<'_>,
         lookup_options: LookupOptions,
     ) -> Result<Self::Lookup, LookupError> {
-        tracing::debug!(query = ?request_info.query, "DNS query running against DB.");
+        tracing::debug!(query = ?request_info.query, "DNS query matching for user dids.");
 
         let lookup_name = request_info.query.name();
         let record_type: RecordType = request_info.query.query_type();
@@ -156,13 +172,13 @@ impl Authority for DBBackedAuthority {
 }
 
 /// Create a DID DNS entry represented as a RecordSet
-pub(crate) fn did_record_set(name: &Name, did: String) -> RecordSet {
+pub(crate) fn did_record_set(name: &Name, did: String, serial: u32) -> RecordSet {
     let record = Record::from_rdata(
         name.clone(),
         60 * 60, // 60 * 60 seconds = 1 hour
         RData::TXT(TXT::new(vec![did])),
     );
-    record_set(name, RecordType::TXT, SERIAL, record)
+    record_set(name, RecordType::TXT, serial, record)
 }
 
 /// Create a record set with a single record inside
@@ -173,6 +189,6 @@ pub(crate) fn record_set(
     record: Record,
 ) -> RecordSet {
     let mut record_set = RecordSet::new(name, record_type, serial);
-    record_set.insert(record, SERIAL);
+    record_set.insert(record, serial);
     record_set
 }

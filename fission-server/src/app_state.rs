@@ -7,7 +7,7 @@ use fission_core::ed_did_key::EdDidKey;
 use futures::channel::mpsc::Sender;
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::{db::Pool, traits::ServerSetup};
+use crate::{db::Pool, dns::DnsServer, traits::ServerSetup};
 
 /// A channel for transmitting messages to a websocket peer
 pub type WsPeer = Sender<ws::Message>;
@@ -29,7 +29,9 @@ pub struct AppState<S: ServerSetup> {
     /// The currently connected websocket peers
     pub ws_peer_map: WsPeerMap,
     /// The server's decentralized identity (signing/private key)
-    pub server_key: Arc<EdDidKey>,
+    pub server_keypair: Arc<EdDidKey>,
+    /// The DNS server state. Used for answering DoH queries
+    pub dns_server: DnsServer,
 }
 
 /// Builder for [`AppState`]
@@ -38,7 +40,8 @@ pub struct AppStateBuilder<S: ServerSetup> {
     ipfs_peers: Vec<String>,
     ipfs_db: Option<S::IpfsDatabase>,
     verification_code_sender: Option<S::VerificationCodeSender>,
-    did: Option<EdDidKey>,
+    server_keypair: Option<EdDidKey>,
+    dns_server: Option<DnsServer>,
 }
 
 impl<S: ServerSetup> Default for AppStateBuilder<S> {
@@ -48,7 +51,8 @@ impl<S: ServerSetup> Default for AppStateBuilder<S> {
             ipfs_peers: Default::default(),
             ipfs_db: None,
             verification_code_sender: None,
-            did: None,
+            server_keypair: None,
+            dns_server: None,
         }
     }
 }
@@ -66,7 +70,13 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             .verification_code_sender
             .ok_or_else(|| anyhow!("verification_code_sender is required"))?;
 
-        let did = self.did.ok_or_else(|| anyhow!("did is required"))?;
+        let did = self
+            .server_keypair
+            .ok_or_else(|| anyhow!("did is required"))?;
+
+        let dns_server = self
+            .dns_server
+            .ok_or_else(|| anyhow!("dns_server is required"))?;
 
         Ok(AppState {
             db_pool,
@@ -74,7 +84,8 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             ipfs_db,
             verification_code_sender,
             ws_peer_map: Default::default(),
-            server_key: Arc::new(did),
+            server_keypair: Arc::new(did),
+            dns_server,
         })
     }
 
@@ -105,9 +116,15 @@ impl<S: ServerSetup> AppStateBuilder<S> {
         self
     }
 
-    /// Set the server's DID
-    pub fn with_did(mut self, did: EdDidKey) -> Self {
-        self.did = Some(did);
+    /// Set the server's keypair
+    pub fn with_did(mut self, server_keypair: EdDidKey) -> Self {
+        self.server_keypair = Some(server_keypair);
+        self
+    }
+
+    /// Set the DNS server
+    pub fn with_dns_server(mut self, dns_server: DnsServer) -> Self {
+        self.dns_server = Some(dns_server);
         self
     }
 }

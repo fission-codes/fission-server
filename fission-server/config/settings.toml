@@ -29,9 +29,15 @@ process_collector_interval = 10
 [otel]
 exporter_otlp_endpoint = "http://localhost:4317"
 
+[dns]
+server_port = 1053
+default_soa = "dns1.fission.systems hostmaster.fission.codes 0 10800 3600 604800 3600"
+origin = "localhost" # used for serving the `_did.<origin>` DNS TXT entry
+users_origin = "localhost" # used for serving the `_did.<username>.<users_origin>` DNS TXT entry
+
 [server]
 environment = "local"
-did_path = "./server.ed25519.pem"
+keypair_path = "./server.ed25519.pem"
 metrics_port = 4000
 port = 3000
 timeout_ms = 30000

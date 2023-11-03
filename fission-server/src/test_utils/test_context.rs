@@ -102,7 +102,7 @@ impl TestContext {
     }
 
     pub(crate) fn server_did(&self) -> &EdDidKey {
-        &self.app_state.server_key
+        &self.app_state.server_keypair
     }
 
     pub(crate) fn app_state(&self) -> &AppState<TestSetup> {
