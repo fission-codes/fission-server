@@ -1,8 +1,8 @@
 //! DNS Response
 
 use anyhow::{bail, ensure, Result};
+use hickory_server::proto;
 use serde::{Deserialize, Serialize};
-use trust_dns_server::proto;
 
 #[derive(Debug, Serialize, Deserialize)]
 /// JSON representation of a DNS response
@@ -130,7 +130,7 @@ impl DohRecordJson {
 
         Ok(Self {
             name: record.name().to_string(),
-            record_type: record.rr_type().into(),
+            record_type: record.record_type().into(),
             ttl: record.ttl(),
             data: data.to_string(),
         })

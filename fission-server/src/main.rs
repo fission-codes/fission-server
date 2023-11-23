@@ -1,16 +1,15 @@
 //! fission-server
 
 use anyhow::{anyhow, Result};
-
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
 use ed25519::pkcs8::DecodePrivateKey;
 use fission_core::ed_did_key::EdDidKey;
 use fission_server::{
-    app_state::AppStateBuilder,
+    app_state::{AppState, AppStateBuilder},
     db::{self, Pool},
-    dns,
+    dns::DnsServer,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
@@ -85,10 +84,12 @@ async fn main() -> Result<()> {
     info!(
         subject = "app_settings",
         category = "init",
-        "starting with settings: {:?}",
-        settings,
+        ?settings,
+        "starting server",
     );
 
+    let app_state = setup_app_state(&settings, db_pool.clone()).await?;
+    let dns_server = app_state.dns_server.clone();
     let recorder_handle = setup_metrics_recorder()?;
     let cancellation_token = CancellationToken::new();
 
@@ -99,11 +100,16 @@ async fn main() -> Result<()> {
     ));
 
     let app_server = tokio::spawn(serve_app(
+        app_state,
         settings.clone(),
-        db_pool.clone(),
         cancellation_token.clone(),
     ));
-    let dns_server = tokio::spawn(serve_dns(settings, db_pool, cancellation_token.clone()));
+
+    let dns_server = tokio::spawn(serve_dns(
+        settings.clone(),
+        dns_server,
+        cancellation_token.clone(),
+    ));
 
     tokio::spawn(async move {
         capture_sigterm().await;
@@ -112,6 +118,8 @@ async fn main() -> Result<()> {
         println!("\nCtrl+C received, shutting down. Press Ctrl+C again to force shutdown.");
 
         capture_sigterm().await;
+
+        println!("Shutdown forced.");
 
         exit(130)
     });
@@ -157,26 +165,37 @@ async fn serve_metrics(
     Ok(())
 }
 
-async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
-    let req_id = HeaderName::from_static(REQUEST_ID);
-
-    let did_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+async fn setup_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
+    let server_keypair = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")
-        .join(&settings.server.did_path);
+        .join(&settings.server.keypair_path);
 
-    let did = fs::read_to_string(&did_path)
+    let server_keypair = fs::read_to_string(&server_keypair)
         .await
         .map_err(|e| anyhow!(e))
         .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
-        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", did_path.to_string_lossy(), e, did_path.to_string_lossy()))?;
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", server_keypair.to_string_lossy(), e, server_keypair.to_string_lossy()))?;
+
+    let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
     let app_state = AppStateBuilder::<ProdSetup>::default()
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun.clone()))
         .with_ipfs_db(IpfsHttpApiDatabase::default())
-        .with_did(did)
+        .with_server_keypair(server_keypair)
+        .with_dns_server(dns_server)
         .finalize()?;
+
+    Ok(app_state)
+}
+
+async fn serve_app(
+    app_state: AppState<ProdSetup>,
+    settings: Settings,
+    token: CancellationToken,
+) -> Result<()> {
+    let req_id = HeaderName::from_static(REQUEST_ID);
 
     let router = router::setup_app_router(app_state)
         .route_layer(axum::middleware::from_fn(middleware::metrics::track))
@@ -252,11 +271,15 @@ async fn serve_app(settings: Settings, db_pool: Pool, token: CancellationToken) 
     Ok(())
 }
 
-async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) -> Result<()> {
-    let mut server = trust_dns_server::ServerFuture::new(dns::DBBackedAuthority::new(db_pool));
+async fn serve_dns(
+    settings: Settings,
+    dns_server: DnsServer,
+    token: CancellationToken,
+) -> Result<()> {
+    let mut server = hickory_server::ServerFuture::new(dns_server);
 
     let ip4_addr = Ipv4Addr::new(127, 0, 0, 1);
-    let sock_addr = SocketAddrV4::new(ip4_addr, 1053);
+    let sock_addr = SocketAddrV4::new(ip4_addr, settings.dns.server_port);
 
     server.register_socket(UdpSocket::bind(sock_addr).await?);
     server.register_listener(
@@ -265,7 +288,9 @@ async fn serve_dns(settings: Settings, db_pool: Pool, token: CancellationToken) 
     );
 
     tokio::select! {
-        _ = server.block_until_done() => {},
+        _ = server.block_until_done() => {
+            info!("Background tasks for DNS server all terminated.")
+        },
         _ = token.cancelled() => {},
     };
 
