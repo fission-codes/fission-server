@@ -1523,7 +1523,10 @@ dependencies = [
  "serde",
  "serde_json",
  "signature 2.1.0",
+ "test-log",
+ "testresult",
  "tracing",
+ "tracing-subscriber",
  "url",
  "utoipa",
  "validator",
@@ -4193,7 +4196,7 @@ dependencies = [
 [[package]]
 name = "rs-ucan"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-ucan/?branch=quinn-wip-rework#240549b77ec409d57dd0d25790e4a7e85ec47b87"
+source = "git+https://github.com/fission-codes/rs-ucan/?branch=matheus23/tracing-and-fix-capabilities-for#a115731dadbedd0248b47f0677169254800112f1"
 dependencies = [
  "anyhow",
  "async-trait",

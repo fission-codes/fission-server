@@ -124,7 +124,11 @@ impl Cli {
                     AccountCommands::Rename(rename) => {
                         let accounts = state.find_accounts(state.find_capabilities()?);
 
-                        let (_info, did, chain) = state.pick_account(accounts, &rename.username)?;
+                        let (_info, did, chain) = state.pick_account(
+                            accounts,
+                            &rename.username,
+                            "Which account do you want to rename?",
+                        )?;
 
                         let new_username = inquire::Text::new("Pick a new username:").prompt()?;
 
@@ -135,7 +139,11 @@ impl Cli {
                     AccountCommands::Delete(delete) => {
                         let accounts = state.find_accounts(state.find_capabilities()?);
 
-                        let (_info, did, chain) = state.pick_account(accounts, &delete.username)?;
+                        let (_info, did, chain) = state.pick_account(
+                            accounts,
+                            &delete.username,
+                            "Which account do you want to delete?",
+                        )?;
 
                         state.delete_account(did, chain)?;
 
@@ -311,6 +319,7 @@ impl<'s> LoadedKeyState<'s> {
         &'u self,
         accounts: Vec<(AccountInfo, Did, Vec<&'u Ucan>)>,
         user_choice: &Option<String>,
+        prompt: &str,
     ) -> Result<(AccountInfo, Did, Vec<&Ucan>)> {
         Ok(match user_choice {
             Some(username) => accounts
@@ -323,10 +332,9 @@ impl<'s> LoadedKeyState<'s> {
                         .iter()
                         .map(|(info, Did(did), _)| info.username.as_ref().unwrap_or(did))
                         .collect();
-                    let account_name =
-                        inquire::Select::new("Which account do you want to rename?", account_names)
-                            .prompt()?
-                            .clone();
+                    let account_name = inquire::Select::new(prompt, account_names)
+                        .prompt()?
+                        .clone();
 
                     accounts
                         .into_iter()
@@ -385,7 +393,7 @@ impl<'s> LoadedKeyState<'s> {
         let Some(chain) =
             find_delegation_chain(&subject_did, &ability, self.key.as_str(), &self.ucans)
         else {
-            bail!("Couldn't find proof for ability {ability} on subject {subject_did}.");
+            bail!("Couldn't find proof for ability {ability} on subject {subject_did}");
         };
 
         let ucan = self.issue_ucan_with(subject_did, ability, &chain)?;
