@@ -97,7 +97,7 @@ where
         parts: &mut Parts,
         state: &AppState<S>,
     ) -> Result<Self, Self::Rejection> {
-        do_extract_authority(parts, state.did.as_str())
+        do_extract_authority(parts, state.server_keypair.as_str())
             .await
             .map_err(|err| match err {
                 authority::Error::InsufficientCapabilityScope { .. } => {

@@ -2,13 +2,13 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::io;
-use tokio::sync::broadcast;
-use trust_dns_server::{
+use hickory_server::{
     authority::MessageResponse,
     proto::{self, serialize::binary::BinEncoder},
     server::{ResponseHandler, ResponseInfo},
 };
+use std::io;
+use tokio::sync::broadcast;
 
 /// A handle to the channel over which the response to a DNS request will be sent
 #[derive(Debug, Clone)]

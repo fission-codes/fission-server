@@ -11,7 +11,11 @@ edition = "2021"
 rust-version = "1.70"
 documentation = "https://docs.rs/fission-server"
 repository = "https://github.com/fission-codes/fission-server"
-authors = ["Steven Vandevelde <icid.asset@gmail.com>", "Blaine Cook <blaine@fission.codes>"]
+authors = [
+    "Philipp Krüger <philipp@fission.codes>",
+    "Steven Vandevelde <icid.asset@gmail.com>",
+    "Blaine Cook <blaine@fission.codes>",
+]
 default-run = "fission-server-app"
 
 [lib]
@@ -99,7 +103,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.18"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
-trust-dns-server = { version = "0.22.0", features = ["dns-over-rustls"] }
+hickory-server = { version = "0.24", features = ["dns-over-rustls"] }
 rs-ucan = { workspace = true }
 ulid = { version = "1.0", features = ["serde"] }
 url = { workspace = true }

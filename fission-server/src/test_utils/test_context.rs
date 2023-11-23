@@ -10,7 +10,9 @@ use uuid::Uuid;
 use crate::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Conn, MIGRATIONS},
+    dns::DnsServer,
     router::setup_app_router,
+    settings::Dns,
     test_utils::TestVerificationCodeSender,
     traits::ServerSetup,
 };
@@ -64,11 +66,26 @@ impl TestContext {
             .await
             .unwrap();
 
+        let dns_settings = Dns {
+            server_port: 1053,
+            default_soa: "dns1.fission.systems hostmaster.fission.codes 0 10800 3600 604800 3600"
+                .to_string(),
+            default_ttl: 1800,
+            origin: "localhost".to_string(),
+            users_origin: "localhost".to_string(),
+        };
+
+        let keypair = EdDidKey::generate();
+
+        let dns_server = DnsServer::new(&dns_settings, db_pool.clone(), keypair.did())
+            .expect("Could not initialize DNS server");
+
         let builder = AppStateBuilder::default()
             .with_db_pool(db_pool)
             .with_ipfs_db(TestIpfsDatabase::default())
             .with_verification_code_sender(TestVerificationCodeSender::default())
-            .with_did(EdDidKey::generate());
+            .with_server_keypair(keypair)
+            .with_dns_server(dns_server);
 
         let app_state = f(builder).finalize().unwrap();
 
@@ -102,7 +119,7 @@ impl TestContext {
     }
 
     pub(crate) fn server_did(&self) -> &EdDidKey {
-        &self.app_state.did
+        &self.app_state.server_keypair
     }
 
     pub(crate) fn app_state(&self) -> &AppState<TestSetup> {

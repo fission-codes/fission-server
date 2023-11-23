@@ -45,6 +45,21 @@ pub struct IPFS {
     pub peers: Vec<String>,
 }
 
+/// DNS server settings
+#[derive(Clone, Debug, Deserialize)]
+pub struct Dns {
+    /// The port to serve a local UDP DNS server at
+    pub server_port: u16,
+    /// SOA record data for any authoritative DNS records
+    pub default_soa: String,
+    /// Default time to live for returned DNS records (TXT & SOA)
+    pub default_ttl: u32,
+    /// Domain used for serving the `_did.<origin>` DNS TXT entry
+    pub origin: String,
+    /// Domain used for serving the `_did.<username>.users_origin>` DNS TXT entry
+    pub users_origin: String,
+}
+
 /// Server settings.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Server {
@@ -57,7 +72,7 @@ pub struct Server {
     /// Server timeout in milliseconds.
     pub timeout_ms: u64,
     /// Path to a PEM file containing the server's signing key (used for its DID)
-    pub did_path: String,
+    pub keypair_path: String,
 }
 
 /// Process monitoring settings.
@@ -133,6 +148,8 @@ pub struct Settings {
     pub mailgun: Mailgun,
     /// Healthcheck settings
     pub healthcheck: Healthcheck,
+    /// Local authoritative DNS server settings
+    pub dns: Dns,
 }
 
 impl Settings {
