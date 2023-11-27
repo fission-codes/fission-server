@@ -24,7 +24,7 @@ pub enum FissionAbility {
     /// `account/manage`, the ability to change e.g. the username or email address
     AccountManage,
     /// `account/noncritical`, any non-destructive abilities like adding data or querying data
-    AccountNonrcitical,
+    AccountNonCritical,
     /// `account/delete`, the abilit to delete an account
     AccountDelete,
 }
@@ -32,7 +32,7 @@ pub enum FissionAbility {
 const ACCOUNT_READ: &str = "account/read";
 const ACCOUNT_CREATE: &str = "account/create";
 const ACCOUNT_MANAGE: &str = "account/manage";
-const ACCOUNT_NONCRITICAL: &str = "account/noncritical";
+const ACCOUNT_NON_CRITICAL: &str = "account/noncritical";
 const ACCOUNT_DELETE: &str = "account/delete";
 
 impl Plugin for FissionPlugin {
@@ -62,7 +62,7 @@ impl Plugin for FissionPlugin {
             ACCOUNT_READ => Some(FissionAbility::AccountRead),
             ACCOUNT_CREATE => Some(FissionAbility::AccountCreate),
             ACCOUNT_MANAGE => Some(FissionAbility::AccountManage),
-            ACCOUNT_NONCRITICAL => Some(FissionAbility::AccountNonrcitical),
+            ACCOUNT_NON_CRITICAL => Some(FissionAbility::AccountNonCritical),
             ACCOUNT_DELETE => Some(FissionAbility::AccountDelete),
             _ => None,
         })
@@ -86,12 +86,12 @@ impl Ability for FissionAbility {
             return false;
         };
 
-        if matches!(other, Self::AccountNonrcitical) {
+        if matches!(other, Self::AccountNonCritical) {
             return match self {
                 Self::AccountRead => true,
                 Self::AccountCreate => true,
                 Self::AccountManage => false,
-                Self::AccountNonrcitical => true,
+                Self::AccountNonCritical => true,
                 Self::AccountDelete => false,
             };
         }
@@ -106,7 +106,7 @@ impl Display for FissionAbility {
             Self::AccountRead => ACCOUNT_READ,
             Self::AccountCreate => ACCOUNT_CREATE,
             Self::AccountManage => ACCOUNT_MANAGE,
-            Self::AccountNonrcitical => ACCOUNT_NONCRITICAL,
+            Self::AccountNonCritical => ACCOUNT_NON_CRITICAL,
             Self::AccountDelete => ACCOUNT_DELETE,
         })
     }

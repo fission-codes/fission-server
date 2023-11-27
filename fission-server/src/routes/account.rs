@@ -163,7 +163,9 @@ pub async fn patch_username<S: ServerSetup>(
     authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
-    let Did(did) = authority.get_capability(FissionAbility::AccountManage)?;
+    let Did(did) = authority
+        .get_capability(FissionAbility::AccountManage)
+        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
 
@@ -195,7 +197,9 @@ pub async fn delete_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
-    let Did(did) = authority.get_capability(FissionAbility::AccountDelete)?;
+    let Did(did) = authority
+        .get_capability(FissionAbility::AccountDelete)
+        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
