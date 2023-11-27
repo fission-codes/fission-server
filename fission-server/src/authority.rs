@@ -101,8 +101,8 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         caps.first()
             .ok_or_else(|| {
                 anyhow!(
-                "Invalid authorization. Couldn't find proof for {ability_str} as issued from {did}"
-            )
+                    "Invalid authorization. Couldn't find proof for {ability_str} as issued from {did}"
+                )
             })?
             .resource()
             .downcast_ref()
