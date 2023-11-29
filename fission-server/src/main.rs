@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Result};
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
-use axum_tracing_opentelemetry::{opentelemetry_tracing_layer, response_with_trace_layer};
+use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use ed25519::pkcs8::DecodePrivateKey;
 use fission_core::ed_did_key::EdDidKey;
 use fission_server::{
@@ -201,11 +201,11 @@ async fn serve_app(
         .route_layer(axum::middleware::from_fn(middleware::metrics::track))
         .layer(Extension(settings.server.environment))
         // Include trace context as header into the response.
-        .layer(response_with_trace_layer())
+        .layer(OtelInResponseLayer)
         // Opentelemetry tracing middleware.
         // This returns a `TraceLayer` configured to use
         // OpenTelemetry’s conventional span field names.
-        .layer(opentelemetry_tracing_layer())
+        .layer(OtelAxumLayer::default())
         // Set and propagate "request_id" (as a ulid) per request.
         .layer(
             ServiceBuilder::new()
