@@ -1,18 +1,9 @@
 //! The Axum Application State
 
-use crate::{db::Pool, dns::DnsServer, setups::ServerSetup};
+use crate::{db::Pool, dns::DnsServer, routes::ws::WsPeerMap, setups::ServerSetup};
 use anyhow::{anyhow, Result};
-use axum::extract::ws;
-use dashmap::DashMap;
 use fission_core::ed_did_key::EdDidKey;
-use futures::channel::mpsc::Sender;
-use std::{net::SocketAddr, sync::Arc};
-
-/// A channel for transmitting messages to a websocket peer
-pub type WsPeer = Sender<ws::Message>;
-
-/// A map of all websocket peers connected to each DID-specific channel
-pub type WsPeerMap = Arc<DashMap<String, DashMap<SocketAddr, WsPeer>>>;
+use std::sync::Arc;
 
 #[derive(Clone)]
 /// Global application route state.
@@ -26,7 +17,7 @@ pub struct AppState<S: ServerSetup> {
     /// The service that sends account verification codes
     pub verification_code_sender: S::VerificationCodeSender,
     /// The currently connected websocket peers
-    pub ws_peer_map: WsPeerMap,
+    pub ws_peer_map: Arc<WsPeerMap>,
     /// The server's decentralized identity (signing/private key)
     pub server_keypair: Arc<EdDidKey>,
     /// The DNS server state. Used for answering DoH queries

@@ -35,7 +35,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .with_state(app_state.clone());
 
     let api_router = Router::new()
-        .route("/relay/:did", get(ws::handler))
+        .route("/relay/:topic", get(ws::handler))
         .route("/auth/email/verify", post(auth::request_token))
         .route("/server-did", get(auth::server_did))
         .route("/account", post(account::create_account))
