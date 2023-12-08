@@ -15,7 +15,7 @@ use crate::{
     error::{AppError, AppResult},
     extract::json::Json,
     models::capability_indexing::find_ucans_for_audience,
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 
 /// Return capabilities for a given DID
@@ -61,7 +61,7 @@ mod tests {
         db::Conn,
         error::ErrorResponse,
         models::capability_indexing::index_ucan,
-        test_utils::{test_context::TestContext, RouteBuilder},
+        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
     use anyhow::Result;
     use assert_matches::assert_matches;

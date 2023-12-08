@@ -11,7 +11,7 @@ use crate::{
         capability_indexing::IndexedCapability,
         email_verification::EmailVerification,
     },
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 use axum::{
     self,
@@ -242,7 +242,7 @@ mod tests {
         db::schema::accounts,
         error::{AppError, ErrorResponse},
         models::account::RootAccount,
-        test_utils::{test_context::TestContext, RouteBuilder},
+        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
     use anyhow::Result;
     use assert_matches::assert_matches;

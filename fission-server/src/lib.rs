@@ -21,9 +21,9 @@ pub mod models;
 pub mod router;
 pub mod routes;
 pub mod settings;
+pub mod setups;
 pub mod tracer;
 pub mod tracing_layers;
-pub mod traits;
 
 #[cfg(test)]
 mod test_utils;

@@ -1,6 +1,6 @@
 //! The Axum Application State
 
-use crate::{db::Pool, dns::DnsServer, traits::ServerSetup};
+use crate::{db::Pool, dns::DnsServer, setups::ServerSetup};
 use anyhow::{anyhow, Result};
 use axum::extract::ws;
 use dashmap::DashMap;

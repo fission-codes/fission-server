@@ -20,7 +20,7 @@ use serde_json::json;
 
 // 🧬
 
-use crate::{app_state::AppState, authority::Authority, error::AppError, traits::ServerSetup};
+use crate::{app_state::AppState, authority::Authority, error::AppError, setups::ServerSetup};
 use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
@@ -157,7 +157,7 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::test_context::{TestContext, TestSetup};
+    use crate::{setups::test::TestSetup, test_utils::test_context::TestContext};
     use axum::{
         body::BoxBody,
         extract::State,

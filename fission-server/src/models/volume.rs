@@ -11,7 +11,7 @@ use diesel_async::RunQueryDsl;
 
 use crate::{
     db::{schema::volumes, Conn},
-    traits::IpfsDatabase,
+    setups::IpfsDatabase,
 };
 
 #[derive(Debug, Queryable, Insertable, Clone, Identifiable, Selectable, ToSchema)]

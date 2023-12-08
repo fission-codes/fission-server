@@ -5,7 +5,7 @@ use crate::{
     db::{self},
     error::{AppError, AppResult},
     models::email_verification::EmailVerification,
-    traits::{ServerSetup, VerificationCodeSender},
+    setups::{ServerSetup, VerificationCodeSender},
 };
 use axum::{
     self,
@@ -71,7 +71,7 @@ mod tests {
         db::schema::email_verifications,
         models::email_verification::EmailVerification,
         routes::auth::SuccessResponse,
-        test_utils::{test_context::TestContext, RouteBuilder},
+        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
     use anyhow::{anyhow, Result};
     use assert_matches::assert_matches;

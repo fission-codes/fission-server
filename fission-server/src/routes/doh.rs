@@ -4,7 +4,7 @@ use crate::{
     app_state::AppState,
     dns,
     extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 use axum::{
     extract::State,
@@ -67,7 +67,7 @@ pub async fn post<S: ServerSetup>(
 mod tests {
     use crate::{
         db::schema::accounts,
-        test_utils::{test_context::TestContext, RouteBuilder},
+        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;

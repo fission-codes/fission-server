@@ -1,13 +1,26 @@
-use crate::traits::IpfsDatabase;
+//! Test server setup code
+
+use crate::setups::IpfsDatabase;
+use crate::setups::ServerSetup;
+use crate::setups::VerificationCodeSender;
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::{multihash::MultihashGeneric as Multihash, Cid};
 use dashmap::{DashMap, DashSet};
-use std::{io::Read, sync::Arc};
+use std::io::Read;
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Debug, Default)]
+pub struct TestSetup;
+
+impl ServerSetup for TestSetup {
+    type IpfsDatabase = TestIpfsDatabase;
+    type VerificationCodeSender = TestVerificationCodeSender;
+}
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct TestIpfsDatabase {
+pub struct TestIpfsDatabase {
     inner: Arc<State>,
 }
 
@@ -39,6 +52,28 @@ impl IpfsDatabase for TestIpfsDatabase {
     async fn pin_add(&self, cid: &str, _recursive: bool) -> Result<()> {
         let cid: Cid = cid.try_into()?;
         self.inner.pinned_cids.insert(cid);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TestVerificationCodeSender {
+    emails: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+impl TestVerificationCodeSender {
+    pub fn get_emails(&self) -> Vec<(String, String)> {
+        self.emails.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl VerificationCodeSender for TestVerificationCodeSender {
+    async fn send_code(&self, email: &str, code: &str) -> Result<()> {
+        self.emails
+            .lock()
+            .unwrap()
+            .push((email.to_string(), code.to_string()));
         Ok(())
     }
 }

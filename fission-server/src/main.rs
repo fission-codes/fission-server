@@ -13,17 +13,16 @@ use fission_server::{
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
-    models::email_verification::EmailVerificationCodeSender,
     router,
     routes::fallback::notfound_404,
     settings::{Otel, Settings},
+    setups::prod::{EmailVerificationCodeSender, IpfsHttpApiDatabase, ProdSetup},
     tracer::init_tracer,
     tracing_layers::{
         format_layer::LogFmtLayer,
         metrics_layer::{MetricsLayer, METRIC_META_PREFIX},
         storage_layer::StorageLayer,
     },
-    traits::{IpfsHttpApiDatabase, ServerSetup},
 };
 use http::header;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -63,14 +62,6 @@ use utoipa_swagger_ui::SwaggerUi;
 
 /// Request identifier field.
 const REQUEST_ID: &str = "request_id";
-
-#[derive(Clone, Debug, Default)]
-pub struct ProdSetup;
-
-impl ServerSetup for ProdSetup {
-    type IpfsDatabase = IpfsHttpApiDatabase;
-    type VerificationCodeSender = EmailVerificationCodeSender;
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {

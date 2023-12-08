@@ -10,7 +10,7 @@ use futures::{channel::mpsc, future, pin_mut, StreamExt, TryStreamExt};
 
 use crate::{
     app_state::{AppState, WsPeerMap},
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 
 /// Websocket handler

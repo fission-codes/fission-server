@@ -4,7 +4,7 @@ use crate::{
     app_state::AppState,
     db::{self, MIGRATIONS},
     error::AppResult,
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 use axum::{self, extract::State, http::StatusCode};
 use diesel::{
@@ -96,7 +96,7 @@ mod tests {
     use crate::{
         db::__diesel_schema_migrations,
         routes::health::HealthcheckResponse,
-        test_utils::{test_context::TestContext, RouteBuilder},
+        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
 
     #[test_log::test(tokio::test)]

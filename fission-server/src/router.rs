@@ -6,7 +6,7 @@ use crate::{
     routes::{
         account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping, ws,
     },
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 use axum::{
     routing::{delete, get, patch, post},

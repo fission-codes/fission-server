@@ -22,7 +22,7 @@ mod tests {
     use rs_ucan::DefaultFact;
     use testresult::TestResult;
 
-    use crate::test_utils::{test_context::TestContext, RouteBuilder};
+    use crate::test_utils::{route_builder::RouteBuilder, test_context::TestContext};
 
     #[test_log::test(tokio::test)]
     async fn test_ping() -> TestResult {

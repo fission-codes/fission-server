@@ -3,7 +3,7 @@
 use crate::{
     db::{schema::accounts, Conn},
     models::volume::{NewVolumeRecord, Volume},
-    traits::IpfsDatabase,
+    setups::IpfsDatabase,
 };
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
