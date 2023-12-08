@@ -5,6 +5,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
+pub mod local;
 pub mod prod;
 #[cfg(test)]
 pub mod test;

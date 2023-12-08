@@ -72,7 +72,7 @@ impl WsPeerMap {
         let Some(topic_peers) = self
             .topics
             .get(topic) else {
-            tracing::warn!(topic, "Topic got closed while trying to send.");
+            tracing::warn!(topic, "Tried to send message in topic nobody listens to");
             return;
         };
 
