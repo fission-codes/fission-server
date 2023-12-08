@@ -118,7 +118,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
 
         let builder = if let Some(proof) = self.ucan_proof.take() {
             let encoded_ucan = proof.encode()?;
-            let cid = proof.to_cid(cid::multihash::Code::Sha2_256)?;
+            let cid = proof.to_cid(None)?;
             builder.header("ucan", format!("{} {}", cid, encoded_ucan))
         } else {
             builder

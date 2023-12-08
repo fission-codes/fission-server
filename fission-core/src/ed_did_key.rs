@@ -1,5 +1,6 @@
 //! A simple wrapper around an EdDSA Ed25519 signing key that provides zeroization & a `did:key:` representation
 
+use anyhow::Result;
 use did_key::{Ed25519KeyPair, Fingerprint};
 use ed25519::{
     pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey},
@@ -90,8 +91,8 @@ impl EncodePublicKey for EdDidKey {
     }
 }
 
-impl SignerDid<Signature> for EdDidKey {
-    fn did(&self) -> Result<String, anyhow::Error> {
+impl SignerDid for EdDidKey {
+    fn did(&self) -> Result<String> {
         Ok(self.did())
     }
 }
