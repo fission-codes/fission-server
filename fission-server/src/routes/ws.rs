@@ -69,9 +69,7 @@ impl WsPeerMap {
     /// You can filter out one peer from the recipients via `filter_peer_id`,
     /// e.g. to filter out the peer that triggered the message in said topic.
     pub fn broadcast_on_topic(&self, topic: &str, message: Message, filter_peer_id: Option<usize>) {
-        let Some(topic_peers) = self
-            .topics
-            .get(topic) else {
+        let Some(topic_peers) = self.topics.get(topic) else {
             tracing::warn!(topic, "Tried to send message in topic nobody listens to");
             return;
         };

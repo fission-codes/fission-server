@@ -1,8 +1,9 @@
 //! Production server setup code
 
-use crate::setups::IpfsDatabase;
-use crate::setups::ServerSetup;
-use crate::{settings, setups::VerificationCodeSender};
+use crate::{
+    settings,
+    setups::{IpfsDatabase, ServerSetup, VerificationCodeSender},
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ipfs_api_backend_hyper::IpfsApi;

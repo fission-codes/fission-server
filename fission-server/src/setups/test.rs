@@ -1,15 +1,15 @@
 //! Test server setup code
 
-use crate::setups::IpfsDatabase;
-use crate::setups::ServerSetup;
-use crate::setups::VerificationCodeSender;
+use crate::setups::{IpfsDatabase, ServerSetup, VerificationCodeSender};
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::{multihash::MultihashGeneric as Multihash, Cid};
 use dashmap::{DashMap, DashSet};
-use std::io::Read;
-use std::sync::{Arc, Mutex};
+use std::{
+    io::Read,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct TestSetup;
