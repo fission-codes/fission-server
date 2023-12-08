@@ -3,23 +3,19 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::{multihash::MultihashGeneric as Multihash, Cid};
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    io::Read,
-    sync::{Arc, Mutex},
-};
+use dashmap::{DashMap, DashSet};
+use std::{io::Read, sync::Arc};
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TestIpfsDatabase {
-    inner: Arc<Mutex<RefCell<State>>>,
+    inner: Arc<State>,
 }
 
 #[derive(Debug, Default)]
 struct State {
-    pinned_cids: HashSet<Cid>,
+    pinned_cids: DashSet<Cid>,
     #[allow(unused)]
-    blocks: HashMap<Cid, Bytes>,
+    blocks: DashMap<Cid, Bytes>,
 }
 
 impl TestIpfsDatabase {
@@ -33,12 +29,7 @@ impl TestIpfsDatabase {
 
         let bytes = Bytes::from(bytes);
 
-        self.inner
-            .lock()
-            .unwrap()
-            .borrow_mut()
-            .blocks
-            .insert(cid, bytes);
+        self.inner.blocks.insert(cid, bytes);
         Ok(cid)
     }
 }
@@ -47,12 +38,7 @@ impl TestIpfsDatabase {
 impl IpfsDatabase for TestIpfsDatabase {
     async fn pin_add(&self, cid: &str, _recursive: bool) -> Result<()> {
         let cid: Cid = cid.try_into()?;
-        self.inner
-            .lock()
-            .unwrap()
-            .borrow_mut()
-            .pinned_cids
-            .insert(cid);
+        self.inner.pinned_cids.insert(cid);
         Ok(())
     }
 }

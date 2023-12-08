@@ -1,13 +1,12 @@
 //! The Axum Application State
 
+use crate::{db::Pool, dns::DnsServer, traits::ServerSetup};
 use anyhow::{anyhow, Result};
 use axum::extract::ws;
 use dashmap::DashMap;
 use fission_core::ed_did_key::EdDidKey;
 use futures::channel::mpsc::Sender;
 use std::{net::SocketAddr, sync::Arc};
-
-use crate::{db::Pool, dns::DnsServer, traits::ServerSetup};
 
 /// A channel for transmitting messages to a websocket peer
 pub type WsPeer = Sender<ws::Message>;
