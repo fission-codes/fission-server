@@ -1,5 +1,13 @@
 use std::net::SocketAddr;
 
+use crate::{
+    app_state::{AppState, AppStateBuilder},
+    db::{self, Conn, MIGRATIONS},
+    dns::DnsServer,
+    router::setup_app_router,
+    settings::Dns,
+    setups::test::{TestIpfsDatabase, TestSetup, TestVerificationCodeSender},
+};
 use axum::{extract::connect_info::MockConnectInfo, Router};
 use axum_server::service::SendService;
 use diesel::{Connection, PgConnection, RunQueryDsl};
@@ -7,31 +15,11 @@ use diesel_migrations::MigrationHarness;
 use fission_core::ed_did_key::EdDidKey;
 use uuid::Uuid;
 
-use crate::{
-    app_state::{AppState, AppStateBuilder},
-    db::{self, Conn, MIGRATIONS},
-    dns::DnsServer,
-    router::setup_app_router,
-    settings::Dns,
-    test_utils::TestVerificationCodeSender,
-    traits::ServerSetup,
-};
-
-use super::test_ipfs_database::TestIpfsDatabase;
-
 pub(crate) struct TestContext {
     app: Router,
     app_state: AppState<TestSetup>,
     base_url: String,
     db_name: String,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct TestSetup;
-
-impl ServerSetup for TestSetup {
-    type IpfsDatabase = TestIpfsDatabase;
-    type VerificationCodeSender = TestVerificationCodeSender;
 }
 
 impl TestContext {

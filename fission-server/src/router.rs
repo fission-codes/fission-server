@@ -6,7 +6,7 @@ use crate::{
     routes::{
         account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping, ws,
     },
-    traits::ServerSetup,
+    setups::ServerSetup,
 };
 use axum::{
     routing::{delete, get, patch, post},
@@ -35,7 +35,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .with_state(app_state.clone());
 
     let api_router = Router::new()
-        .route("/relay/:did", get(ws::handler))
+        .route("/relay/:topic", get(ws::handler))
         .route("/auth/email/verify", post(auth::request_token))
         .route("/server-did", get(auth::server_did))
         .route("/account", post(account::create_account))

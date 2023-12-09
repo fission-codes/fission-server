@@ -13,17 +13,20 @@ use fission_server::{
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
-    models::email_verification::EmailVerificationCodeSender,
     router,
-    routes::fallback::notfound_404,
-    settings::{Otel, Settings},
+    routes::{fallback::notfound_404, ws::WsPeerMap},
+    settings::{AppEnvironment, Otel, Settings},
+    setups::{
+        local::{LocalSetup, WebsocketCodeSender},
+        prod::{EmailVerificationCodeSender, IpfsHttpApiDatabase, ProdSetup},
+        ServerSetup,
+    },
     tracer::init_tracer,
     tracing_layers::{
         format_layer::LogFmtLayer,
         metrics_layer::{MetricsLayer, METRIC_META_PREFIX},
         storage_layer::StorageLayer,
     },
-    traits::{IpfsHttpApiDatabase, ServerSetup},
 };
 use http::header;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -36,6 +39,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     path::PathBuf,
     process::exit,
+    sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -64,14 +68,6 @@ use utoipa_swagger_ui::SwaggerUi;
 /// Request identifier field.
 const REQUEST_ID: &str = "request_id";
 
-#[derive(Clone, Debug, Default)]
-pub struct ProdSetup;
-
-impl ServerSetup for ProdSetup {
-    type IpfsDatabase = IpfsHttpApiDatabase;
-    type VerificationCodeSender = EmailVerificationCodeSender;
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
@@ -88,7 +84,22 @@ async fn main() -> Result<()> {
         "starting server",
     );
 
-    let app_state = setup_app_state(&settings, db_pool.clone()).await?;
+    match settings.server.environment {
+        AppEnvironment::Staging | AppEnvironment::Prod => {
+            let app_state = setup_prod_app_state(&settings, db_pool).await?;
+            run_with_app_state(settings, app_state).await
+        }
+        AppEnvironment::Local | AppEnvironment::Dev => {
+            let app_state = setup_local_app_state(&settings, db_pool).await?;
+            run_with_app_state(settings, app_state).await
+        }
+    }
+}
+
+async fn run_with_app_state<S: ServerSetup + 'static>(
+    settings: Settings,
+    app_state: AppState<S>,
+) -> Result<()> {
     let dns_server = app_state.dns_server.clone();
     let recorder_handle = setup_metrics_recorder()?;
     let cancellation_token = CancellationToken::new();
@@ -165,7 +176,7 @@ async fn serve_metrics(
     Ok(())
 }
 
-async fn setup_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
+async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
     let server_keypair = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")
         .join(&settings.server.keypair_path);
@@ -190,8 +201,36 @@ async fn setup_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<
     Ok(app_state)
 }
 
-async fn serve_app(
-    app_state: AppState<ProdSetup>,
+async fn setup_local_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<LocalSetup>> {
+    let server_keypair = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("config")
+        .join(&settings.server.keypair_path);
+
+    let server_keypair = fs::read_to_string(&server_keypair)
+        .await
+        .map_err(|e| anyhow!(e))
+        .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", server_keypair.to_string_lossy(), e, server_keypair.to_string_lossy()))?;
+
+    let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
+
+    let ws_peer_map = Arc::new(WsPeerMap::default());
+
+    let app_state = AppStateBuilder::<LocalSetup>::default()
+        .with_db_pool(db_pool)
+        .with_ipfs_peers(settings.ipfs.peers.clone())
+        .with_ws_peer_map(Arc::clone(&ws_peer_map))
+        .with_verification_code_sender(WebsocketCodeSender::new(ws_peer_map))
+        .with_ipfs_db(IpfsHttpApiDatabase::default())
+        .with_server_keypair(server_keypair)
+        .with_dns_server(dns_server)
+        .finalize()?;
+
+    Ok(app_state)
+}
+
+async fn serve_app<S: ServerSetup + 'static>(
+    app_state: AppState<S>,
     settings: Settings,
     token: CancellationToken,
 ) -> Result<()> {

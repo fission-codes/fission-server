@@ -8,7 +8,7 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::{app_state::AppState, error::AppResult, traits::ServerSetup};
+use crate::{app_state::AppState, error::AppResult, setups::ServerSetup};
 
 /// Render a list of IPFS node addresses
 pub async fn peers<S: ServerSetup>(

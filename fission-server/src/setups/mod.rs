@@ -1,7 +1,14 @@
-//! All custom traits defined in fission-server
-use anyhow::{anyhow, Result};
+//! This abstracts fission server side-effects into "setups".
+//!
+//! This module defines the trait, submodules define test & production
+//! collections of implementations.
+use anyhow::Result;
 use async_trait::async_trait;
-use ipfs_api::IpfsApi;
+
+pub mod local;
+pub mod prod;
+#[cfg(test)]
+pub mod test;
 
 /// This trait groups type parameters to the server's `AppState` struct.
 ///
@@ -28,26 +35,4 @@ pub trait IpfsDatabase: Clone + Send + Sync {
 pub trait VerificationCodeSender: Clone + Send + Sync {
     /// Send the code associated with the email
     async fn send_code(&self, email: &str, code: &str) -> Result<()>;
-}
-
-/// An implementation of `IpfsDatabase` which connects to a locally-running
-/// IPFS kubo node.
-#[derive(Clone, Default)]
-pub struct IpfsHttpApiDatabase(ipfs_api::IpfsClient);
-
-impl std::fmt::Debug for IpfsHttpApiDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("IpfsHttpApiDatabase").finish()
-    }
-}
-
-#[async_trait]
-impl IpfsDatabase for IpfsHttpApiDatabase {
-    async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()> {
-        self.0
-            .pin_add(cid, recursive)
-            .await
-            .map_err(|e| anyhow!("Failed to pin CID: {e}"))?;
-        Ok(())
-    }
 }

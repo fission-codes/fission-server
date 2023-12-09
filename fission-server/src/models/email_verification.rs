@@ -1,6 +1,6 @@
 //! Email Verification Model
+use crate::db::{schema::email_verifications, Conn};
 use anyhow::Result;
-use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use diesel::{
     dsl::{now, IntervalDsl},
@@ -10,88 +10,7 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use fission_core::common::EmailVerifyRequest;
 use hex::ToHex;
-use mailgun_rs::{EmailAddress, Mailgun, MailgunRegion, Message};
 use rand::Rng;
-use std::collections::HashMap;
-use tracing::log;
-
-use crate::{
-    db::{schema::email_verifications, Conn},
-    settings,
-    traits::VerificationCodeSender,
-};
-
-#[derive(Debug, Clone)]
-/// Sends verification codes over email
-pub struct EmailVerificationCodeSender {
-    settings: settings::Mailgun,
-}
-
-impl EmailVerificationCodeSender {
-    /// Create a new EmailVerificationCodeSender
-    pub fn new(settings: settings::Mailgun) -> Self {
-        Self { settings }
-    }
-
-    fn sender(&self) -> EmailAddress {
-        EmailAddress::name_address(&self.settings.from_name, &self.settings.from_address)
-    }
-
-    fn subject(&self) -> &str {
-        self.settings.subject.as_str()
-    }
-
-    fn template(&self) -> &str {
-        self.settings.template.as_str()
-    }
-
-    fn api_key(&self) -> &str {
-        self.settings.api_key.as_str()
-    }
-
-    fn domain(&self) -> &str {
-        self.settings.domain.as_str()
-    }
-
-    fn message(&self, email: &str, code: &str) -> Message {
-        let delivery_address = EmailAddress::address(email);
-        let template_vars = HashMap::from_iter([("code".to_string(), code.to_string())]);
-
-        Message {
-            to: vec![delivery_address],
-            subject: self.subject().to_string(),
-            template: self.template().to_string(),
-            template_vars,
-            ..Default::default()
-        }
-    }
-}
-
-#[async_trait]
-impl VerificationCodeSender for EmailVerificationCodeSender {
-    /// Sends the code to the user
-    async fn send_code(&self, email: &str, code: &str) -> Result<()> {
-        let message = self.message(email, code);
-
-        log::debug!(
-            "Sending verification email:\nTo: {}\nSubject: {}\nTemplate: {}\nTemplate Vars: {:?}",
-            email,
-            message.subject,
-            message.template,
-            message.template_vars
-        );
-
-        let client = Mailgun {
-            message,
-            api_key: self.api_key().to_string(),
-            domain: self.domain().to_string(),
-        };
-
-        client.async_send(MailgunRegion::US, &self.sender()).await?;
-
-        Ok(())
-    }
-}
 
 /// Email Verification Request
 #[derive(Insertable, Debug)]
