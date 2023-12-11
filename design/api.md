@@ -19,6 +19,7 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | GET | [`/api/v0/account/:username/did`](#get-apiv0accountusernamedid) | Get the did of an account by username |
 | PATCH | [`/api/v0/account/:did/username/:username`](#patch-apiv0accountdidusernameusername) | Change an account's username |
 | GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
+| POST | [`/api/v0/revocations`](#post-apiv0revocations) | Revoke a UCAN |
 
 A note on authorization:
 
@@ -142,6 +143,25 @@ In the future this endpoint will be useful for fetching new capabilities from ot
 |-------|------|---------|
 | `ucans` | `Array<string>` | A set of ucans giving the DID from the resource in the authorization capabilities. |
 
+### POST `/api/v0/revocations`
+
+Revokes a UCAN via a revocation record. The request body format is specified in the UCAN 0.10 specification, see the section on [revocation validation].
+
+**Authorization**: The UCAN to be revoked together with any proofs, proving that the
+
+**Request**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `revoke` | `string` | The canonical CID of the UCAN to be revoked (must match the UCAN given in the authorization). |
+| `iss` | `string` | The DID of who is revoking |
+| `challenge` | `string` | A base64unpadded-encoded signature over a challenge to prove the revocation intent |
+
+**Response**:
+
+| Field | Type | Comment |
+|-------|------|---------|
+| `success` | `bool` | True if revocation was successful |
 
 ## UCAN Capabilities
 
@@ -199,3 +219,4 @@ Allows finding UCANs known to the server to give capabilities to the associated 
 
 [UCAN]: https://github.com/ucan-wg
 [design document]: ./README.md
+[revocation validation]: https://github.com/ucan-wg/spec/tree/16ee2ce7815c60a0ea870283d3b53ddcb3043c02#66-revocation
