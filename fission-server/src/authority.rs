@@ -1,7 +1,7 @@
 //! Authority struct and functions
 
 use anyhow::{anyhow, bail, Result};
-use fission_core::capabilities::did::Did;
+use fission_core::{capabilities::did::Did, revocation::Revocation};
 use libipld::{raw::RawCodec, Ipld};
 use rs_ucan::{
     did_verifier::DidVerifierMap,
@@ -47,6 +47,26 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         }
 
         Ok(())
+    }
+
+    /// Validate an attempt to create a revocation.
+    ///
+    /// The revoked UCAN needs to be specified using the main `authorization` header
+    /// and any proofs needed to verify the revocation, including the proof that
+    /// was originally issued by the revocation's issuer and all proofs in between
+    /// the authorization UCAN and that one need to be provided in the `ucans` header.
+    ///
+    /// The UCAN from the `authorization`'s canonical CID needs to match the revocation's
+    /// CID.
+    pub fn validate_revocation(&self, revocation: &Revocation) -> Result<()> {
+        let mut store = InMemoryStore::<RawCodec>::default();
+
+        for proof in &self.proofs {
+            // TODO(matheus23): we assume SHA2-256 atm. The spec says to hash with all CID formats used in proofs >.<
+            store.write(Ipld::Bytes(proof.encode()?.as_bytes().to_vec()), None)?;
+        }
+
+        revocation.verify_valid(&self.ucan, &DidVerifierMap::default(), &store)
     }
 
     /// Validates whether or not the UCAN and proofs have the capability to

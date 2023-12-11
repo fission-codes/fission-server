@@ -9,10 +9,11 @@ use rs_ucan::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use signature::Signer;
 use std::{collections::VecDeque, str::FromStr};
+use utoipa::ToSchema;
 
 /// The revocation record from the UCAN 0.10 spec:
 /// https://github.com/ucan-wg/spec/tree/16ee2ce7815c60a0ea870283d3b53ddcb3043c02#66-revocation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Revocation {
     /// The issuer of the revocation
     pub iss: String,
@@ -98,7 +99,9 @@ impl Revocation {
                     Some(ipld) => bail!(
                         "Unexpected IPLD format in proof store (cid: {proof_cid}): Expected Bytes, but got {ipld:?}"
                     ),
-                    None => bail!("Missing proof CID in proof store: {proof_cid}"),
+                    // If we can't find a proof CID, it's fine, we just skip, there may be another path to
+                    // a UCAN from the issuer of the revocation.
+                    None => tracing::warn!(%proof_cid, "Missing proof CID in revoked UCAN's proof tree"),
                 }
             }
         }
