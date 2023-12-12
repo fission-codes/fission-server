@@ -50,13 +50,15 @@ pub async fn create_account<S: ServerSetup>(
         .validate()
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
-    let Did(did) = authority
-        .get_capability(FissionAbility::AccountCreate)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
-
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
+            let revocation_set = authority.get_relevant_revocations(conn).await?;
+
+            let Did(did) = authority
+                .get_capability(FissionAbility::AccountCreate, &revocation_set)
+                .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
+
             let verification = EmailVerification::find_token(conn, &request.email, &request.code)
                 .await
                 .map_err(|err| AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())))?;
@@ -163,11 +165,13 @@ pub async fn patch_username<S: ServerSetup>(
     authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
-    let Did(did) = authority
-        .get_capability(FissionAbility::AccountManage)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
-
     let conn = &mut db::connect(&state.db_pool).await?;
+
+    let revocation_set = authority.get_relevant_revocations(conn).await?;
+
+    let Did(did) = authority
+        .get_capability(FissionAbility::AccountManage, &revocation_set)
+        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
 
     use crate::db::schema::*;
     diesel::update(accounts::table)
@@ -197,14 +201,16 @@ pub async fn delete_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
-    let Did(did) = authority
-        .get_capability(FissionAbility::AccountDelete)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
-
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
-            use crate::db::schema::*;
+            let revocation_set = authority.get_relevant_revocations(conn).await?;
+
+            let Did(did) = authority
+                .get_capability(FissionAbility::AccountDelete, &revocation_set)
+                .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
+
+            use crate::db::schema::{accounts, capabilities, ucans};
             let account = diesel::delete(accounts::table)
                 .filter(accounts::did.eq(&did))
                 .get_result::<Account>(conn)

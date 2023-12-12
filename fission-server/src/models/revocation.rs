@@ -3,11 +3,13 @@
 use crate::db::{schema::revocations, Conn};
 use anyhow::Result;
 use diesel::{
-    associations::Identifiable, deserialize::Queryable, pg::Pg, prelude::Insertable, Selectable,
+    associations::Identifiable, deserialize::Queryable, pg::Pg, prelude::Insertable,
+    ExpressionMethods, QueryDsl, Selectable,
 };
 use diesel_async::RunQueryDsl;
 use fission_core::revocation::Revocation;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use utoipa::ToSchema;
 
 /// Represents a revocation record in the database
@@ -78,4 +80,19 @@ impl NewRevocationRecord {
             id,
         })
     }
+}
+
+/// From a list of canonical CIDs, find the subset that is revoked
+pub async fn find_revoked_subset(
+    canonical_cids: BTreeSet<String>,
+    conn: &mut Conn<'_>,
+) -> Result<BTreeSet<String>> {
+    let revoked_cids = revocations::table
+        .filter(revocations::cid.eq_any(canonical_cids))
+        .select(revocations::cid)
+        .get_results(conn)
+        .await?;
+
+    // Convert into set
+    Ok(revoked_cids.into_iter().collect())
 }

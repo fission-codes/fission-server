@@ -1,7 +1,11 @@
 //! Authority struct and functions
 
+use crate::{db::Conn, models::revocation::find_revoked_subset};
 use anyhow::{anyhow, bail, Result};
-use fission_core::{capabilities::did::Did, revocation::Revocation};
+use fission_core::{
+    capabilities::did::Did,
+    revocation::{canonical_cid, Revocation},
+};
 use libipld::{raw::RawCodec, Ipld};
 use rs_ucan::{
     did_verifier::DidVerifierMap,
@@ -11,6 +15,7 @@ use rs_ucan::{
     DefaultFact,
 };
 use serde::de::DeserializeOwned;
+use std::collections::BTreeSet;
 
 //-------//
 // TYPES //
@@ -62,22 +67,45 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         let mut store = InMemoryStore::<RawCodec>::default();
 
         for proof in &self.proofs {
-            // TODO(matheus23): we assume SHA2-256 atm. The spec says to hash with all CID formats used in proofs >.<
             store.write(Ipld::Bytes(proof.encode()?.as_bytes().to_vec()), None)?;
         }
 
         revocation.verify_valid(&self.ucan, &DidVerifierMap::default(), &store)
     }
 
+    /// find the set of UCAN canonical CIDs that are revoked and relevant to this request
+    pub async fn get_relevant_revocations(&self, conn: &mut Conn<'_>) -> Result<BTreeSet<String>> {
+        let mut canonical_cids = BTreeSet::from([canonical_cid(&self.ucan)?]);
+
+        for proof in &self.proofs {
+            // This is duplicating work in the usual case, but also it's not *too bad*.
+            canonical_cids.insert(canonical_cid(proof)?);
+        }
+
+        find_revoked_subset(canonical_cids, conn).await
+    }
+
     /// Validates whether or not the UCAN and proofs have the capability to
     /// perform the given action, with the given issuer as the root of that
     /// authority.
-    pub fn get_capability(&self, ability: impl Ability) -> Result<Did> {
+    pub fn get_capability(
+        &self,
+        ability: impl Ability,
+        revocations: &BTreeSet<String>,
+    ) -> Result<Did> {
+        if revocations.contains(&canonical_cid(&self.ucan)?) {
+            bail!("Invocation UCAN was revoked");
+        }
+
         let current_time = rs_ucan::time::now();
 
         let mut store = InMemoryStore::<RawCodec>::default();
 
         for proof in &self.proofs {
+            // TODO(matheus23): rs-ucan should probably have support for revoked CIDs
+            if revocations.contains(&canonical_cid(proof)?) {
+                continue; // This CID was revoked.
+            }
             // TODO(matheus23): we assume SHA2-256 atm. The spec says to hash with all CID formats used in proofs >.<
             store.write(Ipld::Bytes(proof.encode()?.as_bytes().to_vec()), None)?;
         }

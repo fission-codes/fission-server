@@ -112,7 +112,9 @@ impl Revocation {
     }
 }
 
-fn canonical_cid<F, C>(ucan: &Ucan<F, C>) -> Result<String>
+/// Returns the "canonical CID" of a UCAN.
+/// That is the CID of a UCAN with a raw codec, sha-256 hash and base32-encoded.
+pub fn canonical_cid<F, C>(ucan: &Ucan<F, C>) -> Result<String>
 where
     F: Clone + DeserializeOwned,
     C: CapabilityParser,

@@ -5,7 +5,7 @@ use crate::{
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
     routes::{
         account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping,
-        revocation, ws,
+        revocations, ws,
     },
     setups::ServerSetup,
 };
@@ -48,7 +48,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         )
         .route("/account/:username/did", get(account::get_did))
         .route("/capabilities", get(capability_indexing::get_capabilities))
-        .route("/revocations", post(revocation::post_revocation))
+        .route("/revocations", post(revocations::post_revocation))
         .with_state(app_state.clone())
         .fallback(notfound_404);
 

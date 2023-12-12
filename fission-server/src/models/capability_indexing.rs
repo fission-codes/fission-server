@@ -1,7 +1,5 @@
 //! Models related to capability indexing, specifically the `ucans` and `capabilities` table.
 
-use std::{collections::BTreeSet, str::FromStr};
-
 use crate::db::{
     schema::{capabilities, ucans},
     Conn,
@@ -20,6 +18,7 @@ use diesel_async::RunQueryDsl;
 use rs_ucan::{capability::Capability, ucan::Ucan};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::BTreeSet, str::FromStr};
 use utoipa::ToSchema;
 
 /// Represents an indexed UCAN in the database
