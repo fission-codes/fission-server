@@ -20,7 +20,7 @@ use serde_json::json;
 
 // 🧬
 
-use crate::{app_state::AppState, authority::Authority, error::AppError, setups::ServerSetup};
+use crate::{authority::Authority, error::AppError};
 use fission_core::{
     authority,
     authority::Error::{InvalidUcan, MissingCredentials},
@@ -86,41 +86,35 @@ impl Header for UcanHeader {
 ////////////
 
 #[async_trait]
-impl<S, F> FromRequestParts<AppState<S>> for Authority<F>
+impl<S, F> FromRequestParts<S> for Authority<F>
 where
-    S: ServerSetup,
+    S: Send + Sync,
     F: Clone + DeserializeOwned,
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState<S>,
-    ) -> Result<Self, Self::Rejection> {
-        do_extract_authority(parts, state.server_keypair.as_str())
-            .await
-            .map_err(|err| match err {
-                authority::Error::InsufficientCapabilityScope { .. } => {
-                    AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
-                }
-                authority::Error::InvalidUcan { reason } => AppError::new(
-                    StatusCode::UNAUTHORIZED,
-                    Some(format!("Invalid UCAN: {reason}")),
-                ),
-                authority::Error::MissingCredentials => {
-                    AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
-                }
-                authority::Error::MissingProofs { proofs_needed } => AppError::new(
-                    StatusCode::NOT_EXTENDED,
-                    Some(json!({ "prf": proofs_needed })),
-                ),
-            })
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        do_extract_authority(parts).await.map_err(|err| match err {
+            authority::Error::InsufficientCapabilityScope { .. } => {
+                AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
+            }
+            authority::Error::InvalidUcan { reason } => AppError::new(
+                StatusCode::UNAUTHORIZED,
+                Some(format!("Invalid UCAN: {reason}")),
+            ),
+            authority::Error::MissingCredentials => {
+                AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
+            }
+            authority::Error::MissingProofs { proofs_needed } => AppError::new(
+                StatusCode::NOT_EXTENDED,
+                Some(json!({ "prf": proofs_needed })),
+            ),
+        })
     }
 }
 
 async fn do_extract_authority<F: Clone + DeserializeOwned>(
     parts: &mut Parts,
-    server_did: &str,
 ) -> Result<Authority<F>, authority::Error> {
     // Extract the token from the authorization header
     let TypedHeader(Authorization(bearer)) = parts
@@ -140,14 +134,7 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
     })?;
 
     // Construct authority
-    let authority = Authority { ucan, proofs };
-
-    // Validate the authority
-    authority
-        .validate(server_did)
-        .map_err(|reason| InvalidUcan { reason })?;
-
-    Ok(authority)
+    Ok(Authority { ucan, proofs })
 }
 
 ///////////
@@ -157,7 +144,9 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{setups::test::TestSetup, test_utils::test_context::TestContext};
+    use crate::{
+        app_state::AppState, setups::test::TestSetup, test_utils::test_context::TestContext,
+    };
     use axum::{
         body::BoxBody,
         extract::State,

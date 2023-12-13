@@ -1,11 +1,19 @@
 //! Authority struct and functions
 
-use crate::{db::Conn, models::revocation::find_revoked_subset};
-use anyhow::{anyhow, bail, Result};
+use crate::{
+    app_state::AppState,
+    db,
+    db::Conn,
+    error::{AppError, AppResult},
+    models::revocation::find_revoked_subset,
+    setups::ServerSetup,
+};
+use anyhow::{bail, Result};
 use fission_core::{
     capabilities::did::Did,
     revocation::{canonical_cid, Revocation},
 };
+use http::StatusCode;
 use libipld::{raw::RawCodec, Ipld};
 use rs_ucan::{
     did_verifier::DidVerifierMap,
@@ -35,20 +43,17 @@ pub struct Authority<F = DefaultFact> {
 //-----------------//
 
 impl<F: Clone + DeserializeOwned> Authority<F> {
-    /// Validate an authority struct
-    pub fn validate(&self, server_did: &str) -> Result<()> {
-        self.ucan
-            .validate(rs_ucan::time::now(), &DidVerifierMap::default())?;
-
+    /// Validate the authority audience
+    pub fn validate_audience(&self, intended_audience: &str) -> Result<()> {
         let audience = self.ucan.audience();
-        if audience != server_did {
+        if audience != intended_audience {
             tracing::error!(
                 audience = %audience,
-                expected = %server_did,
+                expected = %intended_audience,
                 token = ?self.ucan.encode(),
                 "Auth token audience doesn't match server DID"
             );
-            bail!("Auth token audience doesn't match server DID. Expected {server_did}, but got {audience}.")
+            bail!("Auth token audience doesn't match server DID. Expected {intended_audience}, but got {audience}.")
         }
 
         Ok(())
@@ -63,14 +68,16 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
     ///
     /// The UCAN from the `authorization`'s canonical CID needs to match the revocation's
     /// CID.
-    pub fn validate_revocation(&self, revocation: &Revocation) -> Result<()> {
+    pub fn validate_revocation(&self, revocation: &Revocation) -> AppResult<()> {
         let mut store = InMemoryStore::<RawCodec>::default();
 
         for proof in &self.proofs {
             store.write(Ipld::Bytes(proof.encode()?.as_bytes().to_vec()), None)?;
         }
 
-        revocation.verify_valid(&self.ucan, &DidVerifierMap::default(), &store)
+        revocation
+            .verify_valid(&self.ucan, &DidVerifierMap::default(), &store)
+            .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))
     }
 
     /// find the set of UCAN canonical CIDs that are revoked and relevant to this request
@@ -88,13 +95,22 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
     /// Validates whether or not the UCAN and proofs have the capability to
     /// perform the given action, with the given issuer as the root of that
     /// authority.
-    pub fn get_capability(
+    pub async fn get_capability<S: ServerSetup>(
         &self,
+        app_state: &AppState<S>,
         ability: impl Ability,
-        revocations: &BTreeSet<String>,
-    ) -> Result<Did> {
+    ) -> AppResult<Did> {
+        self.validate_audience(app_state.server_keypair.did_as_str())?;
+
+        let revocations = self
+            .get_relevant_revocations(&mut db::connect(&app_state.db_pool).await?)
+            .await?;
+
         if revocations.contains(&canonical_cid(&self.ucan)?) {
-            bail!("Invocation UCAN was revoked");
+            return Err(AppError::new(
+                StatusCode::FORBIDDEN,
+                Some("Invocation UCAN was revoked"),
+            ));
         }
 
         let current_time = rs_ucan::time::now();
@@ -114,48 +130,54 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         let [cap] = caps[..] else {
             if caps.is_empty() {
                 tracing::error!("No capabilities provided.");
-                bail!("Invocation UCAN without capabilities provided.");
+                return Err(AppError::new(StatusCode::BAD_REQUEST, Some("Invocation UCAN without capabilities provided.")));
             }
             tracing::error!(caps = ?caps, "Invocation UCAN with multiple capabilities is ambiguous.");
-            bail!("Invocation UCAN with multiple capabilities is ambiguous.");
+            return Err(AppError::new(StatusCode::BAD_REQUEST, Some("Invocation UCAN with multiple capabilities is ambiguous.")));
         };
 
         if !cap.ability().is_valid_attenuation(&ability) {
-            bail!(
-                "Invalid authorization. Expected ability {ability}, but got {}",
-                cap.ability()
-            );
+            return Err(AppError::new(
+                StatusCode::FORBIDDEN,
+                Some(format!(
+                    "Invalid authorization. Expected ability {ability}, but got {}",
+                    cap.ability()
+                )),
+            ));
         }
 
         let Some(Did(did)) = cap.resource().downcast_ref() else {
-            bail!(
+            return Err(AppError::new(StatusCode::BAD_REQUEST, Some(format!(
                 "Invalid authorization. Expected resource to be DID, but got {}",
                 cap.resource()
-            );
+            ))));
         };
 
         let ability_str = ability.to_string();
 
-        let caps = self.ucan.capabilities_for(
-            did,
-            Did(did.clone()),
-            ability,
-            current_time,
-            &DidVerifierMap::default(),
-            &store,
-        )?;
+        let caps = self
+            .ucan
+            .capabilities_for(
+                did,
+                Did(did.clone()),
+                ability,
+                current_time,
+                &DidVerifierMap::default(),
+                &store,
+            )
+            .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
 
         // TODO(matheus23): Not yet handling caveats.
         caps.first()
             .ok_or_else(|| {
-                anyhow!(
+                AppError::new(StatusCode::FORBIDDEN, Some(format!(
                     "Invalid authorization. Couldn't find proof for {ability_str} as issued from {did}"
-                )
+                )))
             })?
             .resource()
             .downcast_ref()
             .cloned()
-            .ok_or_else(|| anyhow!("Invalid authorization. Something went wrong. Capability resource is not a DID."))
+            .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, Some("Invalid authorization. Something went wrong. Capability resource is not a DID.")))
     }
 }
 
@@ -184,7 +206,9 @@ mod tests {
             proofs: vec![],
         };
 
-        assert!(authority.validate("did:web:runfission.com").is_ok());
+        assert!(authority
+            .validate_audience("did:web:runfission.com")
+            .is_ok());
 
         Ok(())
     }

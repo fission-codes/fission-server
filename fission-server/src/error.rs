@@ -158,6 +158,12 @@ impl From<String> for AppError {
     }
 }
 
+impl From<rs_ucan::error::Error> for AppError {
+    fn from(err: rs_ucan::error::Error) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
+    }
+}
+
 /// Serialize/Deserializer for status codes.
 ///
 /// This is needed because status code according to JSON API spec must

@@ -35,15 +35,13 @@ pub async fn get_capabilities<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<UcansResponse>)> {
+    let Did(audience_needle) = authority
+        .get_capability(&state, IndexingAbility::Fetch)
+        .await?;
+
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
-            let revocation_set = authority.get_relevant_revocations(conn).await?;
-
-            let Did(audience_needle) = authority
-                .get_capability(IndexingAbility::Fetch, &revocation_set)
-                .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
-
             let ucans = find_ucans_for_audience(audience_needle, conn)
                 .await
                 .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, Some(e)))?;
