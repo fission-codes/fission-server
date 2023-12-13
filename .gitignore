@@ -21,3 +21,6 @@ private
 .pg
 postgres.log
 .ipfs
+
+# Nix build
+/result

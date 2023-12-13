@@ -2,7 +2,7 @@
   description = "fission-server";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-23.05";
+    nixpkgs.url = "nixpkgs/nixos-23.11";
     flake-utils.url = "github:numtide/flake-utils";
 
     rust-overlay = {
@@ -28,6 +28,11 @@
         .override {
           extensions = ["cargo" "clippy" "rustfmt" "rust-src" "rust-std"];
         };
+
+      rustPlatform = pkgs.makeRustPlatform {
+        cargo = rust-toolchain;
+        rustc = rust-toolchain;
+      };
 
       nightly-rustfmt = pkgs.rust-bin.nightly.latest.rustfmt;
 
@@ -130,6 +135,30 @@
 
         doCheck = false;
         cargoSha256 = "sha256-A24O3p85mCRVZfDyyjQcQosj/4COGNnqiQK2a7nCP6I=";
+      };
+
+      packages.default = rustPlatform.buildRustPackage {
+        name = "fission-server";
+        src = ./.;
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+          outputHashes = {
+            "rs-ucan-0.1.0" = "sha256-bJq5mMk5TLvE9w1dtY1sRCyE2uVfcMFSupsSFTXw9rY=";
+          };
+        };
+        buildInputs = with pkgs;
+          [openssl postgresql rust-toolchain]
+          ++ lib.optionals stdenv.isDarwin [
+            darwin.apple_sdk.frameworks.Security
+            darwin.apple_sdk.frameworks.CoreFoundation
+            darwin.apple_sdk.frameworks.Foundation
+          ];
+
+        doCheck = false;
+
+        nativeBuildInputs = with pkgs; [pkg-config];
+
+        OPENSSL_NO_VENDOR = 1; # see https://github.com/sfackler/rust-openssl/pull/2122
       };
     });
 }
