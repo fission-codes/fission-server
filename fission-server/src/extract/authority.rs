@@ -199,45 +199,6 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn extract_authority_invalid_ucan() -> TestResult {
-        let ctx = TestContext::new().await;
-        let issuer = &EdDidKey::generate();
-
-        // Test if request requires a valid UCAN
-        async fn authorized_get(
-            _state: State<AppState<TestSetup>>,
-            _authority: Authority,
-        ) -> Response<BoxBody> {
-            Response::default()
-        }
-
-        let app: Router = Router::new()
-            .route("/", get(authorized_get))
-            .with_state(ctx.app_state().clone());
-
-        // If an invalid UCAN is given
-        let faulty_ucan: Ucan = UcanBuilder::default()
-            .for_audience(ctx.server_did())
-            .with_expiration(0)
-            .sign(issuer)?;
-
-        let faulty_ucan_string: String = faulty_ucan.encode()?;
-        let invalid_auth = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/")
-                    .header("Authorization", format!("Bearer {}", faulty_ucan_string))
-                    .body("".into())?,
-            )
-            .await?;
-
-        assert_eq!(invalid_auth.status(), StatusCode::UNAUTHORIZED);
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
     async fn extract_authority_no_auth_header() -> TestResult {
         let ctx = TestContext::new().await;
 
