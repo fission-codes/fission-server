@@ -5,4 +5,4 @@ CREATE TABLE revocations (
     challenge TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX idx_revocations_cid ON revocations (cid);
+CREATE INDEX idx_revocations_cid ON revocations (cid);
