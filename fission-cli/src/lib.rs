@@ -211,7 +211,7 @@ impl<'s> LoadedKeyState<'s> {
         )?
         .json()?;
 
-        self.ucans.extend(ucans_response.ucans);
+        self.ucans.extend(ucans_response.into_unrevoked());
 
         Ok(())
     }

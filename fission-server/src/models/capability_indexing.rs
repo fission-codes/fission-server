@@ -1,24 +1,27 @@
 //! Models related to capability indexing, specifically the `ucans` and `capabilities` table.
 
-use crate::db::{
-    schema::{capabilities, ucans},
-    Conn,
+use crate::{
+    db::{
+        schema::{capabilities, ucans},
+        Conn,
+    },
+    models::revocation::find_revoked_subset,
 };
 use anyhow::{anyhow, Result};
 use chrono::NaiveDateTime;
-use cid::{
-    multihash::{Code, MultihashDigest},
-    Cid,
-};
 use diesel::{
     pg::Pg, Associations, ExpressionMethods, Identifiable, Insertable, OptionalExtension, QueryDsl,
     Queryable, Selectable, SelectableHelper,
 };
 use diesel_async::RunQueryDsl;
+use fission_core::{common::UcansResponse, revocation::canonical_cid};
 use rs_ucan::{capability::Capability, ucan::Ucan};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::BTreeSet, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str::FromStr,
+};
 use utoipa::ToSchema;
 
 /// Represents an indexed UCAN in the database
@@ -164,7 +167,10 @@ pub async fn index_ucan(ucan: &Ucan, conn: &mut Conn<'_>) -> Result<IndexedUcan>
 }
 
 /// Fetch all indexed UCANs that end in a specific audience
-pub async fn find_ucans_for_audience(audience: String, conn: &mut Conn<'_>) -> Result<Vec<Ucan>> {
+pub async fn find_ucans_for_audience(
+    audience: String,
+    conn: &mut Conn<'_>,
+) -> Result<UcansResponse> {
     let mut visited_ids_set = BTreeSet::<i32>::new();
     let mut audience_dids_frontier = BTreeSet::from([audience]);
 
@@ -206,10 +212,17 @@ pub async fn find_ucans_for_audience(audience: String, conn: &mut Conn<'_>) -> R
 
     let ucans = indexed_ucans
         .into_iter()
-        .map(|ucan| Ucan::from_str(&ucan.encoded).map_err(|e| anyhow!(e)))
-        .collect::<Result<Vec<_>>>()?;
+        .map(|ucan| {
+            let decoded = Ucan::from_str(&ucan.encoded).map_err(|e| anyhow!(e))?;
+            Ok((ucan.cid, decoded))
+        })
+        .collect::<Result<BTreeMap<String, Ucan>>>()?;
 
-    Ok(ucans)
+    let canonical_cids = ucans.keys().cloned().collect();
+
+    let revoked = find_revoked_subset(canonical_cids, conn).await?;
+
+    Ok(UcansResponse { ucans, revoked })
 }
 
 impl NewIndexedUcan {
@@ -226,9 +239,7 @@ impl NewIndexedUcan {
             .expires_at()
             .and_then(|seconds| NaiveDateTime::from_timestamp_millis((seconds * 1000) as i64));
 
-        let hash = Code::Sha2_256.digest(encoded.as_bytes());
-        // 0x55 is the raw codec
-        let cid = Cid::new_v1(0x55, hash).to_string();
+        let cid = canonical_cid(ucan)?;
 
         Ok(Self {
             cid,

@@ -2,6 +2,7 @@
 
 use rs_ucan::ucan::Ucan;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use utoipa::ToSchema;
 use validator::Validate;
 
@@ -51,6 +52,18 @@ pub struct SuccessResponse {
 /// Response type containing UCANs
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct UcansResponse {
-    /// A list of UCANs returned from the request
-    pub ucans: Vec<Ucan>,
+    /// Ucans indexed by their canonical CID (base32, sha-256 and raw codec)
+    pub ucans: BTreeMap<String, Ucan>,
+    /// The subset of canonical CIDs of UCANs that are revoked
+    pub revoked: BTreeSet<String>,
+}
+
+impl UcansResponse {
+    /// List unrevoked ucans
+    pub fn into_unrevoked(self) -> impl Iterator<Item = Ucan> {
+        let Self { ucans, revoked } = self;
+        ucans.into_iter().filter_map(move |(canonical_cid, ucan)| {
+            revoked.contains(&canonical_cid).then_some(ucan)
+        })
+    }
 }
