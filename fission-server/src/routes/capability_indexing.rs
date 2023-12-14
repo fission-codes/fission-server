@@ -173,10 +173,10 @@ mod tests {
         let (_, response) = fetch_capabilities(device, &ctx).await?;
         let (_, response_other) = fetch_capabilities(device_other, &ctx).await?;
 
-        let ucans = response.ucans.values().into_iter().collect::<Vec<_>>();
+        let ucans = response.ucans.into_values().into_iter().collect::<Vec<_>>();
         let ucans_other = response_other
             .ucans
-            .values()
+            .into_values()
             .into_iter()
             .collect::<Vec<_>>();
         assert_matches!(&ucans[..], [u] if u.encode().unwrap() == ucan.encode().unwrap());
@@ -199,19 +199,23 @@ mod tests {
 
         let (status, response) = fetch_capabilities(id_two, &ctx).await?;
 
+        assert_eq!(status, StatusCode::OK);
+
         // We currently allow it to fetch the whole chain, ignoring
         // the `prf` UCAN field altogether.
         // In the future, when the `prf` field is removed, this will make
         // a lot more sense.
-        assert_eq!(status, StatusCode::OK);
 
-        let ucans = response.ucans.values().into_iter().collect::<Vec<_>>();
-        assert_matches!(
-            &ucans[..],
-            [u1, u2] if
-                u1.encode().unwrap() == ucan_one.encode().unwrap()
-                && u2.encode().unwrap() == ucan_two.encode().unwrap()
-        );
+        let ucans = response
+            .ucans
+            .into_values()
+            .into_iter()
+            .map(|ucan| ucan.encode())
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert_eq!(ucans.len(), 2);
+        assert!(ucans.contains(&ucan_one.encode()?));
+        assert!(ucans.contains(&ucan_two.encode()?));
 
         Ok(())
     }
