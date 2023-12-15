@@ -244,9 +244,8 @@ pub async fn delete_account<S: ServerSetup>(
 
             let revocation_records = indexed_ucans
                 .iter()
-                .filter_map(|(issuer, encoded, _)| {
-                    (issuer == server_keypair.did_as_str()).then(|| ucan_revocation(&server_keypair, encoded))
-                })
+                .filter(|(issuer, _, _)| (issuer == server_keypair.did_as_str()))
+                .map(|(_, encoded, _)| ucan_revocation(&server_keypair, encoded))
                 .collect::<Result<Vec<NewRevocationRecord>>>()?;
 
             if revocation_records.is_empty() {
