@@ -351,7 +351,10 @@ mod tests {
         let Some(account_ucan) = account_ucan else {
             bail!("Missing Ucan!");
         };
-        let Some(account_did) = account_ucan.capabilities().find_map(|cap| cap.resource().downcast_ref::<Did>()) else {
+        let Some(account_did) = account_ucan
+            .capabilities()
+            .find_map(|cap| cap.resource().downcast_ref::<Did>())
+        else {
             bail!("Missing account capability");
         };
 

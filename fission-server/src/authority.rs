@@ -130,10 +130,16 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         let [cap] = caps[..] else {
             if caps.is_empty() {
                 tracing::error!("No capabilities provided.");
-                return Err(AppError::new(StatusCode::BAD_REQUEST, Some("Invocation UCAN without capabilities provided.")));
+                return Err(AppError::new(
+                    StatusCode::BAD_REQUEST,
+                    Some("Invocation UCAN without capabilities provided."),
+                ));
             }
             tracing::error!(caps = ?caps, "Invocation UCAN with multiple capabilities is ambiguous.");
-            return Err(AppError::new(StatusCode::BAD_REQUEST, Some("Invocation UCAN with multiple capabilities is ambiguous.")));
+            return Err(AppError::new(
+                StatusCode::BAD_REQUEST,
+                Some("Invocation UCAN with multiple capabilities is ambiguous."),
+            ));
         };
 
         if !cap.ability().is_valid_attenuation(&ability) {
@@ -147,10 +153,13 @@ impl<F: Clone + DeserializeOwned> Authority<F> {
         }
 
         let Some(Did(did)) = cap.resource().downcast_ref() else {
-            return Err(AppError::new(StatusCode::BAD_REQUEST, Some(format!(
-                "Invalid authorization. Expected resource to be DID, but got {}",
-                cap.resource()
-            ))));
+            return Err(AppError::new(
+                StatusCode::BAD_REQUEST,
+                Some(format!(
+                    "Invalid authorization. Expected resource to be DID, but got {}",
+                    cap.resource()
+                )),
+            ));
         };
 
         let ability_str = ability.to_string();
