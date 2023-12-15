@@ -130,6 +130,7 @@ impl RequestResponseLogger for Logger {
                         .headers
                         .get(REQUEST_ID)
                         .map(|h| h.to_str().unwrap_or(NULL)),
+                    request_method = %parts.method,
                     request_path = %path,
                     query_string = parts.uri.query(),
                     authorization = parts
@@ -150,6 +151,7 @@ impl RequestResponseLogger for Logger {
                     .headers
                     .get(REQUEST_ID)
                     .map(|h| h.to_str().unwrap_or(NULL)),
+                request_method = %parts.method,
                 request_path = %path,
                 query_string = parts.uri.query(),
                 authorization= parts

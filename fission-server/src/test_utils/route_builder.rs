@@ -14,7 +14,7 @@ pub(crate) struct RouteBuilder<F = DefaultFact> {
     path: Uri,
     body: Option<(Mime, Body)>,
     ucan: Option<Ucan<F>>,
-    ucan_proof: Option<Ucan>,
+    ucan_proofs: Vec<Ucan>,
     accept_mime: Option<Mime>,
 }
 
@@ -30,7 +30,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
             path: TryFrom::try_from(path).map_err(Into::into).unwrap(),
             body: Default::default(),
             ucan: Default::default(),
-            ucan_proof: Default::default(),
+            ucan_proofs: Default::default(),
             accept_mime: Default::default(),
         }
     }
@@ -40,9 +40,15 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
         self
     }
 
-    #[allow(unused)]
     pub(crate) fn with_ucan_proof(mut self, ucan: Ucan) -> Self {
-        self.ucan_proof = Some(ucan);
+        self.ucan_proofs.extend(Some(ucan));
+        self
+    }
+
+    pub(crate) fn with_ucan_proofs(mut self, proofs: impl IntoIterator<Item = Ucan>) -> Self {
+        for proof in proofs.into_iter() {
+            self = self.with_ucan_proof(proof);
+        }
         self
     }
 
@@ -91,40 +97,36 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
     }
 
     fn build_request(&mut self) -> Result<Request<Body>> {
-        let builder = Request::builder()
+        let mut builder = Request::builder()
             .method(self.method.clone())
             .uri(self.path.clone());
 
-        let builder = if let Some(mime) = self.accept_mime.take() {
-            builder.header(http::header::ACCEPT, mime.as_ref())
-        } else {
-            builder
-        };
+        if let Some(mime) = self.accept_mime.take() {
+            builder = builder.header(http::header::ACCEPT, mime.as_ref())
+        }
 
-        let builder = if let Some(ucan) = self.ucan.take() {
+        if let Some(ucan) = self.ucan.take() {
             let token = format!("Bearer {}", ucan.encode()?);
 
-            builder.header(http::header::AUTHORIZATION, token)
-        } else {
-            builder
-        };
+            builder = builder.header(http::header::AUTHORIZATION, token)
+        }
 
-        let builder = if let Some(proof) = self.ucan_proof.take() {
-            let encoded_ucan = proof.encode()?;
-            let cid = proof.to_cid(None)?;
-            builder.header("ucan", format!("{} {}", cid, encoded_ucan))
-        } else {
-            builder
-        };
+        let proofs_header = self
+            .ucan_proofs
+            .drain(..)
+            .map(|ucan| ucan.encode())
+            .collect::<Result<Vec<String>, _>>()?
+            .join(" ");
+        if !proofs_header.is_empty() {
+            builder = builder.header("ucan", proofs_header);
+        }
 
-        let request = if let Some((mime, body)) = self.body.take() {
-            builder
+        if let Some((mime, body)) = self.body.take() {
+            Ok(builder
                 .header(http::header::CONTENT_TYPE, mime.as_ref())
-                .body(body)?
+                .body(body)?)
         } else {
-            builder.body(Body::from(vec![]))?
-        };
-
-        Ok(request)
+            Ok(builder.body(Body::from(vec![]))?)
+        }
     }
 }
