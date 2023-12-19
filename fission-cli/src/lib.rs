@@ -211,7 +211,7 @@ impl<'s> LoadedKeyState<'s> {
         )?
         .json()?;
 
-        self.ucans.extend(ucans_response.ucans);
+        self.ucans.extend(ucans_response.into_unrevoked());
 
         Ok(())
     }
@@ -260,7 +260,7 @@ impl<'s> LoadedKeyState<'s> {
         let mut caps = Vec::new();
 
         for ucan in self.ucans.iter() {
-            if ucan.audience() == self.key.as_str() {
+            if ucan.audience() == self.key.did_as_str() {
                 tracing::debug!(ucan = ucan.encode()?, "Finding capabilities from UCAN");
                 for cap in ucan.capabilities() {
                     let Some(Did(subject_did)) = cap.resource().downcast_ref() else {
@@ -274,7 +274,7 @@ impl<'s> LoadedKeyState<'s> {
                     if let Some(chain) = find_delegation_chain(
                         &subject_did,
                         cap.ability(),
-                        self.key.as_str(),
+                        self.key.did_as_str(),
                         &self.ucans,
                     ) {
                         tracing::debug!("Delegation chain found.");
@@ -391,7 +391,7 @@ impl<'s> LoadedKeyState<'s> {
 
     fn issue_ucan(&self, subject_did: Did, ability: impl Ability) -> Result<(Ucan, Vec<&Ucan>)> {
         let Some(chain) =
-            find_delegation_chain(&subject_did, &ability, self.key.as_str(), &self.ucans)
+            find_delegation_chain(&subject_did, &ability, self.key.did_as_str(), &self.ucans)
         else {
             bail!("Couldn't find proof for ability {ability} on subject {subject_did}");
         };

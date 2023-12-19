@@ -4,10 +4,11 @@ use crate::{
     error::AppError,
     extract::authority_addon::UcanAddon,
     models::account::{Account, RootAccount},
-    routes::{account, auth, health, ping},
+    routes::{account, auth, health, ping, revocations},
 };
-use fission_core::common::{
-    AccountCreationRequest, AccountResponse, EmailVerifyRequest, SuccessResponse,
+use fission_core::{
+    common::{AccountCreationRequest, AccountResponse, EmailVerifyRequest, SuccessResponse},
+    revocation::Revocation,
 };
 use utoipa::OpenApi;
 
@@ -22,6 +23,7 @@ use utoipa::OpenApi;
         account::create_account,
         account::get_account,
         account::get_did,
+        revocations::post_revocation,
     ),
     components(
         schemas(
@@ -32,6 +34,7 @@ use utoipa::OpenApi;
             AccountResponse,
             RootAccount,
             Account,
+            Revocation,
             health::HealthcheckResponse
         )
     ),

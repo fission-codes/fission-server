@@ -44,6 +44,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    revocations (id) {
+        id -> Int4,
+        cid -> Text,
+        iss -> Text,
+        challenge -> Text,
+    }
+}
+
+diesel::table! {
     ucans (id) {
         id -> Int4,
         cid -> Text,
@@ -74,6 +83,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     apps,
     capabilities,
     email_verifications,
+    revocations,
     ucans,
     volumes,
 );

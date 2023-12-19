@@ -1,5 +1,9 @@
 //! Routes for the capability indexing endpoints
 
+use crate::{
+    app_state::AppState, authority::Authority, db, error::AppResult, extract::json::Json,
+    models::capability_indexing::find_ucans_for_audience, setups::ServerSetup,
+};
 use axum::extract::State;
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
 use fission_core::{
@@ -7,16 +11,6 @@ use fission_core::{
     common::UcansResponse,
 };
 use http::StatusCode;
-
-use crate::{
-    app_state::AppState,
-    authority::Authority,
-    db,
-    error::{AppError, AppResult},
-    extract::json::Json,
-    models::capability_indexing::find_ucans_for_audience,
-    setups::ServerSetup,
-};
 
 /// Return capabilities for a given DID
 #[utoipa::path(
@@ -37,17 +31,15 @@ pub async fn get_capabilities<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<UcansResponse>)> {
     let Did(audience_needle) = authority
-        .get_capability(IndexingAbility::Fetch)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
+        .get_capability(&state, IndexingAbility::Fetch)
+        .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
-            let ucans = find_ucans_for_audience(audience_needle, conn)
-                .await
-                .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, Some(e)))?;
+            let ucans = find_ucans_for_audience(audience_needle, conn).await?;
 
-            Ok((StatusCode::OK, Json(UcansResponse { ucans })))
+            Ok((StatusCode::OK, Json(ucans)))
         }
         .scope_boxed()
     })
@@ -124,9 +116,10 @@ mod tests {
         let ucan = index_test_ucan(server, device, conn).await?;
 
         let (status, response) = fetch_capabilities(device, &ctx).await?;
-
         assert_eq!(status, StatusCode::OK);
-        assert_matches!(&response.ucans[..], [one_ucan] if one_ucan.encode().unwrap() == ucan.encode().unwrap());
+
+        let ucans = response.ucans.values().into_iter().collect::<Vec<_>>();
+        assert_matches!(&ucans[..], [one_ucan] if one_ucan.encode().unwrap() == ucan.encode().unwrap());
 
         Ok(())
     }
@@ -180,8 +173,14 @@ mod tests {
         let (_, response) = fetch_capabilities(device, &ctx).await?;
         let (_, response_other) = fetch_capabilities(device_other, &ctx).await?;
 
-        assert_matches!(&response.ucans[..], [u] if u.encode().unwrap() == ucan.encode().unwrap());
-        assert_matches!(&response_other.ucans[..], [u] if u.encode().unwrap() == ucan_other.encode().unwrap());
+        let ucans = response.ucans.into_values().into_iter().collect::<Vec<_>>();
+        let ucans_other = response_other
+            .ucans
+            .into_values()
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_matches!(&ucans[..], [u] if u.encode().unwrap() == ucan.encode().unwrap());
+        assert_matches!(&ucans_other[..], [u] if u.encode().unwrap() == ucan_other.encode().unwrap());
 
         Ok(())
     }
@@ -200,17 +199,23 @@ mod tests {
 
         let (status, response) = fetch_capabilities(id_two, &ctx).await?;
 
+        assert_eq!(status, StatusCode::OK);
+
         // We currently allow it to fetch the whole chain, ignoring
         // the `prf` UCAN field altogether.
         // In the future, when the `prf` field is removed, this will make
         // a lot more sense.
-        assert_eq!(status, StatusCode::OK);
-        assert_matches!(
-            &response.ucans[..],
-            [u1, u2] if
-                u1.encode().unwrap() == ucan_one.encode().unwrap()
-                && u2.encode().unwrap() == ucan_two.encode().unwrap()
-        );
+
+        let ucans = response
+            .ucans
+            .into_values()
+            .into_iter()
+            .map(|ucan| ucan.encode())
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert_eq!(ucans.len(), 2);
+        assert!(ucans.contains(&ucan_one.encode()?));
+        assert!(ucans.contains(&ucan_two.encode()?));
 
         Ok(())
     }

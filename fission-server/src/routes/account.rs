@@ -8,11 +8,12 @@ use crate::{
     extract::json::Json,
     models::{
         account::{Account, RootAccount},
-        capability_indexing::IndexedCapability,
         email_verification::EmailVerification,
+        revocation::NewRevocationRecord,
     },
     setups::ServerSetup,
 };
+use anyhow::Result;
 use axum::{
     self,
     extract::{Path, State},
@@ -23,7 +24,11 @@ use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
     common::{AccountCreationRequest, AccountResponse, DidResponse, SuccessResponse},
+    ed_did_key::EdDidKey,
+    revocation::Revocation,
 };
+use rs_ucan::ucan::Ucan;
+use std::str::FromStr;
 use tracing::debug;
 use validator::Validate;
 
@@ -51,8 +56,8 @@ pub async fn create_account<S: ServerSetup>(
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
     let Did(did) = authority
-        .get_capability(FissionAbility::AccountCreate)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
+        .get_capability(&state, FissionAbility::AccountCreate)
+        .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
@@ -151,7 +156,7 @@ pub async fn get_did<S: ServerSetup>(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Found account", body = DidResponse),
+        (status = 200, description = "Updated account", body = DidResponse),
         (status = 400, description = "Invalid request", body = AppError),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Not found"),
@@ -164,8 +169,8 @@ pub async fn patch_username<S: ServerSetup>(
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
     let Did(did) = authority
-        .get_capability(FissionAbility::AccountManage)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
+        .get_capability(&state, FissionAbility::AccountManage)
+        .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
 
@@ -176,7 +181,9 @@ pub async fn patch_username<S: ServerSetup>(
         .execute(conn)
         .await?;
 
-    Ok((StatusCode::CREATED, Json(SuccessResponse { success: true })))
+    // TODO(matheus23) handle username conflict errors correctly
+
+    Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
 }
 
 /// Handler for deleting an account
@@ -198,13 +205,14 @@ pub async fn delete_account<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
     let Did(did) = authority
-        .get_capability(FissionAbility::AccountDelete)
-        .map_err(|e| AppError::new(StatusCode::FORBIDDEN, Some(e)))?;
+        .get_capability(&state, FissionAbility::AccountDelete)
+        .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
+    let server_keypair = state.server_keypair;
     conn.transaction(|conn| {
         async move {
-            use crate::db::schema::*;
+            use crate::db::schema::{accounts, capabilities, ucans, revocations};
             let account = diesel::delete(accounts::table)
                 .filter(accounts::did.eq(&did))
                 .get_result::<Account>(conn)
@@ -217,18 +225,44 @@ pub async fn delete_account<S: ServerSetup>(
                     )
                 })?;
 
-            let indexed_caps: Vec<IndexedCapability> = capabilities::table
+            let indexed_ucans: Vec<(String, String, i32)> = capabilities::table
+                .inner_join(ucans::table)
                 .filter(capabilities::resource.eq(&did))
+                .select((ucans::issuer, ucans::encoded, ucans::id))
                 .get_results(conn)
                 .await?;
 
-            // TODO: Actually revoke associated UCANs
+            let ucan_ids = indexed_ucans.iter().map(|(_, _, ucan_id)| ucan_id);
+
+            // Revoke the server to user UCANs
+
+            fn ucan_revocation(issuer: &EdDidKey, encoded_ucan: &str) -> Result<NewRevocationRecord> {
+                let ucan: Ucan = Ucan::from_str(encoded_ucan)?;
+                let revocation = Revocation::new(issuer, &ucan)?;
+                Ok(NewRevocationRecord::new(revocation))
+            }
+
+            let revocation_records = indexed_ucans
+                .iter()
+                .filter(|(issuer, _, _)| (issuer == server_keypair.did_as_str()))
+                .map(|(_, encoded, _)| ucan_revocation(&server_keypair, encoded))
+                .collect::<Result<Vec<NewRevocationRecord>>>()?;
+
+            if revocation_records.is_empty() {
+                tracing::warn!(?account, "Trouble revoking UCANs associated with this account: Couldn't find UCANs to revoke");
+            }
+
+            diesel::insert_into(revocations::table)
+                .values(revocation_records)
+                .execute(conn).await?;
+
+            // We also delete any revoked ucans, since we don't need them anymore & they're a liability data-wise.
             diesel::delete(ucans::table)
-                .filter(ucans::id.eq_any(indexed_caps.iter().map(|cap| cap.ucan_id)))
+                .filter(ucans::id.eq_any(ucan_ids))
                 .execute(conn)
                 .await?;
 
-            Ok((StatusCode::CREATED, Json(account)))
+            Ok((StatusCode::OK, Json(account)))
         }
         .scope_boxed()
     })
@@ -244,7 +278,7 @@ mod tests {
         models::account::RootAccount,
         test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
-    use anyhow::Result;
+    use anyhow::{bail, Result};
     use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
@@ -254,6 +288,7 @@ mod tests {
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
         DefaultFact,
     };
+    use serde::de::DeserializeOwned;
     use serde_json::json;
     use testresult::TestResult;
 
@@ -299,6 +334,71 @@ mod tests {
             .await?;
 
         Ok((status, root_account))
+    }
+
+    fn build_acc_invocation(
+        ability: FissionAbility,
+        account: &RootAccount,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<Ucan> {
+        let account_ucan = account
+            .ucans
+            .iter()
+            .find(|ucan| ucan.audience() == issuer.did_as_str());
+
+        let Some(account_ucan) = account_ucan else {
+            bail!("Missing Ucan!");
+        };
+        let Some(account_did) = account_ucan
+            .capabilities()
+            .find_map(|cap| cap.resource().downcast_ref::<Did>())
+        else {
+            bail!("Missing account capability");
+        };
+
+        assert_eq!(account_did.to_string(), account.account.did);
+
+        let invocation = UcanBuilder::default()
+            .claiming_capability(Capability::new(account_did.clone(), ability, EmptyCaveat))
+            .for_audience(ctx.server_did())
+            .witnessed_by(account_ucan, None)
+            .sign(issuer)?;
+
+        Ok(invocation)
+    }
+
+    async fn patch_username<T: DeserializeOwned>(
+        new_username: &str,
+        account: &RootAccount,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, T)> {
+        let invocation =
+            build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
+
+        RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::PATCH,
+            format!("/api/v0/account/username/{new_username}"),
+        )
+        .with_ucan(invocation)
+        .with_ucan_proofs(account.ucans.clone())
+        .into_json_response()
+        .await
+    }
+
+    async fn delete_account<T: DeserializeOwned>(
+        account: &RootAccount,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, T)> {
+        let invocation = build_acc_invocation(FissionAbility::AccountDelete, account, issuer, ctx)?;
+        RouteBuilder::<DefaultFact>::new(ctx.app(), Method::DELETE, format!("/api/v0/account"))
+            .with_ucan(invocation)
+            .with_ucan_proofs(account.ucans.clone())
+            .into_json_response()
+            .await
     }
 
     #[test_log::test(tokio::test)]
@@ -454,6 +554,84 @@ mod tests {
         .await?;
 
         assert_eq!(response.did, account.account.did);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_patch_account_ok() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let username2 = "oedipa2";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(root_account.account.email, Some(email.to_string()));
+
+        let (status, resp) =
+            patch_username::<SuccessResponse>(username2, &root_account, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(resp.success);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_delete_account_ok() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(root_account.account.email, Some(email.to_string()));
+
+        let (status, account) = delete_account::<Account>(&root_account, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(account.username, root_account.account.username);
+        assert_eq!(account.email, root_account.account.email);
+        assert_eq!(account.did, root_account.account.did);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_patch_revoked_account_err() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let username2 = "oedipa2";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(root_account.account.email, Some(email.to_string()));
+
+        let (status, account) = delete_account::<Account>(&root_account, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(account.username, root_account.account.username);
+        assert_eq!(account.email, root_account.account.email);
+        assert_eq!(account.did, root_account.account.did);
+
+        let (status, _) =
+            patch_username::<serde_json::Value>(username2, &root_account, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
 
         Ok(())
     }
