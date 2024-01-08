@@ -65,7 +65,7 @@ Registers a full account given an email verification code and delegates the acco
 
 | Field | Type | Comment |
 |-------|------|---------|
-| `code` | `number` | The code from the verification email |
+| `code` | `string` | The code from the verification email |
 | `email` | `string` | |
 | `username` | `string` | |
 | `credentialID` | `string` | Optional. If present, this may be useful for better passkey UX. |

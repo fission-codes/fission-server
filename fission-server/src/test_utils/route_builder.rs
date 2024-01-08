@@ -116,7 +116,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
             .drain(..)
             .map(|ucan| ucan.encode())
             .collect::<Result<Vec<String>, _>>()?
-            .join(" ");
+            .join(", ");
         if !proofs_header.is_empty() {
             builder = builder.header("ucan", proofs_header);
         }
