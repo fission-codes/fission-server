@@ -51,8 +51,8 @@ impl Header for UcanHeader {
                 headers::Error::invalid()
             })?;
 
-            for ucan_str in header_str.split_ascii_whitespace() {
-                let ucan = Ucan::from_str(ucan_str).map_err(|e| {
+            for ucan_str in header_str.split(',') {
+                let ucan = Ucan::from_str(ucan_str.trim()).map_err(|e| {
                     tracing::warn!("Got invalid ucan in ucan request header: {e}");
                     headers::Error::invalid()
                 })?;

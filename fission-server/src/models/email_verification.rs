@@ -94,7 +94,7 @@ impl EmailVerification {
 fn generate_code() -> String {
     let mut rng = rand::thread_rng();
     // This is maybe way too little entropy. That said, my bank sends me 5 digit codes. 🤷‍♂️
-    let code = rng.gen_range(0..=99999);
+    let code = rng.gen_range(0..=999_999);
     // 0-pad the 6-digit code:
     format!("{code:0>6}")
 }

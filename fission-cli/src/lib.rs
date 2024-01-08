@@ -551,5 +551,5 @@ fn encode_ucan_header(proofs: &[&Ucan]) -> Result<String> {
         .iter()
         .map(|ucan| Ok(ucan.encode()?))
         .collect::<Result<Vec<_>>>()?
-        .join(" "))
+        .join(", "))
 }
