@@ -52,8 +52,15 @@ impl Header for UcanHeader {
             })?;
 
             for ucan_str in header_str.split(',') {
-                let ucan = Ucan::from_str(ucan_str.trim()).map_err(|e| {
-                    tracing::warn!("Got invalid ucan in ucan request header: {e}");
+                let ucan_str = ucan_str.trim();
+                if ucan_str.is_empty() {
+                    // This can be the case, since `"".split(",").collect() == vec![""]`.
+                    // Also catches cases where someone sets `ucan=,,<token>` or uses trailing commas.
+                    // Per Postel's principle we're lenient in what we accept.
+                    continue;
+                }
+                let ucan = Ucan::from_str(ucan_str).map_err(|e| {
+                    tracing::warn!(?ucan_str, "Got invalid ucan in ucan request header: {e}");
                     headers::Error::invalid()
                 })?;
                 ucans.push(ucan);
@@ -120,12 +127,18 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
     let TypedHeader(Authorization(bearer)) = parts
         .extract::<TypedHeader<Authorization<Bearer>>>()
         .await
-        .map_err(|_| MissingCredentials)?;
+        .map_err(|e| {
+            tracing::error!(?e, "Error while looking up bearer token header value");
+            MissingCredentials
+        })?;
 
     let TypedHeader(UcanHeader(proofs)) = parts
         .extract::<TypedHeader<UcanHeader>>()
         .await
-        .map_err(|_| MissingCredentials)?;
+        .map_err(|e| {
+            tracing::error!(?e, "Error while looking up ucans header value");
+            MissingCredentials
+        })?;
 
     // Decode the UCAN
     let token = bearer.token();

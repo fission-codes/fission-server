@@ -1511,6 +1511,8 @@ dependencies = [
  "rs-ucan",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-util",
  "toml 0.8.8",
  "tracing",
  "tracing-subscriber",

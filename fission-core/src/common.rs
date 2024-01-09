@@ -63,7 +63,11 @@ impl UcansResponse {
     pub fn into_unrevoked(self) -> impl Iterator<Item = Ucan> {
         let Self { ucans, revoked } = self;
         ucans.into_iter().filter_map(move |(canonical_cid, ucan)| {
-            revoked.contains(&canonical_cid).then_some(ucan)
+            if revoked.contains(&canonical_cid) {
+                None
+            } else {
+                Some(ucan)
+            }
         })
     }
 }

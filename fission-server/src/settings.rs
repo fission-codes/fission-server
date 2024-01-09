@@ -183,8 +183,8 @@ impl Settings {
     /// (as opposed to `self.server.keypair_path`, which is relative to the
     /// settings file)
     pub fn relative_keypair_path(&self) -> PathBuf {
-        if let Some(path) = &self.path {
-            path.join(&self.server.keypair_path)
+        if let Some(settings_dir) = self.path.as_ref().and_then(|p| p.parent()) {
+            settings_dir.join(&self.server.keypair_path)
         } else {
             PathBuf::from(&self.server.keypair_path)
         }

@@ -13,11 +13,7 @@ use fission_core::{
     common::{AccountCreationRequest, EmailVerifyRequest, UcansResponse},
     ed_did_key::EdDidKey,
 };
-use reqwest::{
-    blocking::{Client, RequestBuilder, Response},
-    header::CONTENT_TYPE,
-    Method,
-};
+use reqwest::{header::CONTENT_TYPE, Client, Method, RequestBuilder, Response};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -83,26 +79,26 @@ pub struct DeleteCommand {
 }
 
 impl Cli {
-    pub fn run(&self, mut settings: Settings) -> Result<()> {
+    pub async fn run(&self, mut settings: Settings) -> Result<()> {
         if let Some(key_file) = &self.key_file {
             settings.key_file = key_file.clone();
         }
 
         match &self.command {
             Commands::Account(account) => {
-                let mut state = CliState::load(&settings)?;
-                state.fetch_ucans()?;
+                let mut state = CliState::load(&settings).await?;
+                state.fetch_ucans().await?;
 
                 match &account.command {
                     AccountCommands::Create => {
-                        let account = state.create_account()?;
+                        let account = state.create_account().await?;
 
                         println!("Successfully created your account");
 
                         tracing::info!(?account, "Created account");
                     }
                     AccountCommands::List => {
-                        let accounts = state.find_accounts(state.find_capabilities()?);
+                        let accounts = state.find_accounts(state.find_capabilities()?).await;
                         if accounts.is_empty() {
                             println!("You don't have access to any accounts yet. Use \"fission-cli account create\" to create a new one.");
                         } else {
@@ -123,7 +119,7 @@ impl Cli {
                         }
                     }
                     AccountCommands::Rename(rename) => {
-                        let accounts = state.find_accounts(state.find_capabilities()?);
+                        let accounts = state.find_accounts(state.find_capabilities()?).await;
 
                         let (_info, did, chain) = state.pick_account(
                             accounts,
@@ -133,12 +129,12 @@ impl Cli {
 
                         let new_username = inquire::Text::new("Pick a new username:").prompt()?;
 
-                        state.rename_account(did, chain, new_username)?;
+                        state.rename_account(did, chain, new_username).await?;
 
                         println!("Successfully changed your username.");
                     }
                     AccountCommands::Delete(delete) => {
-                        let accounts = state.find_accounts(state.find_capabilities()?);
+                        let accounts = state.find_accounts(state.find_capabilities()?).await;
 
                         let (_info, did, chain) = state.pick_account(
                             accounts,
@@ -146,7 +142,7 @@ impl Cli {
                             "Which account do you want to delete?",
                         )?;
 
-                        state.delete_account(did, chain)?;
+                        state.delete_account(did, chain).await?;
 
                         println!("Successfully deleted your account.");
                     }
@@ -178,14 +174,17 @@ pub(crate) struct CliState<'s> {
 }
 
 impl<'s> CliState<'s> {
-    fn load(settings: &'s Settings) -> Result<Self> {
+    async fn load(settings: &'s Settings) -> Result<CliState<'s>> {
         let key = load_key(settings)?;
 
         let client = Client::new();
 
         let url = Url::parse(&format!("{}/api/v0/server-did", settings.api_endpoint))?;
         tracing::info!(%url, "Fetching server DID");
-        let server_did = handle_failure(client.get(url).send()?)?.text()?;
+        let server_did = handle_failure(client.get(url).send().await?)
+            .await?
+            .text()
+            .await?;
         tracing::info!(%server_did, "Got server DID");
 
         Ok(Self {
@@ -201,23 +200,25 @@ impl<'s> CliState<'s> {
         Did(self.key.did())
     }
 
-    fn fetch_ucans(&mut self) -> Result<()> {
+    async fn fetch_ucans(&mut self) -> Result<()> {
         let (ucan, proofs) = self.issue_ucan(self.device_did(), IndexingAbility::Fetch)?;
 
-        let ucans_response: UcansResponse = handle_failure(
-            self.server_request(Method::GET, "/api/v0/capabilities")?
-                .bearer_auth(ucan.encode()?)
-                .header("ucan", encode_ucan_header(&proofs)?)
-                .send()?,
-        )?
-        .json()?;
+        let request = self
+            .server_request(Method::GET, "/api/v0/capabilities")?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(&proofs)?);
+
+        println!("DEBUG {:?}", request.try_clone().unwrap().build().unwrap());
+
+        let ucans_response: UcansResponse =
+            handle_failure(request.send().await?).await?.json().await?;
 
         self.ucans.extend(ucans_response.into_unrevoked());
 
         Ok(())
     }
 
-    fn create_account(&mut self) -> Result<AccountInfo> {
+    async fn create_account(&mut self) -> Result<AccountInfo> {
         let email = inquire::Text::new("What's your email address?").prompt()?;
 
         handle_failure(
@@ -225,8 +226,10 @@ impl<'s> CliState<'s> {
                 .json(&EmailVerifyRequest {
                     email: email.clone(),
                 })
-                .send()?,
-        )?;
+                .send()
+                .await?,
+        )
+        .await?;
 
         println!("Successfully requested an email verification code.");
 
@@ -248,9 +251,12 @@ impl<'s> CliState<'s> {
                     username,
                     code: code.trim().to_string(),
                 })
-                .send()?,
-        )?
-        .json()?;
+                .send()
+                .await?,
+        )
+        .await?
+        .json()
+        .await?;
 
         self.ucans.extend(account_creation.ucans);
 
@@ -259,6 +265,12 @@ impl<'s> CliState<'s> {
 
     fn find_capabilities(&'s self) -> Result<Vec<(Did, Vec<&'s Ucan>)>> {
         let mut caps = Vec::new();
+
+        tracing::debug!(
+            num_ucans = self.ucans.len(),
+            our_did = ?self.key.did_as_str(),
+            "Finding capability chains in local ucan store"
+        );
 
         for ucan in self.ucans.iter() {
             if ucan.audience() == self.key.did_as_str() {
@@ -282,18 +294,27 @@ impl<'s> CliState<'s> {
                         caps.push((subject_did, chain));
                     }
                 }
+            } else {
+                tracing::debug!(
+                    ucan = ucan.encode()?,
+                    audience = ?ucan.audience(),
+                    "Skipping UCAN, not addressed to us"
+                );
             }
         }
 
         Ok(caps)
     }
 
-    fn find_accounts<'u>(
+    async fn find_accounts<'u>(
         &self,
         caps: Vec<(Did, Vec<&'u Ucan>)>,
     ) -> Vec<(AccountInfo, Did, Vec<&'u Ucan>)> {
-        caps.into_iter()
-            .map(|(did, chain)| {
+        let mut accounts = Vec::new();
+        for (did, chain) in caps {
+            tracing::debug!(%did, "Checking if given capability is a valid account");
+
+            let resolve_account = async {
                 let ucan =
                     self.issue_ucan_with(did.clone(), FissionAbility::AccountRead, &chain)?;
 
@@ -301,19 +322,22 @@ impl<'s> CliState<'s> {
                     .server_request(Method::GET, &format!("/api/v0/account/{did}"))?
                     .bearer_auth(ucan.encode()?)
                     .header("ucan", encode_ucan_header(&chain)?)
-                    .send()?;
-                let account_info: AccountInfo = response.json()?;
+                    .send()
+                    .await?;
 
-                Ok::<_, anyhow::Error>((account_info, did, chain))
-            })
-            .filter_map(|e| match e {
-                Ok(ok) => Some(ok),
+                let account_info: AccountInfo = response.json().await?;
+                tracing::debug!(?account_info.username, "Found user");
+                Ok::<_, anyhow::Error>(account_info)
+            };
+
+            match resolve_account.await {
+                Ok(info) => accounts.push((info, did, chain)),
                 Err(e) => {
                     tracing::debug!(%e, "Error filtered during find_accounts");
-                    None
                 }
-            })
-            .collect::<Vec<_>>()
+            };
+        }
+        accounts
     }
 
     fn pick_account<'u>(
@@ -354,7 +378,12 @@ impl<'s> CliState<'s> {
         })
     }
 
-    fn rename_account(&self, did: Did, chain: Vec<&Ucan>, new_username: String) -> Result<()> {
+    async fn rename_account(
+        &self,
+        did: Did,
+        chain: Vec<&Ucan>,
+        new_username: String,
+    ) -> Result<()> {
         let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, &chain)?;
 
         handle_failure(
@@ -364,21 +393,25 @@ impl<'s> CliState<'s> {
             )?
             .bearer_auth(ucan.encode()?)
             .header("ucan", encode_ucan_header(&chain)?)
-            .send()?,
-        )?;
+            .send()
+            .await?,
+        )
+        .await?;
 
         Ok(())
     }
 
-    fn delete_account(&self, did: Did, chain: Vec<&Ucan>) -> Result<()> {
+    async fn delete_account(&self, did: Did, chain: Vec<&Ucan>) -> Result<()> {
         let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, &chain)?;
 
         handle_failure(
             self.server_request(Method::DELETE, "/api/v0/account")?
                 .bearer_auth(ucan.encode()?)
                 .header("ucan", encode_ucan_header(&chain)?)
-                .send()?,
-        )?;
+                .send()
+                .await?,
+        )
+        .await?;
 
         Ok(())
     }
@@ -456,12 +489,13 @@ fn load_key(settings: &Settings) -> Result<EdDidKey> {
     Ok(key)
 }
 
-fn handle_failure(response: Response) -> Result<Response> {
+async fn handle_failure(response: Response) -> Result<Response> {
     tracing::debug!(?response, "Got server response");
 
     if !response.status().is_success() {
         let response_info = response
             .text()
+            .await
             .ok()
             .map_or_else(String::new, |t| format!(": {t}"));
         bail!("Last request was erroneous{}", response_info);
