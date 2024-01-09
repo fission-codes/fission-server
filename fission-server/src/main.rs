@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
+use clap::Parser;
 use ed25519::pkcs8::DecodePrivateKey;
 use fission_core::ed_did_key::EdDidKey;
 use fission_server::{
@@ -68,11 +69,21 @@ use utoipa_swagger_ui::SwaggerUi;
 /// Request identifier field.
 const REQUEST_ID: &str = "request_id";
 
+#[derive(Debug, Parser)]
+#[command(name = "fission-server")]
+#[command(about = "Run the fission server")]
+struct Cli {
+    #[arg(long, short('c'), help = "Path to the settings.toml")]
+    config: Option<PathBuf>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
 
-    let settings = Settings::load()?;
+    let cli = Cli::parse();
+
+    let settings = Settings::load(cli.config)?;
     let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
 
     setup_tracing(stdout_writer, &settings.otel)?;
@@ -177,15 +188,13 @@ async fn serve_metrics(
 }
 
 async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
-    let server_keypair = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("config")
-        .join(&settings.server.keypair_path);
+    let pem_path = settings.relative_keypair_path();
 
-    let server_keypair = fs::read_to_string(&server_keypair)
+    let server_keypair = fs::read_to_string(&pem_path)
         .await
         .map_err(|e| anyhow!(e))
         .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
-        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", server_keypair.to_string_lossy(), e, server_keypair.to_string_lossy()))?;
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", pem_path.to_string_lossy(), e, pem_path.to_string_lossy()))?;
 
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
@@ -202,15 +211,13 @@ async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppS
 }
 
 async fn setup_local_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<LocalSetup>> {
-    let server_keypair = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("config")
-        .join(&settings.server.keypair_path);
+    let pem_path = settings.relative_keypair_path();
 
-    let server_keypair = fs::read_to_string(&server_keypair)
+    let server_keypair = fs::read_to_string(&pem_path)
         .await
         .map_err(|e| anyhow!(e))
         .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
-        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", server_keypair.to_string_lossy(), e, server_keypair.to_string_lossy()))?;
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", pem_path.to_string_lossy(), e, pem_path.to_string_lossy()))?;
 
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 

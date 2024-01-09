@@ -143,7 +143,7 @@ impl DnsServer {
 
     fn setup_forwarder() -> Result<ForwardAuthority> {
         let config = ForwardConfig {
-            name_servers: NameServerConfigGroup::cloudflare_tls(),
+            name_servers: NameServerConfigGroup::cloudflare(),
             options: None,
         };
 

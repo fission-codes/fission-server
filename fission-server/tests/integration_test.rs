@@ -21,7 +21,7 @@ use wiremock::{
 /// Test loading settings.
 #[test]
 fn test_settings() {
-    let settings = Settings::load().unwrap();
+    let settings = Settings::load(None).unwrap();
     assert_eq!(settings.server.environment, AppEnvironment::Local);
 }
 

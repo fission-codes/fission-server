@@ -1566,6 +1566,7 @@ dependencies = [
  "bytes",
  "chrono",
  "cid",
+ "clap",
  "config",
  "console-subscriber",
  "const_format",
