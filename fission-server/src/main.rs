@@ -179,7 +179,7 @@ async fn serve_metrics(
         settings.monitoring.process_collector_interval,
     ));
 
-    let (server, _) = serve("Metrics", router, settings.server.metrics_port).await;
+    let (server, _) = serve("Metrics", router, settings.server.metrics_port).await?;
 
     token.cancelled().await;
     server.graceful_shutdown(None);
@@ -270,7 +270,7 @@ async fn serve_app<S: ServerSetup + 'static>(
         .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
 
-    let (server, addr) = serve("Application", router, settings.server.port).await;
+    let (server, addr) = serve("Application", router, settings.server.port).await?;
 
     if settings.healthcheck.is_enabled {
         tokio::spawn({
@@ -343,7 +343,7 @@ async fn serve_dns(
     Ok(())
 }
 
-async fn serve(name: &str, app: Router, port: u16) -> (Handle, SocketAddr) {
+async fn serve(name: &str, app: Router, port: u16) -> Result<(Handle, SocketAddr)> {
     let bind_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
     info!(
         subject = "app_start",
@@ -365,9 +365,13 @@ async fn serve(name: &str, app: Router, port: u16) -> (Handle, SocketAddr) {
         }
     });
 
-    let addr = handle.listening().await.unwrap();
+    let addr = handle.listening().await.ok_or_else(|| {
+        anyhow!(
+            "Couldn't bind server to address {bind_addr:?}, perhaps the port is already in use?"
+        )
+    })?;
 
-    (handle, addr)
+    Ok((handle, addr))
 }
 
 /// Captures and waits for system signals.
