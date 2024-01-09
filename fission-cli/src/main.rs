@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use fission_cli::{settings::Settings, Cli};
+use fission_cli::{cli::Cli, settings::Settings};
 use tracing_subscriber::{prelude::*, util::SubscriberInitExt, EnvFilter};
 
 fn main() -> Result<()> {
