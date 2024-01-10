@@ -2,6 +2,7 @@ use anyhow::Result;
 use config::{Config, ConfigError, Environment, File, Map, Source, Value, ValueKind};
 use serde::{Deserialize, Serialize};
 use std::{marker::PhantomData, path::PathBuf};
+use url::Url;
 
 use crate::paths::{config_file, default_key_file};
 
@@ -10,14 +11,14 @@ pub struct Settings {
     /// The path of where the main private key .pem file is supposed to be stored
     pub key_file: PathBuf,
     /// server address
-    pub api_endpoint: String,
+    pub api_endpoint: Url,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             key_file: default_key_file(),
-            api_endpoint: "http://localhost:3000".to_string(), // TODO update this once the server is deployed somewhere
+            api_endpoint: Url::parse("http://localhost:3000").expect("Valid hardcoded server URL"), // TODO update this once the server is deployed somewhere
         }
     }
 }

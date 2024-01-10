@@ -44,3 +44,4 @@ tokio-util = { workspace = true }
 reqwest-middleware = "0.2.4"
 async-trait = "0.1.77"
 task-local-extensions = "0.1.4"
+hickory-proto = "0.24.0"

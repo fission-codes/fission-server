@@ -12,8 +12,10 @@ use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivate
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility, indexing::IndexingAbility},
     common::{AccountCreationRequest, EmailVerifyRequest, UcansResponse},
+    dns,
     ed_did_key::EdDidKey,
 };
+use hickory_proto::rr::RecordType;
 use reqwest::{header::CONTENT_TYPE, Client, Method};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
@@ -28,7 +30,6 @@ use std::{
     io::Read,
     path::PathBuf,
 };
-use url::Url;
 
 #[derive(Debug, Parser)]
 #[command(name = "fission")]
@@ -184,10 +185,19 @@ impl<'s> CliState<'s> {
             .with(LogAndHandleErrorMiddleware)
             .build();
 
-        let url = Url::parse(&format!("{}/api/v0/server-did", settings.api_endpoint))?;
-        tracing::info!(%url, "Fetching server DID");
-        let server_did = client.get(url).send().await?.text().await?;
-        tracing::info!(%server_did, "Got server DID");
+        let server_host = settings
+            .api_endpoint
+            .host_str()
+            .ok_or_else(|| anyhow!("Error getting host from API endpoint"))?;
+
+        let server_did = doh_request(
+            &client,
+            settings,
+            RecordType::TXT,
+            &format!("_did.{server_host}"),
+        )
+        .await?
+        .data;
 
         Ok(Self {
             settings,
@@ -209,8 +219,6 @@ impl<'s> CliState<'s> {
             .server_request(Method::GET, "/api/v0/capabilities")?
             .bearer_auth(ucan.encode()?)
             .header("ucan", encode_ucan_header(&proofs)?);
-
-        println!("DEBUG {:?}", request.try_clone().unwrap().build().unwrap());
 
         let ucans_response: UcansResponse = request.send().await?.json().await?;
 
@@ -262,7 +270,7 @@ impl<'s> CliState<'s> {
     fn find_capabilities(&'s self) -> Result<Vec<(Did, Vec<&'s Ucan>)>> {
         let mut caps = Vec::new();
 
-        tracing::debug!(
+        tracing::info!(
             num_ucans = self.ucans.len(),
             our_did = ?self.key.did_as_str(),
             "Finding capability chains in local ucan store"
@@ -286,7 +294,7 @@ impl<'s> CliState<'s> {
                         self.key.did_as_str(),
                         &self.ucans,
                     ) {
-                        tracing::debug!("Delegation chain found.");
+                        tracing::debug!(%subject_did, ability = %cap.ability(), "Delegation chain found.");
                         caps.push((subject_did, chain));
                     }
                 }
@@ -308,7 +316,7 @@ impl<'s> CliState<'s> {
     ) -> Vec<(AccountInfo, Did, Vec<&'u Ucan>)> {
         let mut accounts = Vec::new();
         for (did, chain) in caps {
-            tracing::debug!(%did, "Checking if given capability is a valid account");
+            tracing::info!(%did, "Checking if given capability is a valid account");
 
             let resolve_account = async {
                 let ucan =
@@ -322,7 +330,7 @@ impl<'s> CliState<'s> {
                     .await?;
 
                 let account_info: AccountInfo = response.json().await?;
-                tracing::debug!(?account_info.username, "Found user");
+                tracing::info!(?account_info.username, "Found user");
                 Ok::<_, anyhow::Error>(account_info)
             };
 
@@ -406,10 +414,9 @@ impl<'s> CliState<'s> {
         Ok(())
     }
 
-    fn server_request(&self, method: reqwest::Method, path: &str) -> Result<RequestBuilder> {
-        let mut url = Url::parse(&self.settings.api_endpoint)?;
+    fn server_request(&self, method: Method, path: &str) -> Result<RequestBuilder> {
+        let mut url = self.settings.api_endpoint.clone();
         url.set_path(path);
-        tracing::info!(url = %url.to_string(), "Building server request");
         Ok(self.client.request(method, url))
     }
 
@@ -477,4 +484,29 @@ fn load_key(settings: &Settings) -> Result<EdDidKey> {
     };
     tracing::info!(%key, "Generated or loaded DID");
     Ok(key)
+}
+
+async fn doh_request(
+    client: &ClientWithMiddleware,
+    settings: &Settings,
+    record_type: RecordType,
+    record: &str,
+) -> Result<dns::DohRecordJson> {
+    let mut url = settings.api_endpoint.clone();
+    url.set_path("dns-query");
+    url.set_query(Some(&format!("name={record}&type={record_type}")));
+
+    let response: dns::Response = client
+        .get(url)
+        .header("Accept", "application/dns-json")
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    // Must always be a single answer, since we're asking only a single question
+    let answer = response.answer.into_iter().next().ok_or(anyhow!(
+        "Missing answer for {record_type} {record} DoH lookup"
+    ))?;
+    Ok(answer)
 }

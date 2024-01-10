@@ -2,7 +2,6 @@
 
 use crate::{
     app_state::AppState,
-    dns,
     extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
     setups::ServerSetup,
 };
@@ -11,6 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use fission_core::dns;
 use hickory_server::proto::{self, serialize::binary::BinDecodable};
 use http::{header::CONTENT_TYPE, StatusCode};
 
@@ -33,7 +33,7 @@ pub async fn get<S: ServerSetup>(
             .into_response(),
         DNSMimeType::Json => {
             let message = proto::op::Message::from_bytes(&response).unwrap();
-            let response = dns::response::Response::from_message(message).unwrap();
+            let response = dns::Response::from_message(message).unwrap();
 
             (
                 StatusCode::OK,

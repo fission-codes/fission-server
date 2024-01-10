@@ -1,7 +1,7 @@
 //! DNS Response
 
 use anyhow::{bail, ensure, Result};
-use hickory_server::proto;
+use hickory_proto as proto;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -10,32 +10,35 @@ use serde::{Deserialize, Serialize};
 pub struct Response {
     /// Standard DNS response code
     #[serde(rename = "Status")]
-    status: u32,
+    pub status: u32,
     /// Whether the response was truncated
     #[serde(rename = "TC")]
-    tc: bool,
+    pub tc: bool,
     /// Whether recursion was desired
     #[serde(rename = "RD")]
-    rd: bool,
+    pub rd: bool,
     /// Whether recursion was available
     #[serde(rename = "RA")]
-    ra: bool,
+    pub ra: bool,
     /// Whether the response was validated with DNSSEC
     #[serde(rename = "AD")]
-    ad: bool,
+    pub ad: bool,
     /// Whether the client asked to disable DNSSEC validation
     #[serde(rename = "CD")]
-    cd: bool,
+    pub cd: bool,
+    /// The questions that this request answers
     #[serde(rename = "Question")]
-    question: Vec<DohQuestionJson>,
+    pub question: Vec<DohQuestionJson>,
+    /// The answers to the request
     #[serde(rename = "Answer")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    answer: Vec<DohRecordJson>,
+    pub answer: Vec<DohRecordJson>,
+    /// An optional comment
     #[serde(rename = "Comment")]
-    comment: Option<String>,
+    pub comment: Option<String>,
     /// IP Address / scope prefix-length of the client
     /// See: https://tools.ietf.org/html/rfc7871
-    edns_client_subnet: Option<String>,
+    pub edns_client_subnet: Option<String>,
 }
 
 impl Response {
@@ -90,10 +93,10 @@ impl Response {
 /// JSON representation of a DNS question
 pub struct DohQuestionJson {
     /// FQDN with trailing dot
-    name: String,
+    pub name: String,
     /// Standard DNS RR type
     #[serde(rename = "type")]
-    question_type: u16,
+    pub question_type: u16,
 }
 
 impl DohQuestionJson {
@@ -110,15 +113,15 @@ impl DohQuestionJson {
 /// JSON representation of a DNS record
 pub struct DohRecordJson {
     /// FQDN with trailing dot
-    name: String,
+    pub name: String,
     /// Standard DNS RR type
     #[serde(rename = "type")]
-    record_type: u16,
+    pub record_type: u16,
     /// Time-to-live, in seconds
     #[serde(rename = "TTL")]
-    ttl: u32,
+    pub ttl: u32,
     /// Record data
-    data: String,
+    pub data: String,
 }
 
 impl DohRecordJson {

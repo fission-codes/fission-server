@@ -24,7 +24,6 @@ use hickory_server::{
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::broadcast;
 
-pub mod response;
 pub mod response_handler;
 pub mod user_dids;
 
