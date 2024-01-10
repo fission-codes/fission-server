@@ -1,6 +1,6 @@
 //! Main fission-cli command line entry points
 use crate::{
-    logging::LogAndHandleErrorMiddleware,
+    logging::{LogAndHandleErrorMiddleware, LoggingCacheManager},
     paths::config_file,
     responses::{AccountCreationResponse, AccountInfo},
     settings::Settings,
@@ -16,6 +16,7 @@ use fission_core::{
     ed_did_key::EdDidKey,
 };
 use hickory_proto::rr::RecordType;
+use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::{header::CONTENT_TYPE, Client, Method};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
@@ -180,9 +181,15 @@ impl<'s> CliState<'s> {
     async fn load(settings: &'s Settings) -> Result<CliState<'s>> {
         let key = load_key(settings)?;
 
-        let client = Client::new();
-        let client = ClientBuilder::new(client)
+        let client = ClientBuilder::new(Client::new())
             .with(LogAndHandleErrorMiddleware)
+            .with(Cache(HttpCache {
+                mode: CacheMode::Default,
+                manager: LoggingCacheManager::new(CACacheManager {
+                    path: settings.http_cache_dir.clone(),
+                }),
+                options: HttpCacheOptions::default(),
+            }))
             .build();
 
         let server_host = settings

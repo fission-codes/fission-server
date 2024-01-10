@@ -1,4 +1,6 @@
 use anyhow::anyhow;
+use http_cache_reqwest::{CacheManager, HttpResponse};
+use http_cache_semantics::CachePolicy;
 use reqwest::{Request, Response};
 use reqwest_middleware::{Middleware, Next};
 use serde::{Deserialize, Serialize};
@@ -52,4 +54,45 @@ struct Error {
     status: u16,
     detail: Option<String>,
     title: Option<String>,
+}
+pub(crate) struct LoggingCacheManager<T> {
+    inner: T,
+}
+
+impl<T: CacheManager> LoggingCacheManager<T> {
+    pub(crate) fn new(inner: T) -> Self {
+        LoggingCacheManager { inner }
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: CacheManager> CacheManager for LoggingCacheManager<T> {
+    async fn get(
+        &self,
+        cache_key: &str,
+    ) -> http_cache::Result<Option<(HttpResponse, CachePolicy)>> {
+        tracing::info!(%cache_key, "Accessing HTTP cache");
+        let value = self.inner.get(cache_key).await?;
+        if value.is_some() {
+            tracing::info!("HTTP cache hit");
+        } else {
+            tracing::info!("HTTP cache miss");
+        }
+        Ok(value)
+    }
+
+    async fn put(
+        &self,
+        cache_key: String,
+        res: HttpResponse,
+        policy: CachePolicy,
+    ) -> http_cache::Result<HttpResponse> {
+        tracing::info!(%cache_key, "Populating HTTP cache");
+        self.inner.put(cache_key, res, policy).await
+    }
+
+    async fn delete(&self, cache_key: &str) -> http_cache::Result<()> {
+        tracing::info!(%cache_key, "Removing from HTTP cache");
+        self.inner.delete(cache_key).await
+    }
 }

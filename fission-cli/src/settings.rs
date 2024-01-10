@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{marker::PhantomData, path::PathBuf};
 use url::Url;
 
-use crate::paths::{config_file, default_key_file};
+use crate::paths::{config_file, default_key_file, http_cache_dir};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -12,6 +12,8 @@ pub struct Settings {
     pub key_file: PathBuf,
     /// server address
     pub api_endpoint: Url,
+    /// where to store the http cache
+    pub http_cache_dir: PathBuf,
 }
 
 impl Default for Settings {
@@ -19,6 +21,7 @@ impl Default for Settings {
         Self {
             key_file: default_key_file(),
             api_endpoint: Url::parse("http://localhost:3000").expect("Valid hardcoded server URL"), // TODO update this once the server is deployed somewhere
+            http_cache_dir: http_cache_dir(),
         }
     }
 }
