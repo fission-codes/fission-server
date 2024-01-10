@@ -171,8 +171,30 @@ pub async fn find_ucans_for_audience(
     audience: String,
     conn: &mut Conn<'_>,
 ) -> Result<UcansResponse> {
-    let mut visited_ids_set = BTreeSet::<i32>::new();
-    let mut audience_dids_frontier = BTreeSet::from([audience]);
+    tracing::debug!(audience, "Doing initial lookup of UCANs matching audience");
+
+    let ids_issuers_resources: Vec<(i32, String, String)> = ucans::table
+        .inner_join(capabilities::table)
+        .filter(ucans::audience.eq(&audience))
+        .select((ucans::id, ucans::issuer, capabilities::resource))
+        .get_results(conn)
+        .await?;
+
+    let ids = ids_issuers_resources.iter().map(|(id, _, _)| id).cloned();
+    let issuers = ids_issuers_resources.iter().map(|(_, iss, _)| iss).cloned();
+
+    let mut visited_ids_set = BTreeSet::<i32>::from_iter(ids);
+    let mut audience_dids_frontier = BTreeSet::from_iter(issuers);
+
+    let resources = ids_issuers_resources
+        .into_iter()
+        .map(|(_, _, res)| res)
+        .collect::<Vec<_>>();
+
+    tracing::debug!(
+        ?resources,
+        "Looking for resources (not yet looking for subsumtions)"
+    );
 
     loop {
         tracing::debug!(
@@ -182,10 +204,11 @@ pub async fn find_ucans_for_audience(
         );
 
         let ids_and_issuers: Vec<(i32, String)> = ucans::table
+            .inner_join(capabilities::table)
             .filter(ucans::audience.eq_any(&audience_dids_frontier))
             .filter(ucans::id.ne_all(&visited_ids_set))
-            // TODO Also filter by not_before & expires_at. Or should it?
-            // TODO only follow edges when they have a common resource/the resource is subsumed
+            // TODO: Support subsumtion of resources/capabilities
+            .filter(capabilities::resource.eq_any(&resources))
             .select((ucans::id, ucans::issuer))
             .get_results(conn)
             .await?;
