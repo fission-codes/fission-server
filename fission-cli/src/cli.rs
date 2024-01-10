@@ -1,5 +1,6 @@
 //! Main fission-cli command line entry points
 use crate::{
+    logging::LogAndHandleErrorMiddleware,
     paths::config_file,
     responses::{AccountCreationResponse, AccountInfo},
     settings::Settings,
@@ -13,7 +14,8 @@ use fission_core::{
     common::{AccountCreationRequest, EmailVerifyRequest, UcansResponse},
     ed_did_key::EdDidKey,
 };
-use reqwest::{header::CONTENT_TYPE, Client, Method, RequestBuilder, Response};
+use reqwest::{header::CONTENT_TYPE, Client, Method};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -168,7 +170,7 @@ impl Cli {
 pub(crate) struct CliState<'s> {
     pub(crate) settings: &'s Settings,
     pub(crate) key: EdDidKey,
-    pub(crate) client: Client,
+    pub(crate) client: ClientWithMiddleware,
     pub(crate) server_did: String,
     pub(crate) ucans: Vec<Ucan>,
 }
@@ -178,13 +180,13 @@ impl<'s> CliState<'s> {
         let key = load_key(settings)?;
 
         let client = Client::new();
+        let client = ClientBuilder::new(client)
+            .with(LogAndHandleErrorMiddleware)
+            .build();
 
         let url = Url::parse(&format!("{}/api/v0/server-did", settings.api_endpoint))?;
         tracing::info!(%url, "Fetching server DID");
-        let server_did = handle_failure(client.get(url).send().await?)
-            .await?
-            .text()
-            .await?;
+        let server_did = client.get(url).send().await?.text().await?;
         tracing::info!(%server_did, "Got server DID");
 
         Ok(Self {
@@ -210,8 +212,7 @@ impl<'s> CliState<'s> {
 
         println!("DEBUG {:?}", request.try_clone().unwrap().build().unwrap());
 
-        let ucans_response: UcansResponse =
-            handle_failure(request.send().await?).await?.json().await?;
+        let ucans_response: UcansResponse = request.send().await?.json().await?;
 
         self.ucans.extend(ucans_response.into_unrevoked());
 
@@ -221,15 +222,12 @@ impl<'s> CliState<'s> {
     async fn create_account(&mut self) -> Result<AccountInfo> {
         let email = inquire::Text::new("What's your email address?").prompt()?;
 
-        handle_failure(
-            self.server_request(Method::POST, "/api/v0/auth/email/verify")?
-                .json(&EmailVerifyRequest {
-                    email: email.clone(),
-                })
-                .send()
-                .await?,
-        )
-        .await?;
+        self.server_request(Method::POST, "/api/v0/auth/email/verify")?
+            .json(&EmailVerifyRequest {
+                email: email.clone(),
+            })
+            .send()
+            .await?;
 
         println!("Successfully requested an email verification code.");
 
@@ -241,22 +239,20 @@ impl<'s> CliState<'s> {
         // TODO Check for availablility. Allow retries.
         let username = inquire::Text::new("Choose a username:").prompt()?;
 
-        let account_creation: AccountCreationResponse = handle_failure(
-            self.server_request(Method::POST, "/api/v0/account")?
-                .bearer_auth(ucan.encode()?)
-                .header("ucan", encode_ucan_header(&proofs)?)
-                .header(CONTENT_TYPE, "application/json")
-                .json(&AccountCreationRequest {
-                    email,
-                    username,
-                    code: code.trim().to_string(),
-                })
-                .send()
-                .await?,
-        )
-        .await?
-        .json()
-        .await?;
+        let account_creation: AccountCreationResponse = self
+            .server_request(Method::POST, "/api/v0/account")?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(&proofs)?)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&AccountCreationRequest {
+                email,
+                username,
+                code: code.trim().to_string(),
+            })
+            .send()
+            .await?
+            .json()
+            .await?;
 
         self.ucans.extend(account_creation.ucans);
 
@@ -386,16 +382,13 @@ impl<'s> CliState<'s> {
     ) -> Result<()> {
         let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, &chain)?;
 
-        handle_failure(
-            self.server_request(
-                Method::PATCH,
-                &format!("/api/v0/account/username/{new_username}"),
-            )?
-            .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(&chain)?)
-            .send()
-            .await?,
-        )
+        self.server_request(
+            Method::PATCH,
+            &format!("/api/v0/account/username/{new_username}"),
+        )?
+        .bearer_auth(ucan.encode()?)
+        .header("ucan", encode_ucan_header(&chain)?)
+        .send()
         .await?;
 
         Ok(())
@@ -404,14 +397,11 @@ impl<'s> CliState<'s> {
     async fn delete_account(&self, did: Did, chain: Vec<&Ucan>) -> Result<()> {
         let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, &chain)?;
 
-        handle_failure(
-            self.server_request(Method::DELETE, "/api/v0/account")?
-                .bearer_auth(ucan.encode()?)
-                .header("ucan", encode_ucan_header(&chain)?)
-                .send()
-                .await?,
-        )
-        .await?;
+        self.server_request(Method::DELETE, "/api/v0/account")?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(&chain)?)
+            .send()
+            .await?;
 
         Ok(())
     }
@@ -487,19 +477,4 @@ fn load_key(settings: &Settings) -> Result<EdDidKey> {
     };
     tracing::info!(%key, "Generated or loaded DID");
     Ok(key)
-}
-
-async fn handle_failure(response: Response) -> Result<Response> {
-    tracing::debug!(?response, "Got server response");
-
-    if !response.status().is_success() {
-        let response_info = response
-            .text()
-            .await
-            .ok()
-            .map_or_else(String::new, |t| format!(": {t}"));
-        bail!("Last request was erroneous{}", response_info);
-    }
-
-    Ok(response)
 }
