@@ -39,3 +39,12 @@ toml = "0.8.2"
 directories = "5.0.1"
 reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 inquire = "0.6.2"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+reqwest-middleware = "0.2.4"
+async-trait = "0.1.77"
+task-local-extensions = "0.1.4"
+hickory-proto = "0.24.0"
+http-cache-reqwest = "0.12.0"
+http-cache = { version = "0.17.0", default-features = false }
+http-cache-semantics = "1.0.1"

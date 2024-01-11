@@ -150,12 +150,16 @@ pub struct Settings {
     pub healthcheck: Healthcheck,
     /// Local authoritative DNS server settings
     pub dns: Dns,
+    /// The path where the settings file resides
+    #[serde(skip)]
+    pub path: Option<PathBuf>,
 }
 
 impl Settings {
     /// Load settings.
-    pub fn load() -> Result<Self, ConfigError> {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/settings.toml");
+    pub fn load(config_path: Option<PathBuf>) -> Result<Self, ConfigError> {
+        let path = config_path
+            .unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/settings.toml"));
         // inject environment variables naming them properly on the settings
         // e.g. [database] url="foo"
         // would be injected with environment variable APP__DATABASE__URL="foo"
@@ -170,7 +174,20 @@ impl Settings {
                     .with_list_parse_key("ipfs.peers"),
             )
             .build()?;
-        s.try_deserialize()
+        let mut settings: Self = s.try_deserialize()?;
+        settings.path = Some(path);
+        Ok(settings)
+    }
+
+    /// Return the keypair path relative to the current working directory
+    /// (as opposed to `self.server.keypair_path`, which is relative to the
+    /// settings file)
+    pub fn relative_keypair_path(&self) -> PathBuf {
+        if let Some(settings_dir) = self.path.as_ref().and_then(|p| p.parent()) {
+            settings_dir.join(&self.server.keypair_path)
+        } else {
+            PathBuf::from(&self.server.keypair_path)
+        }
     }
 }
 

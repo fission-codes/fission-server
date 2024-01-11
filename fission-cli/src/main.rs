@@ -1,9 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use fission_cli::{settings::Settings, Cli};
+use fission_cli::{cli::Cli, settings::Settings};
 use tracing_subscriber::{prelude::*, util::SubscriberInitExt, EnvFilter};
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(EnvFilter::from_default_env())
@@ -11,7 +12,7 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let settings = Settings::load()?;
-    cli.run(settings)?;
+    cli.run(settings).await?;
 
     Ok(())
 }

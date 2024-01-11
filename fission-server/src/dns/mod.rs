@@ -24,7 +24,6 @@ use hickory_server::{
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::broadcast;
 
-pub mod response;
 pub mod response_handler;
 pub mod user_dids;
 
@@ -143,7 +142,7 @@ impl DnsServer {
 
     fn setup_forwarder() -> Result<ForwardAuthority> {
         let config = ForwardConfig {
-            name_servers: NameServerConfigGroup::cloudflare_tls(),
+            name_servers: NameServerConfigGroup::cloudflare(),
             options: None,
         };
 
