@@ -26,6 +26,13 @@ pub struct AccountCreationRequest {
     pub code: String,
 }
 
+/// Request data for the account link route
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
+pub struct AccountLinkRequest {
+    /// Email verification code
+    pub code: String,
+}
+
 /// Information about an account
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct AccountResponse {

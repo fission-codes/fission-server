@@ -188,13 +188,7 @@ async fn serve_metrics(
 }
 
 async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
-    let pem_path = settings.relative_keypair_path();
-
-    let server_keypair = fs::read_to_string(&pem_path)
-        .await
-        .map_err(|e| anyhow!(e))
-        .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
-        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", pem_path.to_string_lossy(), e, pem_path.to_string_lossy()))?;
+    let server_keypair = load_keypair(settings).await?;
 
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
@@ -211,13 +205,7 @@ async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppS
 }
 
 async fn setup_local_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<LocalSetup>> {
-    let pem_path = settings.relative_keypair_path();
-
-    let server_keypair = fs::read_to_string(&pem_path)
-        .await
-        .map_err(|e| anyhow!(e))
-        .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
-        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", pem_path.to_string_lossy(), e, pem_path.to_string_lossy()))?;
+    let server_keypair = load_keypair(settings).await?;
 
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
@@ -450,4 +438,18 @@ fn setup_tracing(
     }
 
     Ok(())
+}
+
+async fn load_keypair(settings: &Settings) -> Result<EdDidKey> {
+    let pem_path = settings.relative_keypair_path();
+
+    let server_keypair = fs::read_to_string(&pem_path)
+        .await
+        .map_err(|e| anyhow!(e))
+        .and_then(|pem| EdDidKey::from_pkcs8_pem(&pem).map_err(|e| anyhow!(e)))
+        .map_err(|e| anyhow!("Couldn't load server DID from {}: {}. Make sure to generate a key by running `openssl genpkey -algorithm ed25519 -out {}`", pem_path.to_string_lossy(), e, pem_path.to_string_lossy()))?;
+
+    tracing::info!(%server_keypair, "Loaded server DID");
+
+    Ok(server_keypair)
 }

@@ -1,7 +1,11 @@
 //! Fission Account Model
 
+use super::capability_indexing::index_ucan;
 use crate::{
-    db::{schema::accounts, Conn},
+    db::{
+        schema::{accounts, ucans},
+        Conn,
+    },
     models::volume::{NewVolumeRecord, Volume},
     setups::IpfsDatabase,
 };
@@ -17,9 +21,8 @@ use rs_ucan::{
     ucan::Ucan,
 };
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use utoipa::ToSchema;
-
-use super::capability_indexing::index_ucan;
 
 /// New Account Struct (for creating new accounts)
 #[derive(Insertable)]
@@ -74,10 +77,10 @@ impl Account {
         conn: &mut Conn<'_>,
         username: String,
         email: String,
-        did: &str,
+        did: String,
     ) -> Result<Self, diesel::result::Error> {
         let new_account = NewAccountRecord {
-            did: did.to_string(),
+            did,
             username,
             email,
         };
@@ -185,15 +188,46 @@ impl RootAccount {
         user_did: &str,
         server: &EdDidKey,
     ) -> Result<Self, anyhow::Error> {
-        let (ucans, root_did) = Self::issue_root_ucans(server, user_did, conn).await?;
-        let account = Account::new(conn, username, email, &root_did).await?;
+        let (ucans, account_did) = Self::issue_root_ucans(server, user_did, conn).await?;
+        let account = Account::new(conn, username, email, account_did).await?;
 
         Ok(Self { ucans, account })
     }
 
+    /// Give an agent access to an existing account.
+    /// This is sort-of logging in.
+    ///
+    /// This will generate another delegation from the server to the
+    /// account.
+    pub async fn link_agent(
+        account: Account,
+        agent_did: &str,
+        server: &EdDidKey,
+        conn: &mut Conn<'_>,
+    ) -> Result<Self> {
+        let server_ucan: String = ucans::table
+            .filter(ucans::issuer.eq(&account.did))
+            .filter(ucans::audience.eq(server.did_as_str()))
+            .select(ucans::encoded)
+            .get_result(conn)
+            .await?;
+
+        let server_ucan: Ucan = Ucan::from_str(&server_ucan)?;
+
+        let account_did = account.did.clone();
+
+        let agent_ucan =
+            Self::issue_agent_ucan(server, account_did, agent_did, &server_ucan, conn).await?;
+
+        Ok(Self {
+            ucans: vec![server_ucan, agent_ucan],
+            account,
+        })
+    }
+
     async fn issue_root_ucans(
         server: &EdDidKey,
-        user_did: &str,
+        agent_did: &str,
         conn: &mut Conn<'_>,
     ) -> Result<(Vec<Ucan>, String), anyhow::Error> {
         let account = EdDidKey::generate(); // Zeroized on drop
@@ -205,18 +239,33 @@ impl RootAccount {
             .claiming_capability(capability)
             .sign(&account)?;
 
-        // Delegate the account to the user
-        let capability = Capability::new(Did(account.did()), TopAbility, EmptyCaveat);
-        let user_ucan: Ucan = UcanBuilder::default()
-            .for_audience(user_did)
+        // Persist UCAN in the DB
+        index_ucan(&server_ucan, conn).await?;
+
+        // Delegate the account to the agent
+        let agent_ucan =
+            Self::issue_agent_ucan(server, account.did(), agent_did, &server_ucan, conn).await?;
+
+        Ok((vec![server_ucan, agent_ucan], account.did()))
+    }
+
+    async fn issue_agent_ucan(
+        server: &EdDidKey,
+        account_did: String,
+        agent_did: &str,
+        server_ucan: &Ucan,
+        conn: &mut Conn<'_>,
+    ) -> Result<Ucan> {
+        // Delegate the account to the agent
+        let capability = Capability::new(Did(account_did), TopAbility, EmptyCaveat);
+        let agent_ucan: Ucan = UcanBuilder::default()
+            .for_audience(agent_did)
             .claiming_capability(capability)
-            .witnessed_by(&server_ucan, None)
+            .witnessed_by(server_ucan, None)
             .sign(server)?;
 
-        // Persist UCANs in the DB
-        index_ucan(&server_ucan, conn).await?;
-        index_ucan(&user_ucan, conn).await?;
+        index_ucan(&agent_ucan, conn).await?;
 
-        Ok((vec![server_ucan, user_ucan], account.did()))
+        Ok(agent_ucan)
     }
 }

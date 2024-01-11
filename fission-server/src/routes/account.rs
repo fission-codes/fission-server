@@ -23,7 +23,9 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
-    common::{AccountCreationRequest, AccountResponse, DidResponse, SuccessResponse},
+    common::{
+        AccountCreationRequest, AccountLinkRequest, AccountResponse, DidResponse, SuccessResponse,
+    },
     ed_did_key::EdDidKey,
     revocation::Revocation,
 };
@@ -80,6 +82,61 @@ pub async fn create_account<S: ServerSetup>(
             verification.consume_token(conn).await?;
 
             Ok((StatusCode::CREATED, Json(new_account)))
+        }
+        .scope_boxed()
+    })
+    .await
+}
+
+/// POST handler for linking a DID to an existing account via email challenge
+#[utoipa::path(
+    post,
+    path = "/api/v0/account/{did}/link",
+    request_body = AccountLinkRequest,
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 201, description = "Successfully linked account", body = RootAccount),
+        (status = 400, description = "Bad Request"),
+        (status = 403, description = "Forbidden"),
+    )
+)]
+pub async fn link_account<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    Path(account_did): Path<String>,
+    authority: Authority,
+    Json(request): Json<AccountLinkRequest>,
+) -> AppResult<(StatusCode, Json<RootAccount>)> {
+    let Did(agent_did) = authority
+        .get_capability(&state, FissionAbility::AccountLink)
+        .await?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+    conn.transaction(|conn| {
+        async move {
+            let account: Account = accounts::dsl::accounts
+                .filter(accounts::did.eq(account_did))
+                .first(conn)
+                .await?;
+
+            let email = account.email.clone().ok_or(AppError::new(
+                StatusCode::BAD_REQUEST,
+                Some("No email address associated"),
+            ))?;
+
+            let verification = EmailVerification::find_token(conn, &email, &request.code)
+                .await
+                .map_err(|err| AppError::new(StatusCode::FORBIDDEN, Some(err.to_string())))?;
+
+            debug!("Found EmailVerification {verification:?}");
+
+            let account =
+                RootAccount::link_agent(account, &agent_did, &state.server_keypair, conn).await?;
+
+            verification.consume_token(conn).await?;
+
+            Ok((StatusCode::CREATED, Json(account)))
         }
         .scope_boxed()
     })
