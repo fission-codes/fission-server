@@ -71,11 +71,12 @@ mod tests {
     async fn index_test_ucan(
         issuer: &EdDidKey,
         audience: &EdDidKey,
+        resource_did: String,
         conn: &mut Conn<'_>,
     ) -> Result<Ucan> {
         let ucan: Ucan = UcanBuilder::default()
             .for_audience(audience)
-            .claiming_capability(Capability::new(Did(issuer.did()), TopAbility, EmptyCaveat))
+            .claiming_capability(Capability::new(Did(resource_did), TopAbility, EmptyCaveat))
             .sign(issuer)?;
 
         index_ucan(&ucan, conn).await?;
@@ -113,7 +114,7 @@ mod tests {
         let device = &EdDidKey::generate();
         let server = ctx.server_did();
 
-        let ucan = index_test_ucan(server, device, conn).await?;
+        let ucan = index_test_ucan(server, device, server.did(), conn).await?;
 
         let (status, response) = fetch_capabilities(device, &ctx).await?;
         assert_eq!(status, StatusCode::OK);
@@ -159,7 +160,7 @@ mod tests {
         let server = ctx.server_did();
 
         // Index a test UCAN from `server` -> `device_other`
-        let ucan_other = index_test_ucan(server, device_other, conn).await?;
+        let ucan_other = index_test_ucan(server, device_other, server.did(), conn).await?;
         // Requesting UCANs delegated to `device` should end up empty
         let (status, response) = fetch_capabilities(device, &ctx).await?;
 
@@ -167,7 +168,7 @@ mod tests {
         assert!(response.ucans.is_empty());
 
         // Index a test UCAN from `server` -> `device` this time
-        let ucan = index_test_ucan(server, device, conn).await?;
+        let ucan = index_test_ucan(server, device, server.did(), conn).await?;
 
         // Requesting UCANs should only return the ones that end in the relevant issuer's DID
         let (_, response) = fetch_capabilities(device, &ctx).await?;
@@ -194,8 +195,8 @@ mod tests {
         let id_two = &EdDidKey::generate();
         let server = ctx.server_did();
 
-        let ucan_one = index_test_ucan(server, id_one, conn).await?;
-        let ucan_two = index_test_ucan(id_one, id_two, conn).await?;
+        let ucan_one = index_test_ucan(server, id_one, server.did(), conn).await?;
+        let ucan_two = index_test_ucan(id_one, id_two, server.did(), conn).await?;
 
         let (status, response) = fetch_capabilities(id_two, &ctx).await?;
 

@@ -171,8 +171,30 @@ pub async fn find_ucans_for_audience(
     audience: String,
     conn: &mut Conn<'_>,
 ) -> Result<UcansResponse> {
-    let mut visited_ids_set = BTreeSet::<i32>::new();
-    let mut audience_dids_frontier = BTreeSet::from([audience]);
+    tracing::debug!(audience, "Doing initial lookup of UCANs matching audience");
+
+    let ids_issuers_resources: Vec<(i32, String, String)> = ucans::table
+        .inner_join(capabilities::table)
+        .filter(ucans::audience.eq(&audience))
+        .select((ucans::id, ucans::issuer, capabilities::resource))
+        .get_results(conn)
+        .await?;
+
+    let ids = ids_issuers_resources.iter().map(|(id, _, _)| id).cloned();
+    let issuers = ids_issuers_resources.iter().map(|(_, iss, _)| iss).cloned();
+
+    let mut visited_ids_set = BTreeSet::<i32>::from_iter(ids);
+    let mut audience_dids_frontier = BTreeSet::from_iter(issuers);
+
+    let resources = ids_issuers_resources
+        .into_iter()
+        .map(|(_, _, res)| res)
+        .collect::<Vec<_>>();
+
+    tracing::debug!(
+        ?resources,
+        "Looking for resources (not yet looking for subsumtions)"
+    );
 
     loop {
         tracing::debug!(
@@ -182,10 +204,11 @@ pub async fn find_ucans_for_audience(
         );
 
         let ids_and_issuers: Vec<(i32, String)> = ucans::table
+            .inner_join(capabilities::table)
             .filter(ucans::audience.eq_any(&audience_dids_frontier))
             .filter(ucans::id.ne_all(&visited_ids_set))
-            // TODO Also filter by not_before & expires_at. Or should it?
-            // TODO only follow edges when they have a common resource/the resource is subsumed
+            // TODO: Support subsumtion of resources/capabilities
+            .filter(capabilities::resource.eq_any(&resources))
             .select((ucans::id, ucans::issuer))
             .get_results(conn)
             .await?;
@@ -305,5 +328,134 @@ impl IndexedCapability {
             caveats,
             ucan_id,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::test_context::TestContext;
+    use fission_core::{
+        capabilities::{did::Did, fission::FissionAbility},
+        ed_did_key::EdDidKey,
+    };
+    use rs_ucan::{
+        builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
+    };
+    use testresult::TestResult;
+
+    #[test_log::test(tokio::test)]
+    async fn test_find_ucan_by_audience_single() -> TestResult {
+        let ctx = TestContext::new().await;
+        let conn = &mut ctx.get_db_conn().await;
+
+        let issuer = EdDidKey::generate();
+        let audience = EdDidKey::generate();
+
+        let ucan: Ucan = UcanBuilder::default()
+            .for_audience(&audience)
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                FissionAbility::AccountManage,
+                EmptyCaveat,
+            ))
+            .sign(&issuer)?;
+
+        index_ucan(&ucan, conn).await?;
+
+        let response = find_ucans_for_audience(audience.did(), conn).await?;
+
+        assert_eq!(response.ucans.len(), 1);
+
+        let response_ucan = response.ucans.first_key_value().unwrap().1;
+
+        assert_eq!(response_ucan.to_cid(None)?, ucan.to_cid(None)?);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_find_ucan_by_audience_transitive() -> TestResult {
+        let ctx = TestContext::new().await;
+        let conn = &mut ctx.get_db_conn().await;
+
+        let alice = EdDidKey::generate();
+        let bob = EdDidKey::generate();
+        let carol = EdDidKey::generate();
+
+        let cap = Capability::new(Did(alice.did()), FissionAbility::AccountManage, EmptyCaveat);
+
+        let root_ucan: Ucan = UcanBuilder::default()
+            .for_audience(&bob)
+            .claiming_capability(cap.clone())
+            .sign(&alice)?;
+
+        let ucan: Ucan = UcanBuilder::default()
+            .for_audience(&carol)
+            .claiming_capability(cap)
+            .sign(&bob)?;
+
+        index_ucan(&root_ucan, conn).await?;
+        index_ucan(&ucan, conn).await?;
+
+        let response_bob = find_ucans_for_audience(bob.did(), conn).await?;
+        let response_carol = find_ucans_for_audience(carol.did(), conn).await?;
+
+        // Bob still only gets one UCAN
+        assert_eq!(response_bob.ucans.len(), 1);
+        // Carol gets the whole chain
+        assert_eq!(response_carol.ucans.len(), 2);
+
+        let ucan_cids = response_carol.ucans.into_keys().collect::<BTreeSet<_>>();
+        let expected_cids = BTreeSet::from([
+            root_ucan.to_cid(None)?.to_string(),
+            ucan.to_cid(None)?.to_string(),
+        ]);
+
+        assert_eq!(ucan_cids, expected_cids);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_find_ucan_by_audience_only_matching_resource() -> TestResult {
+        let ctx = TestContext::new().await;
+        let conn = &mut ctx.get_db_conn().await;
+
+        let alice = EdDidKey::generate();
+        let bob = EdDidKey::generate();
+        let carol = EdDidKey::generate();
+
+        let cap_a = Capability::new(Did(alice.did()), FissionAbility::AccountManage, EmptyCaveat);
+        let cap_b = Capability::new(Did(bob.did()), FissionAbility::AccountManage, EmptyCaveat);
+
+        let ucan_a: Ucan = UcanBuilder::default()
+            .for_audience(&bob)
+            .claiming_capability(cap_a)
+            .sign(&alice)?;
+
+        let ucan_b: Ucan = UcanBuilder::default()
+            .for_audience(&carol)
+            .claiming_capability(cap_b) // Different capability!
+            .sign(&bob)?;
+
+        index_ucan(&ucan_a, conn).await?;
+        index_ucan(&ucan_b, conn).await?;
+
+        let response_bob = find_ucans_for_audience(bob.did(), conn).await?;
+        let response_carol = find_ucans_for_audience(carol.did(), conn).await?;
+
+        // Bob still only gets one UCAN
+        assert_eq!(response_bob.ucans.len(), 1);
+        // Carol gets the whole chain
+        assert_eq!(response_carol.ucans.len(), 1);
+
+        let ucan_cids = response_carol.ucans.into_keys().collect::<BTreeSet<_>>();
+        let expected_cids = BTreeSet::from([ucan_b.to_cid(None)?.to_string()]);
+
+        // Carol doesn't get the UCAN that's not matching the same resource
+        assert_eq!(ucan_cids, expected_cids);
+
+        Ok(())
     }
 }

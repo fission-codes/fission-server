@@ -144,6 +144,8 @@ In the future this endpoint will be useful for fetching new capabilities from ot
 | `ucans` | `Map<string, string>` | A map of ucans keyed by their canonical CID, giving the DID from the resource in the authorization capabilities. |
 | `revoked` | `Array<string>` | The subset of canonical CIDs of UCANs from `ucans` that have been revoked. |
 
+---
+
 ### POST `/api/v0/revocations`
 
 Revokes a UCAN via a revocation record. The request body format is specified in the UCAN 0.10 specification, see the section on [revocation validation].
