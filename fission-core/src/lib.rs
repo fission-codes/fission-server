@@ -10,3 +10,4 @@ pub mod common;
 pub mod dns;
 pub mod ed_did_key;
 pub mod revocation;
+pub mod serde_value_source;

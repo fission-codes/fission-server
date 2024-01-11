@@ -5,8 +5,9 @@ use axum::{extract::Extension, headers::HeaderName, routing::get, Router};
 use axum_server::Handle;
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use clap::Parser;
+use config::{Config, Environment};
 use ed25519::pkcs8::DecodePrivateKey;
-use fission_core::ed_did_key::EdDidKey;
+use fission_core::{ed_did_key::EdDidKey, serde_value_source::SerdeValueSource};
 use fission_server::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Pool},
@@ -34,6 +35,7 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::RetryTransientMiddleware;
 use retry_policies::policies::ExponentialBackoffBuilder;
+use serde::{Deserialize, Serialize};
 use std::{
     future::ready,
     io,
@@ -69,21 +71,30 @@ use utoipa_swagger_ui::SwaggerUi;
 /// Request identifier field.
 const REQUEST_ID: &str = "request_id";
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser, Serialize, Deserialize)]
 #[command(name = "fission-server")]
 #[command(about = "Run the fission server")]
 struct Cli {
     #[arg(long, short('c'), help = "Path to the settings.toml")]
-    config: Option<PathBuf>,
+    config_path: Option<PathBuf>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
 
-    let cli = Cli::parse();
+    // Load parameters from both CLI & environment variables
+    let cli: Cli = Config::builder()
+        .add_source(SerdeValueSource::from(Cli::parse()))
+        .add_source(
+            Environment::with_prefix("APP")
+                .separator("__")
+                .try_parsing(true),
+        )
+        .build()?
+        .try_deserialize()?;
 
-    let settings = Settings::load(cli.config)?;
+    let settings = Settings::load(cli.config_path)?;
     let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
 
     setup_tracing(stdout_writer, &settings.otel)?;
@@ -95,13 +106,15 @@ async fn main() -> Result<()> {
         "starting server",
     );
 
+    let server_keypair = load_keypair(&settings).await?;
+
     match settings.server.environment {
         AppEnvironment::Staging | AppEnvironment::Prod => {
-            let app_state = setup_prod_app_state(&settings, db_pool).await?;
+            let app_state = setup_prod_app_state(&settings, db_pool, server_keypair).await?;
             run_with_app_state(settings, app_state).await
         }
         AppEnvironment::Local | AppEnvironment::Dev => {
-            let app_state = setup_local_app_state(&settings, db_pool).await?;
+            let app_state = setup_local_app_state(&settings, db_pool, server_keypair).await?;
             run_with_app_state(settings, app_state).await
         }
     }
@@ -187,9 +200,11 @@ async fn serve_metrics(
     Ok(())
 }
 
-async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<ProdSetup>> {
-    let server_keypair = load_keypair(settings).await?;
-
+async fn setup_prod_app_state(
+    settings: &Settings,
+    db_pool: Pool,
+    server_keypair: EdDidKey,
+) -> Result<AppState<ProdSetup>> {
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
     let app_state = AppStateBuilder::<ProdSetup>::default()
@@ -204,9 +219,11 @@ async fn setup_prod_app_state(settings: &Settings, db_pool: Pool) -> Result<AppS
     Ok(app_state)
 }
 
-async fn setup_local_app_state(settings: &Settings, db_pool: Pool) -> Result<AppState<LocalSetup>> {
-    let server_keypair = load_keypair(settings).await?;
-
+async fn setup_local_app_state(
+    settings: &Settings,
+    db_pool: Pool,
+    server_keypair: EdDidKey,
+) -> Result<AppState<LocalSetup>> {
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
     let ws_peer_map = Arc::new(WsPeerMap::default());
