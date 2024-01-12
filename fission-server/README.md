@@ -83,7 +83,7 @@ More info in the [Diesel guide](https://diesel.rs/guides/getting-started#install
 To better help diagnose and debug your server application, you can run:
 
 ``` console
-RUSTFLAGS="--cfg tokio_unstable" cargo run --features console, ansi-logs
+RUSTFLAGS="--cfg tokio_unstable" cargo run --features "console ansi-logs"
 ```
 
 This command uses a compile-time feature-flag, `console`, to give us local
