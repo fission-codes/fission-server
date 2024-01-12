@@ -21,6 +21,8 @@ pub enum FissionAbility {
     AccountRead,
     /// `account/create`, the ability to create an account
     AccountCreate,
+    /// `account/link`, the ability to link the originator to an existing account via email challenge
+    AccountLink,
     /// `account/manage`, the ability to change e.g. the username or email address
     AccountManage,
     /// `account/noncritical`, any non-destructive abilities like adding data or querying data
@@ -31,6 +33,7 @@ pub enum FissionAbility {
 
 const ACCOUNT_READ: &str = "account/read";
 const ACCOUNT_CREATE: &str = "account/create";
+const ACCOUNT_LINK: &str = "account/link";
 const ACCOUNT_MANAGE: &str = "account/manage";
 const ACCOUNT_NON_CRITICAL: &str = "account/noncritical";
 const ACCOUNT_DELETE: &str = "account/delete";
@@ -61,6 +64,7 @@ impl Plugin for FissionPlugin {
         Ok(match ability {
             ACCOUNT_READ => Some(FissionAbility::AccountRead),
             ACCOUNT_CREATE => Some(FissionAbility::AccountCreate),
+            ACCOUNT_LINK => Some(FissionAbility::AccountLink),
             ACCOUNT_MANAGE => Some(FissionAbility::AccountManage),
             ACCOUNT_NON_CRITICAL => Some(FissionAbility::AccountNonCritical),
             ACCOUNT_DELETE => Some(FissionAbility::AccountDelete),
@@ -90,6 +94,7 @@ impl Ability for FissionAbility {
             return match self {
                 Self::AccountRead => true,
                 Self::AccountCreate => true,
+                Self::AccountLink => true,
                 Self::AccountManage => false,
                 Self::AccountNonCritical => true,
                 Self::AccountDelete => false,
@@ -105,6 +110,7 @@ impl Display for FissionAbility {
         f.write_str(match self {
             Self::AccountRead => ACCOUNT_READ,
             Self::AccountCreate => ACCOUNT_CREATE,
+            Self::AccountLink => ACCOUNT_LINK,
             Self::AccountManage => ACCOUNT_MANAGE,
             Self::AccountNonCritical => ACCOUNT_NON_CRITICAL,
             Self::AccountDelete => ACCOUNT_DELETE,

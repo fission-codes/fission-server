@@ -150,7 +150,8 @@ pub struct Settings {
     pub healthcheck: Healthcheck,
     /// Local authoritative DNS server settings
     pub dns: Dns,
-    /// The path where the settings file resides
+    /// The path where the settings file resides.
+    /// This can't actually be configured in the settings file itself, for obvious reasons.
     #[serde(skip)]
     pub path: Option<PathBuf>,
 }

@@ -2,7 +2,7 @@ use rs_ucan::ucan::Ucan;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AccountCreationResponse {
+pub struct AccountResponse {
     pub account: AccountInfo,
     pub ucans: Vec<Ucan>,
 }

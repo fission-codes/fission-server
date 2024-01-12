@@ -92,6 +92,16 @@ impl IntoResponse for AppError {
 
 impl From<anyhow::Error> for AppError {
     fn from(err: anyhow::Error) -> Self {
+        let err = match err.downcast::<diesel::result::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        let err = match err.downcast::<rs_ucan::error::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
         warn!(
             subject = "app_error",
             category = "app_error",
@@ -115,6 +125,16 @@ impl From<diesel::result::Error> for AppError {
             diesel::result::Error::NotFound => {
                 Self::new(StatusCode::NOT_FOUND, Some("Resource Not Found"))
             }
+            diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                info,
+            ) => Self::new(
+                StatusCode::CONFLICT,
+                Some(match info.details() {
+                    Some(details) => format!("{} ({details})", info.message()),
+                    None => info.message().to_string(),
+                }),
+            ),
             _ => {
                 warn!(
                     subject = "app_error",
@@ -160,6 +180,12 @@ impl From<String> for AppError {
 
 impl From<rs_ucan::error::Error> for AppError {
     fn from(err: rs_ucan::error::Error) -> Self {
+        warn!(
+            subject = "app_error",
+            category = "app_error",
+            "encountered unexpected error {:#}",
+            err,
+        );
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }

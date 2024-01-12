@@ -2,16 +2,16 @@
 use crate::{
     logging::{LogAndHandleErrorMiddleware, LoggingCacheManager},
     paths::config_file,
-    responses::{AccountCreationResponse, AccountInfo},
+    responses::{AccountInfo, AccountResponse},
     settings::Settings,
     ucan::{encode_ucan_header, find_delegation_chain},
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility, indexing::IndexingAbility},
-    common::{AccountCreationRequest, EmailVerifyRequest, UcansResponse},
+    common::{AccountCreationRequest, AccountLinkRequest, EmailVerifyRequest, UcansResponse},
     dns,
     ed_did_key::EdDidKey,
 };
@@ -60,6 +60,8 @@ pub struct Account {
 pub enum AccountCommands {
     /// Create a new fission account (even if you already have one)
     Create,
+    /// Login to an existing fission account via email verification code
+    Login,
     /// List fission accounts that you currently have access on from this device
     List,
     /// Give one of your accounts a new name
@@ -100,6 +102,13 @@ impl Cli {
                         println!("Successfully created your account");
 
                         tracing::info!(?account, "Created account");
+                    }
+                    AccountCommands::Login => {
+                        let account = state.link_account().await?;
+
+                        println!("Successfully logged in");
+
+                        tracing::info!(?account, "Logged into account");
                     }
                     AccountCommands::List => {
                         let accounts = state.find_accounts(state.find_capabilities()?).await;
@@ -234,7 +243,7 @@ impl<'s> CliState<'s> {
         Ok(())
     }
 
-    async fn create_account(&mut self) -> Result<AccountInfo> {
+    async fn request_email_verification(&self) -> Result<(String, String)> {
         let email = inquire::Text::new("What's your email address?").prompt()?;
 
         self.server_request(Method::POST, "/api/v0/auth/email/verify")?
@@ -249,12 +258,18 @@ impl<'s> CliState<'s> {
         // TODO verify it's a 6 digit number. Allow retries.
         let code = inquire::Text::new("Please enter the verification code:").prompt()?;
 
+        Ok((email, code))
+    }
+
+    async fn create_account(&mut self) -> Result<AccountInfo> {
+        let (email, code) = self.request_email_verification().await?;
+
         let (ucan, proofs) = self.issue_ucan(self.device_did(), FissionAbility::AccountCreate)?;
 
         // TODO Check for availablility. Allow retries.
         let username = inquire::Text::new("Choose a username:").prompt()?;
 
-        let account_creation: AccountCreationResponse = self
+        let response: AccountResponse = self
             .server_request(Method::POST, "/api/v0/account")?
             .bearer_auth(ucan.encode()?)
             .header("ucan", encode_ucan_header(&proofs)?)
@@ -269,9 +284,44 @@ impl<'s> CliState<'s> {
             .json()
             .await?;
 
-        self.ucans.extend(account_creation.ucans);
+        self.ucans.extend(response.ucans);
 
-        Ok(account_creation.account)
+        Ok(response.account)
+    }
+
+    async fn link_account(&mut self) -> Result<AccountInfo> {
+        let username = inquire::Text::new("What's your username?").prompt()?;
+
+        let account_did = doh_request(
+            &self.client,
+            self.settings,
+            RecordType::TXT,
+            &format!("_did.{username}"),
+        )
+        .await
+        .context("Looking up user DID")?
+        .data;
+
+        let (_, code) = self.request_email_verification().await?;
+
+        let (ucan, proofs) = self.issue_ucan(self.device_did(), FissionAbility::AccountLink)?;
+
+        let response: AccountResponse = self
+            .server_request(Method::POST, &format!("/api/v0/account/{account_did}/link"))?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(&proofs)?)
+            .header(CONTENT_TYPE, "application/json")
+            .json(&AccountLinkRequest {
+                code: code.trim().to_string(),
+            })
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        self.ucans.extend(response.ucans);
+
+        Ok(response.account)
     }
 
     fn find_capabilities(&'s self) -> Result<Vec<(Did, Vec<&'s Ucan>)>> {

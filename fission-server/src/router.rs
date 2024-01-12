@@ -42,6 +42,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
         .route("/account", post(account::create_account))
         .route("/account", delete(account::delete_account))
         .route("/account/:did", get(account::get_account))
+        .route("/account/:did/link", post(account::link_account))
         .route(
             "/account/username/:username",
             patch(account::patch_username),
