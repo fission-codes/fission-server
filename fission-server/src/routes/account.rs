@@ -97,9 +97,11 @@ pub async fn create_account<S: ServerSetup>(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully linked account", body = RootAccount),
+        (status = 200, description = "Successfully linked account", body = RootAccount),
         (status = 400, description = "Bad Request"),
         (status = 403, description = "Forbidden"),
+        (status = 404, description = "Not found"),
+        (status = 422, description = "Unprocessable entity"),
     )
 )]
 pub async fn link_account<S: ServerSetup>(
@@ -121,7 +123,7 @@ pub async fn link_account<S: ServerSetup>(
                 .await?;
 
             let email = account.email.clone().ok_or(AppError::new(
-                StatusCode::BAD_REQUEST,
+                StatusCode::UNPROCESSABLE_ENTITY,
                 Some("No email address associated"),
             ))?;
 
@@ -136,7 +138,7 @@ pub async fn link_account<S: ServerSetup>(
 
             verification.consume_token(conn).await?;
 
-            Ok((StatusCode::CREATED, Json(account)))
+            Ok((StatusCode::OK, Json(account)))
         }
         .scope_boxed()
     })
@@ -346,7 +348,7 @@ mod tests {
         DefaultFact,
     };
     use serde::de::DeserializeOwned;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use testresult::TestResult;
 
     async fn create_account(
@@ -389,6 +391,50 @@ mod tests {
             }))?
             .into_json_response::<RootAccount>()
             .await?;
+
+        Ok((status, root_account))
+    }
+
+    async fn link_account<T: DeserializeOwned>(
+        account_did: &str,
+        email: &str,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, T)> {
+        let (status, response) =
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<SuccessResponse>()
+                .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
+
+        let (_, code) = ctx
+            .verification_code_sender()
+            .get_emails()
+            .into_iter()
+            .last()
+            .expect("No email Sent");
+
+        let ucan: Ucan = UcanBuilder::default()
+            .for_audience(ctx.server_did())
+            .claiming_capability(Capability::new(
+                Did(issuer.did()),
+                FissionAbility::AccountLink,
+                EmptyCaveat,
+            ))
+            .sign(issuer)?;
+
+        let (status, root_account) = RouteBuilder::new(
+            ctx.app(),
+            Method::POST,
+            &format!("/api/v0/account/{account_did}/link"),
+        )
+        .with_ucan(ucan)
+        .with_json_body(json!({ "code": code }))?
+        .into_json_response::<T>()
+        .await?;
 
         Ok((status, root_account))
     }
@@ -687,6 +733,75 @@ mod tests {
 
         let (status, _) =
             patch_username::<serde_json::Value>(username2, &root_account, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_account_link_ok() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, response) = create_account(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let issuer2 = &EdDidKey::generate();
+
+        let (status, link_response) =
+            link_account::<RootAccount>(&response.account.did, email, issuer2, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(link_response.account.did, response.account.did);
+        assert_eq!(link_response.account.email, Some(email.to_string()));
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_account_link_unknown_did_not_found() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, _) = create_account(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let issuer2 = &EdDidKey::generate();
+
+        let (status, _) =
+            link_account::<Value>(EdDidKey::generate().did_as_str(), email, issuer2, &ctx).await?;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_account_link_wrong_email_forbidden() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, response) = create_account(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let issuer2 = &EdDidKey::generate();
+        let email2 = "someone.else@trystero.com";
+
+        let (status, _) =
+            link_account::<Value>(&response.account.did, email2, issuer2, &ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 

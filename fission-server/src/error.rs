@@ -115,6 +115,16 @@ impl From<diesel::result::Error> for AppError {
             diesel::result::Error::NotFound => {
                 Self::new(StatusCode::NOT_FOUND, Some("Resource Not Found"))
             }
+            diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                info,
+            ) => Self::new(
+                StatusCode::CONFLICT,
+                Some(match info.details() {
+                    Some(details) => format!("{} ({details})", info.message()),
+                    None => info.message().to_string(),
+                }),
+            ),
             _ => {
                 warn!(
                     subject = "app_error",
