@@ -60,8 +60,10 @@ pub struct SuccessResponse {
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct UcansResponse {
     /// Ucans indexed by their canonical CID (base32, sha-256 and raw codec)
+    #[schema(value_type = HashMap<String, String>)]
     pub ucans: BTreeMap<String, Ucan>,
     /// The subset of canonical CIDs of UCANs that are revoked
+    #[schema(value_type = Vec<String>)]
     pub revoked: BTreeSet<String>,
 }
 

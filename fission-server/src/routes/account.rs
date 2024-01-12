@@ -7,7 +7,7 @@ use crate::{
     error::{AppError, AppResult},
     extract::json::Json,
     models::{
-        account::{Account, RootAccount},
+        account::{Account, AccountAndAuth},
         email_verification::EmailVerification,
         revocation::NewRevocationRecord,
     },
@@ -43,7 +43,7 @@ use validator::Validate;
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully created account", body = RootAccount),
+        (status = 201, description = "Successfully created account", body = AccountAndAuth),
         (status = 400, description = "Bad Request"),
         (status = 403, description = "Forbidden"),
     )
@@ -52,7 +52,7 @@ pub async fn create_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
     Json(request): Json<AccountCreationRequest>,
-) -> AppResult<(StatusCode, Json<RootAccount>)> {
+) -> AppResult<(StatusCode, Json<AccountAndAuth>)> {
     request
         .validate()
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
@@ -70,7 +70,7 @@ pub async fn create_account<S: ServerSetup>(
 
             debug!("Found EmailVerification {verification:?}");
 
-            let new_account = RootAccount::new(
+            let new_account = AccountAndAuth::new(
                 conn,
                 request.username,
                 verification.email.to_string(),
@@ -97,7 +97,7 @@ pub async fn create_account<S: ServerSetup>(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Successfully linked account", body = RootAccount),
+        (status = 200, description = "Successfully linked account", body = AccountAndAuth),
         (status = 400, description = "Bad Request"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Not found"),
@@ -109,7 +109,7 @@ pub async fn link_account<S: ServerSetup>(
     Path(account_did): Path<String>,
     authority: Authority,
     Json(request): Json<AccountLinkRequest>,
-) -> AppResult<(StatusCode, Json<RootAccount>)> {
+) -> AppResult<(StatusCode, Json<AccountAndAuth>)> {
     let Did(agent_did) = authority
         .get_capability(&state, FissionAbility::AccountLink)
         .await?;
@@ -134,7 +134,8 @@ pub async fn link_account<S: ServerSetup>(
             debug!("Found EmailVerification {verification:?}");
 
             let account =
-                RootAccount::link_agent(account, &agent_did, &state.server_keypair, conn).await?;
+                AccountAndAuth::link_agent(account, &agent_did, &state.server_keypair, conn)
+                    .await?;
 
             verification.consume_token(conn).await?;
 
@@ -149,9 +150,6 @@ pub async fn link_account<S: ServerSetup>(
 #[utoipa::path(
     get,
     path = "/api/v0/account/{did}",
-    security(
-        ("ucan_bearer" = []),
-    ),
     responses(
         (status = 200, description = "Found account", body = AccountResponse),
         (status = 400, description = "Invalid request", body = AppError),
@@ -183,9 +181,6 @@ pub async fn get_account<S: ServerSetup>(
 #[utoipa::path(
     get,
     path = "/api/v0/account/{username}/did",
-    security(
-        ("ucan_bearer" = []),
-    ),
     responses(
         (status = 200, description = "Found account", body = DidResponse),
         (status = 400, description = "Invalid request", body = AppError),
@@ -334,7 +329,7 @@ mod tests {
     use crate::{
         db::schema::accounts,
         error::{AppError, ErrorResponse},
-        models::account::RootAccount,
+        models::account::AccountAndAuth,
         test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
     use anyhow::{bail, Result};
@@ -441,7 +436,7 @@ mod tests {
 
     fn build_acc_invocation(
         ability: FissionAbility,
-        account: &RootAccount,
+        account: &AccountAndAuth,
         issuer: &EdDidKey,
         ctx: &TestContext,
     ) -> Result<Ucan> {
@@ -473,7 +468,7 @@ mod tests {
 
     async fn patch_username<T: DeserializeOwned>(
         new_username: &str,
-        account: &RootAccount,
+        account: &AccountAndAuth,
         issuer: &EdDidKey,
         ctx: &TestContext,
     ) -> Result<(StatusCode, T)> {
@@ -492,7 +487,7 @@ mod tests {
     }
 
     async fn delete_account<T: DeserializeOwned>(
-        account: &RootAccount,
+        account: &AccountAndAuth,
         issuer: &EdDidKey,
         ctx: &TestContext,
     ) -> Result<(StatusCode, T)> {
@@ -513,7 +508,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
 
         let (status, root_account) =
-            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -534,7 +529,7 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) = create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+        let (status, _) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 
@@ -672,7 +667,7 @@ mod tests {
         let email = "donnie@example.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, account) = create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+        let (_, account) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let (_, response) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
@@ -697,7 +692,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
 
         let (status, root_account) =
-            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -721,7 +716,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
 
         let (status, root_account) =
-            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -747,7 +742,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
 
         let (status, root_account) =
-            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -777,14 +772,14 @@ mod tests {
         let issuer = &EdDidKey::generate();
 
         let (status, response) =
-            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 
         let issuer2 = &EdDidKey::generate();
 
         let (status, link_response) =
-            link_account::<RootAccount>(&response.account.did, email, issuer2, &ctx).await?;
+            link_account::<AccountAndAuth>(&response.account.did, email, issuer2, &ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(link_response.account.did, response.account.did);
@@ -801,7 +796,7 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) = create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+        let (status, _) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 
@@ -824,7 +819,7 @@ mod tests {
         let issuer = &EdDidKey::generate();
 
         let (status, response) =
-            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 

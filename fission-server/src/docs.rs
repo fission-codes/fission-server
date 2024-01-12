@@ -3,11 +3,14 @@
 use crate::{
     error::AppError,
     extract::authority_addon::UcanAddon,
-    models::account::{Account, RootAccount},
-    routes::{account, auth, health, ping, revocations},
+    models::account::{Account, AccountAndAuth},
+    routes::{account, auth, capability_indexing, health, ping, revocations},
 };
 use fission_core::{
-    common::{AccountCreationRequest, AccountResponse, EmailVerifyRequest, SuccessResponse},
+    common::{
+        AccountCreationRequest, AccountLinkRequest, AccountResponse, DidResponse,
+        EmailVerifyRequest, SuccessResponse, UcansResponse,
+    },
     revocation::Revocation,
 };
 use utoipa::OpenApi;
@@ -21,9 +24,11 @@ use utoipa::OpenApi;
         auth::request_token,
         auth::server_did,
         account::create_account,
+        account::link_account,
         account::get_account,
         account::get_did,
         revocations::post_revocation,
+        capability_indexing::get_capabilities,
     ),
     components(
         schemas(
@@ -31,17 +36,17 @@ use utoipa::OpenApi;
             EmailVerifyRequest,
             SuccessResponse,
             AccountCreationRequest,
+            AccountLinkRequest,
             AccountResponse,
-            RootAccount,
+            UcansResponse,
+            AccountAndAuth,
             Account,
+            DidResponse,
             Revocation,
             health::HealthcheckResponse
         )
     ),
     modifiers(&UcanAddon),
-    tags(
-        (name = "", description = "fission-server service/middleware")
-    )
 )]
 
 /// Tied to OpenAPI documentation.

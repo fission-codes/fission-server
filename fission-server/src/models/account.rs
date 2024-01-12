@@ -62,9 +62,11 @@ pub struct Account {
     pub email: Option<String>,
 
     /// Inserted at timestamp
+    #[schema(value_type = String)]
     pub inserted_at: NaiveDateTime,
 
     /// Updated at timestamp
+    #[schema(value_type = String)]
     pub updated_at: NaiveDateTime,
 
     /// Volume ID
@@ -164,31 +166,34 @@ impl Account {
     }
 }
 
-/// Account with Root Authority (UCAN)
+/// Account with UCANs that give root auth to a specific DID
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-pub struct RootAccount {
+pub struct AccountAndAuth {
     /// The Associated Account
     pub account: Account,
     /// UCANs that give root access
+    #[schema(value_type = Vec<String>)]
     pub ucans: Vec<Ucan>,
 }
 
-/// Account with Root Authority
-impl RootAccount {
-    /// Create a new Account with a Root Authority
+impl AccountAndAuth {
+    /// Create a new account and generate some UCANs that give root rights
+    /// to given agent DID.
     ///
     /// This creates an account and generates a keypair that has top-level
     /// authority over the account. The private key is immediately discarded,
     /// and authority is delegated via a UCAN to the DID provided in
-    /// `user_did`
+    /// `agent_did`.
+    /// The UCAN chain moves through the server to make it possible to
+    /// recover access.
     pub async fn new(
         conn: &mut Conn<'_>,
         username: String,
         email: String,
-        user_did: &str,
+        agent_did: &str,
         server: &EdDidKey,
     ) -> Result<Self> {
-        let (ucans, account_did) = Self::issue_root_ucans(server, user_did, conn).await?;
+        let (ucans, account_did) = Self::issue_root_ucans(server, agent_did, conn).await?;
         let account = Account::new(conn, username, email, account_did).await?;
 
         Ok(Self { ucans, account })

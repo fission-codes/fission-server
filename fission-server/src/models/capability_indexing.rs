@@ -45,8 +45,10 @@ pub struct IndexedUcan {
     pub audience: String,
 
     /// UCAN `nbf` field
+    #[schema(value_type = Option<String>)]
     pub not_before: Option<NaiveDateTime>,
     /// UCAN `exp` field
+    #[schema(value_type = Option<String>)]
     pub expires_at: Option<NaiveDateTime>,
 }
 
@@ -66,8 +68,10 @@ pub struct NewIndexedUcan {
     pub audience: String,
 
     /// UCAN `nbf` field
+    #[schema(value_type = Option<String>)]
     pub not_before: Option<NaiveDateTime>,
     /// UCAN `exp` field
+    #[schema(value_type = Option<String>)]
     pub expires_at: Option<NaiveDateTime>,
 }
 

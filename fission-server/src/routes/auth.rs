@@ -19,10 +19,7 @@ use validator::Validate;
 #[utoipa::path(
     post,
     path = "/api/v0/auth/email/verify",
-    request_body = email_verification::Request,
-    security(
-        ("ucan_bearer" = []),
-    ),
+    request_body = EmailVerifyRequest,
     responses(
         (status = 200, description = "Successfully sent request token", body = SuccessResponse),
         (status = 400, description = "Invalid request"),
