@@ -20,7 +20,7 @@ use hickory_server::{
     },
     server::{Protocol, Request as DNSRequest},
 };
-use http::{header, request::Parts, StatusCode};
+use http::{header, request::Parts, HeaderValue, StatusCode};
 use serde::Deserialize;
 
 /// A DNS packet encoding type
@@ -38,6 +38,16 @@ impl Display for DNSMimeType {
             DNSMimeType::Message => write!(f, "application/dns-message"),
             DNSMimeType::Json => write!(f, "application/dns-json"),
         }
+    }
+}
+
+impl DNSMimeType {
+    /// Turn this mime type to an `Accept` HTTP header value
+    pub fn to_header_value(&self) -> HeaderValue {
+        HeaderValue::from_static(match self {
+            Self::Message => "application/dns-message",
+            Self::Json => "application/dns-json",
+        })
     }
 }
 

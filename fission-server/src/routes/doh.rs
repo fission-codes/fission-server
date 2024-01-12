@@ -2,9 +2,11 @@
 
 use crate::{
     app_state::AppState,
+    error::AppResult,
     extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
     setups::ServerSetup,
 };
+use anyhow::anyhow;
 use axum::{
     extract::State,
     response::{IntoResponse, Response},
@@ -12,37 +14,40 @@ use axum::{
 };
 use fission_core::dns;
 use hickory_server::proto::{self, serialize::binary::BinDecodable};
-use http::{header::CONTENT_TYPE, StatusCode};
+use http::{
+    header::{CACHE_CONTROL, CONTENT_TYPE},
+    HeaderValue, StatusCode,
+};
 
 /// GET handler for resolving DoH queries
 pub async fn get<S: ServerSetup>(
     State(state): State<AppState<S>>,
     DNSRequestQuery(request, accept_type): DNSRequestQuery,
-) -> Response {
-    let response = match state.dns_server.answer_request(request).await {
-        Ok(response) => response,
-        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+) -> AppResult<Response> {
+    let message_bytes = state.dns_server.answer_request(request).await?;
+    let message = proto::op::Message::from_bytes(&message_bytes).map_err(|e| anyhow!(e))?;
+
+    let min_ttl = message.answers().iter().map(|rec| rec.ttl()).min();
+
+    let mut response = match accept_type {
+        DNSMimeType::Message => (StatusCode::OK, message_bytes).into_response(),
+        DNSMimeType::Json => {
+            let response = dns::Response::from_message(message)?;
+            (StatusCode::OK, Json(response)).into_response()
+        }
     };
 
-    match accept_type {
-        DNSMimeType::Message => (
-            StatusCode::OK,
-            [(CONTENT_TYPE, accept_type.to_string())],
-            response,
-        )
-            .into_response(),
-        DNSMimeType::Json => {
-            let message = proto::op::Message::from_bytes(&response).unwrap();
-            let response = dns::Response::from_message(message).unwrap();
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, accept_type.to_header_value());
 
-            (
-                StatusCode::OK,
-                [(CONTENT_TYPE, accept_type.to_string())],
-                Json(response),
-            )
-                .into_response()
-        }
+    if let Some(min_ttl) = min_ttl {
+        let maxage =
+            HeaderValue::from_str(&format!("s-maxage={min_ttl}")).map_err(|e| anyhow!(e))?;
+        response.headers_mut().insert(CACHE_CONTROL, maxage);
     }
+
+    Ok(response)
 }
 
 /// POST handler for resolvng DoH queries
