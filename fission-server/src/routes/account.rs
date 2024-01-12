@@ -351,12 +351,12 @@ mod tests {
     use serde_json::{json, Value};
     use testresult::TestResult;
 
-    async fn create_account(
+    async fn create_account<T: DeserializeOwned>(
         username: &str,
         email: &str,
         issuer: &EdDidKey,
         ctx: &TestContext,
-    ) -> Result<(StatusCode, RootAccount)> {
+    ) -> Result<(StatusCode, T)> {
         let (status, response) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
                 .with_json_body(json!({ "email": email }))?
@@ -389,7 +389,7 @@ mod tests {
                 "email": email,
                 "code": code,
             }))?
-            .into_json_response::<RootAccount>()
+            .into_json_response::<T>()
             .await?;
 
         Ok((status, root_account))
@@ -512,7 +512,8 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+        let (status, root_account) =
+            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -521,6 +522,31 @@ mod tests {
             .ucans
             .iter()
             .any(|ucan| ucan.audience() == issuer.as_ref()));
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_create_account_same_username_conflict() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, _) = create_account::<RootAccount>(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let username = "oedipa";
+        let email = "oedipa2@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, err) = create_account::<Value>(username, email, issuer, &ctx).await?;
+
+        tracing::error!(?err, "Response");
+
+        assert_eq!(status, StatusCode::CONFLICT);
 
         Ok(())
     }
@@ -646,7 +672,7 @@ mod tests {
         let email = "donnie@example.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, account) = create_account(username, email, issuer, &ctx).await?;
+        let (_, account) = create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         let (_, response) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
@@ -670,7 +696,8 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+        let (status, root_account) =
+            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -693,7 +720,8 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+        let (status, root_account) =
+            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -718,7 +746,8 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) = create_account(username, email, issuer, &ctx).await?;
+        let (status, root_account) =
+            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert_eq!(root_account.account.username, Some(username.to_string()));
@@ -747,7 +776,8 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, response) = create_account(username, email, issuer, &ctx).await?;
+        let (status, response) =
+            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 
@@ -771,7 +801,7 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) = create_account(username, email, issuer, &ctx).await?;
+        let (status, _) = create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 
@@ -793,7 +823,8 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, response) = create_account(username, email, issuer, &ctx).await?;
+        let (status, response) =
+            create_account::<RootAccount>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
 

@@ -92,6 +92,16 @@ impl IntoResponse for AppError {
 
 impl From<anyhow::Error> for AppError {
     fn from(err: anyhow::Error) -> Self {
+        let err = match err.downcast::<diesel::result::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        let err = match err.downcast::<rs_ucan::error::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
         warn!(
             subject = "app_error",
             category = "app_error",
@@ -170,6 +180,12 @@ impl From<String> for AppError {
 
 impl From<rs_ucan::error::Error> for AppError {
     fn from(err: rs_ucan::error::Error) -> Self {
+        warn!(
+            subject = "app_error",
+            category = "app_error",
+            "encountered unexpected error {:#}",
+            err,
+        );
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }

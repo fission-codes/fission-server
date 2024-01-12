@@ -187,7 +187,7 @@ impl RootAccount {
         email: String,
         user_did: &str,
         server: &EdDidKey,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> Result<Self> {
         let (ucans, account_did) = Self::issue_root_ucans(server, user_did, conn).await?;
         let account = Account::new(conn, username, email, account_did).await?;
 
@@ -229,7 +229,7 @@ impl RootAccount {
         server: &EdDidKey,
         agent_did: &str,
         conn: &mut Conn<'_>,
-    ) -> Result<(Vec<Ucan>, String), anyhow::Error> {
+    ) -> Result<(Vec<Ucan>, String)> {
         let account = EdDidKey::generate(); // Zeroized on drop
 
         // Delegate all access to the fission server
