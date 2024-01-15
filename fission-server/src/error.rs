@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use ulid::Ulid;
 use utoipa::ToSchema;
+use validator::ValidationErrors;
 
 /// Standard return type out of routes / handlers
 pub type AppResult<T> = std::result::Result<T, AppError>;
@@ -102,6 +103,11 @@ impl From<anyhow::Error> for AppError {
             Err(e) => e,
         };
 
+        let err = match err.downcast::<ValidationErrors>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
         warn!(
             subject = "app_error",
             category = "app_error",
@@ -155,7 +161,14 @@ impl From<diesel::result::Error> for AppError {
 }
 
 impl From<ToStrError> for AppError {
-    fn from(_err: ToStrError) -> Self {
+    fn from(err: ToStrError) -> Self {
+        let err = err.to_string();
+        warn!(
+            subject = "app_error",
+            category = "app_error",
+            "encountered unexpected error {:#}",
+            err,
+        );
         Self {
             status: StatusCode::BAD_REQUEST,
             title: StatusCode::BAD_REQUEST
@@ -167,7 +180,13 @@ impl From<ToStrError> for AppError {
 }
 
 impl From<String> for AppError {
-    fn from(_err: String) -> Self {
+    fn from(err: String) -> Self {
+        warn!(
+            subject = "app_error",
+            category = "app_error",
+            "encountered unexpected error {:#}",
+            err,
+        );
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             title: StatusCode::INTERNAL_SERVER_ERROR
@@ -187,6 +206,18 @@ impl From<rs_ucan::error::Error> for AppError {
             err,
         );
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
+    }
+}
+
+impl From<ValidationErrors> for AppError {
+    fn from(err: ValidationErrors) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            title: StatusCode::BAD_REQUEST
+                .canonical_reason()
+                .map(|r| r.to_string()),
+            detail: Some(err.to_string()),
+        }
     }
 }
 

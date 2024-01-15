@@ -1,6 +1,6 @@
 //! Usernames and Handles
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -61,7 +61,7 @@ impl FromStr for Username {
 impl Username {
     /// Try to turn a unicode username
     pub fn from_unicode(s: &str) -> Result<Self> {
-        let inner = idna::punycode::encode_str(s).ok_or(anyhow!("cannot encode punycode",))?;
+        let inner = idna::domain_to_ascii(s)?;
         let username = Self { inner };
         username.validate()?;
         Ok(username)

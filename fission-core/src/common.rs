@@ -34,15 +34,6 @@ pub struct AccountLinkRequest {
     pub code: String,
 }
 
-/// Information about an account
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct AccountResponse {
-    /// username, if associated
-    pub username: Option<Handle>,
-    /// email, if associated
-    pub email: Option<String>,
-}
-
 /// Information about the DID of an account
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct DidResponse {
@@ -80,4 +71,18 @@ impl UcansResponse {
             }
         })
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// Information about an account
+pub struct Account {
+    /// Account DID
+    pub did: String,
+
+    /// Username associated with the account
+    #[schema(value_type = Option<String>)]
+    pub username: Option<Handle>,
+
+    /// Email address associated with the account
+    pub email: Option<String>,
 }

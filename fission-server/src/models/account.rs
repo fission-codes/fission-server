@@ -7,13 +7,19 @@ use crate::{
         Conn,
     },
     models::volume::{NewVolumeRecord, Volume},
+    settings,
     setups::IpfsDatabase,
 };
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey, username::Username};
+use fission_core::{
+    capabilities::did::Did,
+    common::Account,
+    ed_did_key::EdDidKey,
+    username::{Handle, Username},
+};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -47,8 +53,8 @@ struct NewAccountRecord {
 )]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]
-/// Fission Account model
-pub struct Account {
+/// The model for a row in the accounts table
+pub struct AccountRecord {
     /// Internal Database Identifier
     pub id: i32,
 
@@ -73,15 +79,15 @@ pub struct Account {
     pub volume_id: Option<i32>,
 }
 
-impl Account {
+impl AccountRecord {
     /// Create a new Account. Inserts the account into the database.
     pub async fn new(
         conn: &mut Conn<'_>,
-        username: Username,
+        username: impl AsRef<str>,
         email: String,
         did: String,
     ) -> Result<Self, diesel::result::Error> {
-        let username = username.to_string();
+        let username = username.as_ref().to_string();
         let new_account = NewAccountRecord {
             did,
             username,
@@ -102,7 +108,7 @@ impl Account {
         let username = username.as_ref();
         accounts::dsl::accounts
             .filter(accounts::username.eq(username))
-            .first::<Account>(conn)
+            .first::<AccountRecord>(conn)
             .await
     }
 
@@ -164,6 +170,19 @@ impl Account {
             bail!("No volume associated with account")
         }
     }
+
+    /// Turn this database record into an account struct used in APIs
+    pub fn to_account(self, dns_settings: &settings::Dns) -> Result<Account> {
+        let username = match self.username.as_ref() {
+            Some(username) => Some(Handle::new(username, &dns_settings.users_origin)?),
+            None => None,
+        };
+        Ok(Account {
+            did: self.did,
+            username,
+            email: self.email,
+        })
+    }
 }
 
 /// Account with UCANs that give root auth to a specific DID
@@ -187,16 +206,20 @@ impl AccountAndAuth {
     /// The UCAN chain moves through the server to make it possible to
     /// recover access.
     pub async fn new(
-        conn: &mut Conn<'_>,
         username: Username,
         email: String,
         agent_did: &str,
         server: &EdDidKey,
+        dns_settings: &settings::Dns,
+        conn: &mut Conn<'_>,
     ) -> Result<Self> {
         let (ucans, account_did) = Self::issue_root_ucans(server, agent_did, conn).await?;
-        let account = Account::new(conn, username, email, account_did).await?;
+        let record = AccountRecord::new(conn, username, email, account_did).await?;
 
-        Ok(Self { ucans, account })
+        Ok(Self {
+            ucans,
+            account: record.to_account(dns_settings)?,
+        })
     }
 
     /// Give an agent access to an existing account.
@@ -205,9 +228,10 @@ impl AccountAndAuth {
     /// This will generate another delegation from the server to the
     /// account.
     pub async fn link_agent(
-        account: Account,
+        account: AccountRecord,
         agent_did: &str,
         server: &EdDidKey,
+        dns_settings: &settings::Dns,
         conn: &mut Conn<'_>,
     ) -> Result<Self> {
         let server_ucan: String = ucans::table
@@ -226,7 +250,7 @@ impl AccountAndAuth {
 
         Ok(Self {
             ucans: vec![server_ucan, agent_ucan],
-            account,
+            account: account.to_account(dns_settings)?,
         })
     }
 

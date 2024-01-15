@@ -2,7 +2,7 @@
 
 use crate::{
     db::{self, Pool},
-    models::account::Account,
+    models::account::AccountRecord,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -45,7 +45,7 @@ impl UserDidsAuthority {
 
     async fn db_lookup_user_did(&self, username: String) -> Result<String> {
         let conn = &mut db::connect(&self.db_pool).await?;
-        let account = Account::find_by_username(conn, username).await?;
+        let account = AccountRecord::find_by_username(conn, username).await?;
         Ok(account.did)
     }
 }

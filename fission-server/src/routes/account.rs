@@ -7,7 +7,7 @@ use crate::{
     error::{AppError, AppResult},
     extract::json::Json,
     models::{
-        account::{Account, AccountAndAuth},
+        account::{AccountAndAuth, AccountRecord},
         email_verification::EmailVerification,
         revocation::NewRevocationRecord,
     },
@@ -23,12 +23,10 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
-    common::{
-        AccountCreationRequest, AccountLinkRequest, AccountResponse, DidResponse, SuccessResponse,
-    },
+    common::{Account, AccountCreationRequest, AccountLinkRequest, DidResponse, SuccessResponse},
     ed_did_key::EdDidKey,
     revocation::Revocation,
-    username::Handle,
+    username::Username,
 };
 use rs_ucan::ucan::Ucan;
 use std::str::FromStr;
@@ -72,11 +70,12 @@ pub async fn create_account<S: ServerSetup>(
             debug!("Found EmailVerification {verification:?}");
 
             let new_account = AccountAndAuth::new(
-                conn,
                 request.username,
                 verification.email.to_string(),
                 &did,
                 state.server_keypair.as_ref(),
+                &state.dns_settings,
+                conn,
             )
             .await?;
 
@@ -118,7 +117,7 @@ pub async fn link_account<S: ServerSetup>(
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
-            let account: Account = accounts::dsl::accounts
+            let account: AccountRecord = accounts::dsl::accounts
                 .filter(accounts::did.eq(account_did))
                 .first(conn)
                 .await?;
@@ -134,9 +133,14 @@ pub async fn link_account<S: ServerSetup>(
 
             debug!("Found EmailVerification {verification:?}");
 
-            let account =
-                AccountAndAuth::link_agent(account, &agent_did, &state.server_keypair, conn)
-                    .await?;
+            let account = AccountAndAuth::link_agent(
+                account,
+                &agent_did,
+                &state.server_keypair,
+                &state.dns_settings,
+                conn,
+            )
+            .await?;
 
             verification.consume_token(conn).await?;
 
@@ -152,7 +156,7 @@ pub async fn link_account<S: ServerSetup>(
     get,
     path = "/api/v0/account/{did}",
     responses(
-        (status = 200, description = "Found account", body = AccountResponse),
+        (status = 200, description = "Found account", body = Account),
         (status = 400, description = "Invalid request", body = AppError),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Not found"),
@@ -161,26 +165,17 @@ pub async fn link_account<S: ServerSetup>(
 pub async fn get_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
     Path(did): Path<String>,
-) -> AppResult<(StatusCode, Json<AccountResponse>)> {
+) -> AppResult<(StatusCode, Json<Account>)> {
     let conn = &mut db::connect(&state.db_pool).await?;
 
-    let account: Account = accounts::dsl::accounts
+    let account: AccountRecord = accounts::dsl::accounts
         .filter(accounts::did.eq(did))
         .first(conn)
         .await?;
 
-    let username = match account.username {
-        Some(username) => Some(Handle::new(&username, &state.dns_settings.users_origin)?),
-        None => None,
-    };
+    let account = account.to_account(&state.dns_settings)?;
 
-    Ok((
-        StatusCode::OK,
-        Json(AccountResponse {
-            username,
-            email: account.email,
-        }),
-    ))
+    Ok((StatusCode::OK, Json(account)))
 }
 
 /// GET handler to retrieve account details
@@ -200,7 +195,7 @@ pub async fn get_did<S: ServerSetup>(
 ) -> AppResult<(StatusCode, Json<DidResponse>)> {
     let conn = &mut db::connect(&state.db_pool).await?;
 
-    let account: Account = accounts::dsl::accounts
+    let account: AccountRecord = accounts::dsl::accounts
         .filter(accounts::username.eq(username))
         .first(conn)
         .await?;
@@ -231,6 +226,9 @@ pub async fn patch_username<S: ServerSetup>(
     let Did(did) = authority
         .get_capability(&state, FissionAbility::AccountManage)
         .await?;
+
+    // Validate the handle as a username
+    Username::from_str(&username)?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
 
@@ -274,7 +272,7 @@ pub async fn delete_account<S: ServerSetup>(
             use crate::db::schema::{accounts, capabilities, ucans, revocations};
             let account = diesel::delete(accounts::table)
                 .filter(accounts::did.eq(&did))
-                .get_result::<Account>(conn)
+                .get_result::<AccountRecord>(conn)
                 .await
                 .optional()?
                 .ok_or_else(|| {
@@ -321,7 +319,7 @@ pub async fn delete_account<S: ServerSetup>(
                 .execute(conn)
                 .await?;
 
-            Ok((StatusCode::OK, Json(account)))
+            Ok((StatusCode::OK, Json(account.to_account(&state.dns_settings)?)))
         }
         .scope_boxed()
     })
@@ -516,7 +514,10 @@ mod tests {
             create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(
+            root_account.account.username,
+            Some(ctx.user_handle(username))
+        );
         assert_eq!(root_account.account.email, Some(email.to_string()));
         assert!(root_account
             .ucans
@@ -628,13 +629,11 @@ mod tests {
             Method::GET,
             format!("/api/v0/account/{did}"),
         )
-        .into_json_response::<AccountResponse>()
+        .into_json_response::<Account>()
         .await?;
 
-        let handle = Handle::new(username, &ctx.app_state().dns_settings.users_origin)?;
-
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.username, Some(handle));
+        assert_eq!(body.username, Some(ctx.user_handle(username)));
         assert_eq!(body.email, Some(email.to_string()));
 
         Ok(())
@@ -702,7 +701,10 @@ mod tests {
             create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(
+            root_account.account.username,
+            Some(ctx.user_handle(username))
+        );
         assert_eq!(root_account.account.email, Some(email.to_string()));
 
         let (status, resp) =
@@ -726,7 +728,10 @@ mod tests {
             create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(
+            root_account.account.username,
+            Some(ctx.user_handle(username))
+        );
         assert_eq!(root_account.account.email, Some(email.to_string()));
 
         let (status, account) = delete_account::<Account>(&root_account, issuer, &ctx).await?;
@@ -752,7 +757,10 @@ mod tests {
             create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(root_account.account.username, Some(username.to_string()));
+        assert_eq!(
+            root_account.account.username,
+            Some(ctx.user_handle(username))
+        );
         assert_eq!(root_account.account.email, Some(email.to_string()));
 
         let (status, account) = delete_account::<Account>(&root_account, issuer, &ctx).await?;
