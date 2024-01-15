@@ -13,7 +13,7 @@ use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
+use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey, username::Username};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -77,10 +77,11 @@ impl Account {
     /// Create a new Account. Inserts the account into the database.
     pub async fn new(
         conn: &mut Conn<'_>,
-        username: String,
+        username: Username,
         email: String,
         did: String,
     ) -> Result<Self, diesel::result::Error> {
+        let username = username.to_string();
         let new_account = NewAccountRecord {
             did,
             username,
@@ -94,12 +95,11 @@ impl Account {
     }
 
     /// Find a Fission Account by username, validate that the UCAN has permission to access it
-    pub async fn find_by_username<U: AsRef<str>>(
+    pub async fn find_by_username(
         conn: &mut Conn<'_>,
-        username: U,
+        username: impl AsRef<str>,
     ) -> Result<Self, diesel::result::Error> {
         let username = username.as_ref();
-        //let account = accounts::dsl::accounts
         accounts::dsl::accounts
             .filter(accounts::username.eq(username))
             .first::<Account>(conn)
@@ -188,7 +188,7 @@ impl AccountAndAuth {
     /// recover access.
     pub async fn new(
         conn: &mut Conn<'_>,
-        username: String,
+        username: Username,
         email: String,
         agent_did: &str,
         server: &EdDidKey,

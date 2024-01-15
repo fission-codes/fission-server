@@ -69,6 +69,7 @@ impl TestContext {
             .expect("Could not initialize DNS server");
 
         let builder = AppStateBuilder::default()
+            .with_dns_settings(dns_settings)
             .with_db_pool(db_pool)
             .with_ipfs_db(TestIpfsDatabase::default())
             .with_verification_code_sender(TestVerificationCodeSender::default())

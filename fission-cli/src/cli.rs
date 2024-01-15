@@ -14,6 +14,7 @@ use fission_core::{
     common::{AccountCreationRequest, AccountLinkRequest, EmailVerifyRequest, UcansResponse},
     dns,
     ed_did_key::EdDidKey,
+    username::Username,
 };
 use hickory_proto::rr::RecordType;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
@@ -268,6 +269,7 @@ impl<'s> CliState<'s> {
 
         // TODO Check for availablility. Allow retries.
         let username = inquire::Text::new("Choose a username:").prompt()?;
+        let username = Username::from_unicode(&username)?;
 
         let response: AccountResponse = self
             .server_request(Method::POST, "/api/v0/account")?

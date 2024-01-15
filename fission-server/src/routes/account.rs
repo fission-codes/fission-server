@@ -28,6 +28,7 @@ use fission_core::{
     },
     ed_did_key::EdDidKey,
     revocation::Revocation,
+    username::Handle,
 };
 use rs_ucan::ucan::Ucan;
 use std::str::FromStr;
@@ -168,10 +169,15 @@ pub async fn get_account<S: ServerSetup>(
         .first(conn)
         .await?;
 
+    let username = match account.username {
+        Some(username) => Some(Handle::new(&username, &state.dns_settings.users_origin)?),
+        None => None,
+    };
+
     Ok((
         StatusCode::OK,
         Json(AccountResponse {
-            username: account.username,
+            username,
             email: account.email,
         }),
     ))
@@ -228,14 +234,13 @@ pub async fn patch_username<S: ServerSetup>(
 
     let conn = &mut db::connect(&state.db_pool).await?;
 
+    // conflicts are handled via the `impl From<diesel::result::Error> for AppError`
     use crate::db::schema::*;
     diesel::update(accounts::table)
         .filter(accounts::did.eq(&did))
         .set(accounts::username.eq(&username))
         .execute(conn)
         .await?;
-
-    // TODO(matheus23) handle username conflict errors correctly
 
     Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
 }
@@ -626,8 +631,10 @@ mod tests {
         .into_json_response::<AccountResponse>()
         .await?;
 
+        let handle = Handle::new(username, &ctx.app_state().dns_settings.users_origin)?;
+
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.username, Some(username.to_string()));
+        assert_eq!(body.username, Some(handle));
         assert_eq!(body.email, Some(email.to_string()));
 
         Ok(())

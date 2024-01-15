@@ -1,6 +1,12 @@
 //! The Axum Application State
 
-use crate::{db::Pool, dns::DnsServer, routes::ws::WsPeerMap, setups::ServerSetup};
+use crate::{
+    db::Pool,
+    dns::DnsServer,
+    routes::ws::WsPeerMap,
+    settings::{self},
+    setups::ServerSetup,
+};
 use anyhow::{anyhow, Result};
 use fission_core::ed_did_key::EdDidKey;
 use std::sync::Arc;
@@ -8,6 +14,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 /// Global application route state.
 pub struct AppState<S: ServerSetup> {
+    /// Settings loaded from env variables & the settings.toml file
+    pub dns_settings: Arc<settings::Dns>,
     /// The database pool
     pub db_pool: Pool,
     /// The ipfs peers to be rendered in the ipfs/peers endpoint
@@ -27,6 +35,7 @@ pub struct AppState<S: ServerSetup> {
 /// Builder for [`AppState`]
 #[derive(Debug)]
 pub struct AppStateBuilder<S: ServerSetup> {
+    dns_settings: Option<settings::Dns>,
     db_pool: Option<Pool>,
     ipfs_peers: Vec<String>,
     ipfs_db: Option<S::IpfsDatabase>,
@@ -39,6 +48,7 @@ pub struct AppStateBuilder<S: ServerSetup> {
 impl<S: ServerSetup> Default for AppStateBuilder<S> {
     fn default() -> Self {
         Self {
+            dns_settings: None,
             db_pool: None,
             ipfs_peers: Default::default(),
             ipfs_db: None,
@@ -53,6 +63,11 @@ impl<S: ServerSetup> Default for AppStateBuilder<S> {
 impl<S: ServerSetup> AppStateBuilder<S> {
     /// Finalize the builder and return the [`AppState`]
     pub fn finalize(self) -> Result<AppState<S>> {
+        let dns_settings = Arc::new(
+            self.dns_settings
+                .ok_or_else(|| anyhow!("dns settings are required"))?,
+        );
+
         let db_pool = self.db_pool.ok_or_else(|| anyhow!("db_pool is required"))?;
 
         let ipfs_peers = self.ipfs_peers;
@@ -74,6 +89,7 @@ impl<S: ServerSetup> AppStateBuilder<S> {
         let ws_peer_map = self.ws_peer_map;
 
         Ok(AppState {
+            dns_settings,
             db_pool,
             ipfs_peers,
             ipfs_db,
@@ -82,6 +98,12 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             server_keypair: Arc::new(did),
             dns_server,
         })
+    }
+
+    /// Set settings
+    pub fn with_dns_settings(mut self, dns_settings: settings::Dns) -> Self {
+        self.dns_settings = Some(dns_settings);
+        self
     }
 
     /// Set the database pool

@@ -1,5 +1,6 @@
 //! Request and response data types that are common and useful between clients of and the fission server
 
+use crate::username::{Handle, Username};
 use rs_ucan::ucan::Ucan;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,7 +19,7 @@ pub struct EmailVerifyRequest {
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema, Validate)]
 pub struct AccountCreationRequest {
     /// Username associated with the account
-    pub username: String,
+    pub username: Username,
     /// Email address associated with the account
     #[validate(email)]
     pub email: String,
@@ -37,7 +38,7 @@ pub struct AccountLinkRequest {
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct AccountResponse {
     /// username, if associated
-    pub username: Option<String>,
+    pub username: Option<Handle>,
     /// email, if associated
     pub email: Option<String>,
 }
