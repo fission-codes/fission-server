@@ -41,14 +41,6 @@ Terri wants to register a function on Odd Functions. They go to the Fission CLI,
 
 # Approach
 
-## Event Sourcing
-
-Instead of recording the `createdAt` and latest `modifiedAt`, the Fission server records immutable events. This stores more data in the database, but has multiple advantages:
-
-- Schema migrations can be reconstituted performed directly or by playing over the log
-- Post hoc analysis and debugging is possible
-- Nondestructive updates makes fixing bugs in-place significantly easier
-
 ## Resource DIDs
 
 In the previous (Haskell) server, the user's DID was registered directly in the (central) database. This approach has a few drawbacks:
