@@ -142,18 +142,31 @@ impl Cli {
                             &rename.username,
                             "Which account do you want to rename?",
                         )?;
+                        let did = Did(auth.account.did.to_string());
 
                         let new_username = inquire::Text::new("Pick a new username:").prompt()?;
-                        let new_username = Username::from_unicode(&new_username)?;
 
-                        state
-                            .rename_account(
-                                Did(auth.account.did.to_string()),
-                                &auth.ucans,
-                                new_username,
-                            )
-                            .await?;
+                        if new_username.contains('.') {
+                            println!(
+                                "Looks like you're trying to associate a handle with your account."
+                            );
+                            println!("Please make sure to have a DNS TXT record for _did.{new_username} with its value set to {did}");
+                            println!(
+                                "This is needed for our backend to verify that you are the owner of that domain name."
+                            );
+                            let new_handle = Handle::from_unicode(&new_username)?;
 
+                            inquire::Confirm::new("Have you verified that the DNS record is set?")
+                                .prompt()?;
+
+                            state
+                                .add_handle_account(did, &auth.ucans, new_handle)
+                                .await?;
+                        } else {
+                            let new_username = Username::from_unicode(&new_username)?;
+
+                            state.rename_account(did, &auth.ucans, new_username).await?;
+                        }
                         println!("Successfully changed your username.");
                     }
                     AccountCommands::Delete(delete) => {
@@ -471,6 +484,18 @@ impl<'s> CliState<'s> {
         .header("ucan", encode_ucan_header(chain)?)
         .send()
         .await?;
+
+        Ok(())
+    }
+
+    async fn add_handle_account(&self, did: Did, chain: &[Ucan], handle: Handle) -> Result<()> {
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, chain)?;
+
+        self.server_request(Method::PATCH, &format!("/api/v0/account/handle/{handle}"))?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(chain)?)
+            .send()
+            .await?;
 
         Ok(())
     }

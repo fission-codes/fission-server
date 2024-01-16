@@ -5,7 +5,10 @@ use crate::{
     authority::Authority,
     db::{self, schema::accounts},
     error::{AppError, AppResult},
-    extract::json::Json,
+    extract::{
+        doh::{encode_query_as_request, DnsQuery},
+        json::Json,
+    },
     models::{
         account::{AccountAndAuth, AccountRecord},
         email_verification::EmailVerification,
@@ -13,7 +16,7 @@ use crate::{
     },
     setups::ServerSetup,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use axum::{
     self,
     extract::{Path, State},
@@ -26,10 +29,14 @@ use fission_core::{
     common::{Account, AccountCreationRequest, AccountLinkRequest, DidResponse, SuccessResponse},
     ed_did_key::EdDidKey,
     revocation::Revocation,
-    username::Username,
+    username::{Handle, Username},
 };
+use hickory_server::proto::{rr::RecordType, serialize::binary::BinDecodable};
 use rs_ucan::ucan::Ucan;
-use std::str::FromStr;
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    str::FromStr,
+};
 use tracing::debug;
 use validator::Validate;
 
@@ -223,12 +230,12 @@ pub async fn patch_username<S: ServerSetup>(
     authority: Authority,
     Path(username): Path<String>,
 ) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
+    // Validate the handle as a username
+    Username::from_str(&username)?;
+
     let Did(did) = authority
         .get_capability(&state, FissionAbility::AccountManage)
         .await?;
-
-    // Validate the handle as a username
-    Username::from_str(&username)?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
 
@@ -237,6 +244,75 @@ pub async fn patch_username<S: ServerSetup>(
     diesel::update(accounts::table)
         .filter(accounts::did.eq(&did))
         .set(accounts::username.eq(&username))
+        .execute(conn)
+        .await?;
+
+    Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
+}
+
+/// Handler for changing the account handle
+#[utoipa::path(
+    patch,
+    path = "/api/v0/account/handle/{handle}",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Updated account", body = DidResponse),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Not found"),
+        (status = 429, description = "Conflict"),
+    )
+)]
+pub async fn patch_handle<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+    Path(handle): Path<Handle>,
+) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
+    // Validate the handle is a valid DNS name
+    handle.validate()?;
+
+    let Did(did) = authority
+        .get_capability(&state, FissionAbility::AccountManage)
+        .await?;
+
+    // TODO Better APIs. It should be easier to ask our own DNS server some Qs
+    let localhost_dns_v4 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 53));
+
+    let message_bytes = state
+        .dns_server
+        .answer_request(encode_query_as_request(
+            DnsQuery::new(format!("_did.{handle}"), RecordType::TXT),
+            localhost_dns_v4,
+        )?)
+        .await?;
+
+    let message = hickory_server::proto::op::Message::from_bytes(message_bytes.as_ref())
+        .map_err(|e| anyhow!(e))?;
+
+    let response = fission_core::dns::Response::from_message(message)?;
+
+    let record = response
+        .answer
+        .iter()
+        .find(|answer| answer.data == did)
+        .ok_or(AppError::new(
+            StatusCode::FORBIDDEN,
+            Some(format!(
+                "Couldn't find DNS TXT record for _did.{handle} set to {did}"
+            )),
+        ))?;
+
+    tracing::info!(?record, "Found DNS record. Changing handle.");
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+
+    // conflicts are handled via the `impl From<diesel::result::Error> for AppError`
+    use crate::db::schema::*;
+    diesel::update(accounts::table)
+        .filter(accounts::did.eq(&did))
+        .set(accounts::handle.eq(handle.as_str()))
         .execute(conn)
         .await?;
 

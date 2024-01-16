@@ -77,6 +77,9 @@ pub struct AccountRecord {
 
     /// Volume ID
     pub volume_id: Option<i32>,
+
+    /// Custom domain handle associated with the account
+    pub handle: Option<String>,
 }
 
 impl AccountRecord {
@@ -173,10 +176,15 @@ impl AccountRecord {
 
     /// Turn this database record into an account struct used in APIs
     pub fn to_account(self, dns_settings: &settings::Dns) -> Result<Account> {
-        let username = match self.username.as_ref() {
-            Some(username) => Some(Handle::new(username, &dns_settings.users_origin)?),
-            None => None,
+        let username = match (self.handle.as_ref(), self.username.as_ref()) {
+            // Prefer using the user's handle
+            (Some(handle), _) => Some(Handle::from_str(handle)?),
+            // Otherwise use their username
+            (_, Some(username)) => Some(Handle::new(username, &dns_settings.users_origin)?),
+            // If nothing is set, we can't help
+            (None, None) => None,
         };
+
         Ok(Account {
             did: self.did,
             username,

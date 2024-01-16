@@ -47,6 +47,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
             "/account/username/:username",
             patch(account::patch_username),
         )
+        .route("/account/handle/:handle", patch(account::patch_handle))
         .route("/account/:username/did", get(account::get_did))
         .route("/capabilities", get(capability_indexing::get_capabilities))
         .route("/revocations", post(revocations::post_revocation))

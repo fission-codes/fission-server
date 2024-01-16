@@ -1,6 +1,6 @@
 //! Usernames and Handles
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -15,10 +15,6 @@ use validator::{Validate, ValidationError, ValidationErrors};
 ///
 /// Usernames have a 63 byte limit (in punycode encoding)
 /// due to inherent limits in the DNS protocol.
-///
-/// The `Display` instance and `from_unicode` function work
-/// with unicode, everything else works with the encoded
-/// punycode variants.
 #[derive(Clone, ToSchema, Serialize, Deserialize, Validate, Eq, PartialEq, PartialOrd, Ord)]
 #[serde(transparent)]
 pub struct Username {
@@ -130,9 +126,18 @@ impl Handle {
         self.inner.as_str()
     }
 
-    /// Construct a handle from a username & domain
+    /// Construct a handle from a username & domain.
+    ///
+    /// Both are assumed to be valid DNS labels and normalized (lowercase, punycode).
     pub fn new(username: &str, domain: &str) -> Result<Self> {
         Ok(Self::from_str(&format!("{username}.{domain}"))?)
+    }
+
+    /// Turn an internationalized domain name (IDN) handle with unicode characters and
+    /// normalize it to a normal handle
+    pub fn from_unicode(s: &str) -> Result<Self> {
+        let normalized = idna::domain_to_ascii_strict(s).map_err(|e| anyhow!(e))?;
+        Ok(Self { inner: normalized })
     }
 
     /// Get this handle as a unicode string

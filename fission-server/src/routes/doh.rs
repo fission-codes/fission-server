@@ -3,7 +3,7 @@
 use crate::{
     app_state::AppState,
     error::AppResult,
-    extract::doh::{DNSMimeType, DNSRequestBody, DNSRequestQuery},
+    extract::doh::{DnsMimeType, DnsRequestBody, DnsRequestQuery},
     setups::ServerSetup,
 };
 use anyhow::anyhow;
@@ -22,7 +22,7 @@ use http::{
 /// GET handler for resolving DoH queries
 pub async fn get<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    DNSRequestQuery(request, accept_type): DNSRequestQuery,
+    DnsRequestQuery(request, accept_type): DnsRequestQuery,
 ) -> AppResult<Response> {
     let message_bytes = state.dns_server.answer_request(request).await?;
     let message = proto::op::Message::from_bytes(&message_bytes).map_err(|e| anyhow!(e))?;
@@ -30,8 +30,8 @@ pub async fn get<S: ServerSetup>(
     let min_ttl = message.answers().iter().map(|rec| rec.ttl()).min();
 
     let mut response = match accept_type {
-        DNSMimeType::Message => (StatusCode::OK, message_bytes).into_response(),
-        DNSMimeType::Json => {
+        DnsMimeType::Message => (StatusCode::OK, message_bytes).into_response(),
+        DnsMimeType::Json => {
             let response = dns::Response::from_message(message)?;
             (StatusCode::OK, Json(response)).into_response()
         }
@@ -53,7 +53,7 @@ pub async fn get<S: ServerSetup>(
 /// POST handler for resolvng DoH queries
 pub async fn post<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    DNSRequestBody(request): DNSRequestBody,
+    DnsRequestBody(request): DnsRequestBody,
 ) -> Response {
     let response = match state.dns_server.answer_request(request).await {
         Ok(response) => response,
@@ -62,7 +62,7 @@ pub async fn post<S: ServerSetup>(
 
     (
         StatusCode::OK,
-        [(CONTENT_TYPE, DNSMimeType::Message.to_string())],
+        [(CONTENT_TYPE, DnsMimeType::Message.to_string())],
         response,
     )
         .into_response()

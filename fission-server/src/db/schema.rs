@@ -9,6 +9,7 @@ diesel::table! {
         inserted_at -> Timestamp,
         updated_at -> Timestamp,
         volume_id -> Nullable<Int4>,
+        handle -> Nullable<Text>,
     }
 }
 
