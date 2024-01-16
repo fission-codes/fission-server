@@ -150,7 +150,7 @@ fn valid_domain_encoding(s: &str) -> Result<(), ValidationError> {
     let result = idna::domain_to_ascii_strict(&unicode).map_err(|_| err.clone())?;
 
     if s != result {
-        return Err(err)?;
+        return Err(err);
     }
 
     Ok(())
