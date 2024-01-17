@@ -77,7 +77,7 @@ openssl = { version = "0.10", features = ["vendored"], default-features = false 
 opentelemetry = { version = "0.20", features = ["trace"] }
 opentelemetry-otlp = { version = "0.13", features = ["trace", "metrics", "grpc-tonic", "tls-roots"], default-features = false }
 opentelemetry_sdk = { version = "0.20", features = ["rt-tokio"] }
-opentelemetry-semantic-conventions = "0.12"
+opentelemetry-semantic-conventions = "0.13"
 parking_lot = "0.12"
 pretty_assertions = "1.4.0"
 rand = "0.8"
