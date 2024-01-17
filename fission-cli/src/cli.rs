@@ -403,7 +403,7 @@ impl<'s> CliState<'s> {
                     self.issue_ucan_with(did.clone(), FissionAbility::AccountRead, &chain)?;
 
                 let account: Account = self
-                    .server_request(Method::GET, &format!("/api/v0/account/{did}"))?
+                    .server_request(Method::GET, "/api/v0/account")?
                     .bearer_auth(ucan.encode()?)
                     .header("ucan", encode_ucan_header(&chain)?)
                     .send()
