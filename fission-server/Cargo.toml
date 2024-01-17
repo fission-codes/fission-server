@@ -53,7 +53,6 @@ config = { workspace = true }
 console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
 dashmap = "5.5.0"
-did-key = "0.2.1"
 diesel = { version = "2.0.4", features = ["postgres", "chrono", "serde_json"] }
 diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
 diesel_migrations = "2.1"

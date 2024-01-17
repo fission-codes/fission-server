@@ -1,12 +1,11 @@
 //! A simple wrapper around an EdDSA Ed25519 signing key that provides zeroization & a `did:key:` representation
 
 use anyhow::Result;
-use did_key::{Ed25519KeyPair, Fingerprint};
 use ed25519::{
     pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey},
     Signature,
 };
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use rand::thread_rng;
 use rs_ucan::crypto::SignerDid;
 use signature::Signer;
@@ -38,7 +37,7 @@ impl Display for EdDidKey {
 impl EdDidKey {
     /// Wrap an existing Ed25519 signing key
     pub fn new(signing_key: SigningKey) -> Self {
-        let did_key_string = did_key_str(&signing_key.verifying_key());
+        let did_key_string = signing_key.did().expect("the function is infallible");
         Self {
             signing_key,
             did_key_string,
@@ -95,11 +94,4 @@ impl SignerDid for EdDidKey {
     fn did(&self) -> Result<String> {
         Ok(self.did())
     }
-}
-
-fn did_key_str(key: &VerifyingKey) -> String {
-    format!(
-        "did:key:{}",
-        Ed25519KeyPair::from_public_key(key.as_bytes()).fingerprint()
-    )
 }
