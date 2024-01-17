@@ -203,14 +203,14 @@ pub async fn get_did<S: ServerSetup>(
     let conn = &mut db::connect(&state.db_pool).await?;
 
     let account: AccountRecord = accounts::dsl::accounts
-        .filter(accounts::username.eq(username))
+        .filter(accounts::username.eq(&username))
         .first(conn)
         .await?;
 
     Ok((StatusCode::OK, Json(DidResponse { did: account.did })))
 }
 
-/// Handler for changing the username
+/// PATCH Handler for changing the username
 #[utoipa::path(
     patch,
     path = "/api/v0/account/username/{username}",
@@ -218,7 +218,7 @@ pub async fn get_did<S: ServerSetup>(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Updated account", body = DidResponse),
+        (status = 200, description = "Updated account", body = SuccessResponse),
         (status = 400, description = "Invalid request", body = AppError),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Not found"),
@@ -250,7 +250,7 @@ pub async fn patch_username<S: ServerSetup>(
     Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
 }
 
-/// Handler for changing the account handle
+/// PATCH Handler for changing the account handle
 #[utoipa::path(
     patch,
     path = "/api/v0/account/handle/{handle}",
@@ -258,9 +258,10 @@ pub async fn patch_username<S: ServerSetup>(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 200, description = "Updated account", body = DidResponse),
+        (status = 200, description = "Updated account", body = SuccessResponse),
         (status = 400, description = "Invalid request", body = AppError),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Not found"),
         (status = 429, description = "Conflict"),
     )
@@ -313,6 +314,41 @@ pub async fn patch_handle<S: ServerSetup>(
     diesel::update(accounts::table)
         .filter(accounts::did.eq(&did))
         .set(accounts::handle.eq(handle.as_str()))
+        .execute(conn)
+        .await?;
+
+    Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
+}
+
+/// DELETE Handler for removing domain name association
+#[utoipa::path(
+    delete,
+    path = "/api/v0/account/handle",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Updated account", body = SuccessResponse),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Not found"),
+    )
+)]
+pub async fn delete_handle<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
+    let Did(did) = authority
+        .get_capability(&state, FissionAbility::AccountManage)
+        .await?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+
+    use crate::db::schema::*;
+    diesel::update(accounts::table)
+        .filter(accounts::did.eq(&did))
+        .set(accounts::handle.eq(&None::<String>))
         .execute(conn)
         .await?;
 

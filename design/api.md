@@ -18,7 +18,10 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | GET | [`/api/v0/account/:did`](#get-apiv0accountdid) | Get account information by DID |
 | POST | [`/api/v0/account/:did/link`](#post-apiv0accountdidlink) | Login from another device via email code |
 | GET | [`/api/v0/account/:username/did`](#get-apiv0accountusernamedid) | Get the did of an account by username |
-| PATCH | [`/api/v0/account/:did/username/:username`](#patch-apiv0accountdidusernameusername) | Change an account's username |
+| PATCH | [`/api/v0/account/username/:username`](#patch-apiv0accountusernameusername) | Change an account's username |
+| PATCH | [`/api/v0/account/handle/:handle`](#patch-apiv0accounthandlehandle) | Change the handle that's associated with an account |
+| DELETE | [`/api/v0/account/handle`](#delete-apiv0accounthandle) | Disassociate an account's handle |
+| DELETE | [`/api/v0/account`](#delete-apiv0account) | Delete an account |
 | GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
 | POST | [`/api/v0/revocations`](#post-apiv0revocations) | Revoke a UCAN |
 
@@ -134,9 +137,9 @@ Find out an account's DID. This information may be substituted by DoH & a DNS re
 
 ---
 
-### PATCH `/api/v0/account/:did/username/:username`
+### PATCH `/api/v0/account/username/:username`
 
-Change the account's username.
+Change the account's username. The account DID to change is determined by the resource DID in the authorization UCAN.
 
 **Authorization**: UCAN with ability `account/manage`.
 
@@ -145,6 +148,44 @@ Change the account's username.
 Status 200 OK and `{ success: true }`, if successful.
 
 Status 409 Conflict and `{ success: false }`, if the username is already taken.
+
+---
+
+### PATCH `/api/v0/account/handle/:handle`
+
+Associate a domain name with an existing account. This will function as the username for the account in the future.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Status 200 OK and `{ success: true }`, if successful.
+
+Status 409 Conflict and `{ success: false }`, if the username is already taken.
+
+---
+
+### DELETE `/api/v0/account/handle`
+
+Disassociate a handle from an existing account. It won't be returned as the canoncial username in get account queries anymore.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Status 200 OK and `{ success: true }`, if successful.
+
+---
+
+### DELETE `/api/v0/account`
+
+Delete an account.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Status 200 OK and `{ success: true }`, if successful.
 
 ---
 

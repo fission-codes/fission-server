@@ -36,10 +36,12 @@ pub type AppResult<T> = std::result::Result<T, AppError>;
 /// - meta - a meta object containing arbitrary information about the error
 #[derive(ToSchema, thiserror::Error, Eq, PartialEq, Debug, Deserialize, Serialize)]
 pub struct AppError {
-    #[schema(value_type = u16, example = 200)]
+    #[schema(value_type = u16, example = 404)]
     #[serde(with = "crate::error::serde_status_code")]
     pub(crate) status: StatusCode,
+    #[schema(example = "Not Found")]
     pub(crate) detail: Option<String>,
+    #[schema(example = "Entity with id 123 not found")]
     pub(crate) title: Option<String>,
 }
 

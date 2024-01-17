@@ -3,7 +3,7 @@
 use crate::{
     error::AppError,
     extract::authority_addon::UcanAddon,
-    models::account::{AccountAndAuth, AccountRecord},
+    models::account::AccountAndAuth,
     routes::{account, auth, capability_indexing, health, ping, revocations},
 };
 use fission_core::{
@@ -27,6 +27,9 @@ use utoipa::OpenApi;
         account::link_account,
         account::get_account,
         account::get_did,
+        account::patch_username,
+        account::patch_handle,
+        account::delete_account,
         revocations::post_revocation,
         capability_indexing::get_capabilities,
     ),
@@ -40,7 +43,6 @@ use utoipa::OpenApi;
             AccountLinkRequest,
             UcansResponse,
             AccountAndAuth,
-            AccountRecord,
             DidResponse,
             Revocation,
             health::HealthcheckResponse
