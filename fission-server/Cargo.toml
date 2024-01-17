@@ -102,7 +102,7 @@ tower = "0.4"
 tower-http = { version = "0.4", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
 tracing = "0.1"
 tracing-appender = "0.2"
-tracing-opentelemetry = "0.20"
+tracing-opentelemetry = "0.22"
 tracing-subscriber = { workspace = true }
 hickory-server = { version = "0.24", features = ["dns-over-rustls"] }
 rs-ucan = { workspace = true }
