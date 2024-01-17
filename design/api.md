@@ -17,7 +17,6 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | POST | [`/api/v0/account`](#post-apiv0account) | Create a full account |
 | GET | [`/api/v0/account/:did`](#get-apiv0accountdid) | Get account information by DID |
 | POST | [`/api/v0/account/:did/link`](#post-apiv0accountdidlink) | Login from another device via email code |
-| GET | [`/api/v0/account/:username/did`](#get-apiv0accountusernamedid) | Get the did of an account by username |
 | PATCH | [`/api/v0/account/username/:username`](#patch-apiv0accountusernameusername) | Change an account's username |
 | PATCH | [`/api/v0/account/handle/:handle`](#patch-apiv0accounthandlehandle) | Change the handle that's associated with an account |
 | DELETE | [`/api/v0/account/handle`](#delete-apiv0accounthandle) | Disassociate an account's handle |
@@ -119,21 +118,6 @@ Get a UCAN for a DID that hasn't been associated with this account yet, given an
 | Field | Type | Comment |
 |-------|------|---------|
 | `ucans` | `Array<string>` | A set of UCAN delegations that delegate the account's unique DID to the resource DID from the request authorization. |
-
----
-
-### GET `/api/v0/account/:username/did`
-
-Find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
-
-**Authorization**: UCAN with ability `account/link`. The resource DID will be the audience for returned UCANs.
-
-**Response**:
-
-| Field | Type     |
-|-------|----------|
-| `did` | `string` |
-
 
 ---
 

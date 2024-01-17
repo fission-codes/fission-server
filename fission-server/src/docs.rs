@@ -8,8 +8,8 @@ use crate::{
 };
 use fission_core::{
     common::{
-        Account, AccountCreationRequest, AccountLinkRequest, DidResponse, EmailVerifyRequest,
-        SuccessResponse, UcansResponse,
+        Account, AccountCreationRequest, AccountLinkRequest, EmailVerifyRequest, SuccessResponse,
+        UcansResponse,
     },
     revocation::Revocation,
 };
@@ -22,11 +22,9 @@ use utoipa::OpenApi;
         health::healthcheck,
         ping::get,
         auth::request_token,
-        auth::server_did,
         account::create_account,
         account::link_account,
         account::get_account,
-        account::get_did,
         account::patch_username,
         account::patch_handle,
         account::delete_account,
@@ -43,7 +41,6 @@ use utoipa::OpenApi;
             AccountLinkRequest,
             UcansResponse,
             AccountAndAuth,
-            DidResponse,
             Revocation,
             health::HealthcheckResponse
         )

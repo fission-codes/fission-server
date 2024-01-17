@@ -26,7 +26,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
-    common::{Account, AccountCreationRequest, AccountLinkRequest, DidResponse, SuccessResponse},
+    common::{Account, AccountCreationRequest, AccountLinkRequest, SuccessResponse},
     ed_did_key::EdDidKey,
     revocation::Revocation,
     username::{Handle, Username},
@@ -183,31 +183,6 @@ pub async fn get_account<S: ServerSetup>(
     let account = account.to_account(&state.dns_settings)?;
 
     Ok((StatusCode::OK, Json(account)))
-}
-
-/// GET handler to retrieve account details
-#[utoipa::path(
-    get,
-    path = "/api/v0/account/{username}/did",
-    responses(
-        (status = 200, description = "Found account", body = DidResponse),
-        (status = 400, description = "Invalid request", body = AppError),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Not found"),
-    )
-)]
-pub async fn get_did<S: ServerSetup>(
-    State(state): State<AppState<S>>,
-    Path(username): Path<String>,
-) -> AppResult<(StatusCode, Json<DidResponse>)> {
-    let conn = &mut db::connect(&state.db_pool).await?;
-
-    let account: AccountRecord = accounts::dsl::accounts
-        .filter(accounts::username.eq(&username))
-        .first(conn)
-        .await?;
-
-    Ok((StatusCode::OK, Json(DidResponse { did: account.did })))
 }
 
 /// PATCH Handler for changing the username
@@ -773,29 +748,6 @@ mod tests {
                 ..
             }]
         );
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn test_get_account_did_by_username() -> TestResult {
-        let ctx = TestContext::new().await;
-
-        let username = "donnie";
-        let email = "donnie@example.com";
-        let issuer = &EdDidKey::generate();
-
-        let (_, account) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        let (_, response) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!("/api/v0/account/{username}/did"),
-        )
-        .into_json_response::<DidResponse>()
-        .await?;
-
-        assert_eq!(response.did, account.account.did);
 
         Ok(())
     }

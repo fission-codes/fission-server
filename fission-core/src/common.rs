@@ -39,14 +39,6 @@ pub struct AccountLinkRequest {
     pub code: String,
 }
 
-/// Information about the DID of an account
-#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
-pub struct DidResponse {
-    /// The DID of this account
-    #[schema(example = "did:key:z6MkemkqoaUBYisJbrE9onCPgJoZve1yji2azp3oJo9W6u2A")]
-    pub did: String,
-}
-
 /// Response type indiciating success
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct SuccessResponse {
