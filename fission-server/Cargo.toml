@@ -121,7 +121,6 @@ erased-serde = "0.3.31"
 assert-json-diff = "2.0"
 assert_matches = "1.5.0"
 blake3 = "1.4.1"
-rsa = { version = "0.9" }
 test-log = { workspace = true }
 testresult = { workspace = true }
 uuid = "1.4.1"

@@ -1422,7 +1422,6 @@ dependencies = [
  "reqwest-tracing",
  "retry-policies",
  "rs-ucan",
- "rsa",
  "serde",
  "serde_json",
  "serde_path_to_error",
