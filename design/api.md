@@ -17,8 +17,11 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | POST | [`/api/v0/account`](#post-apiv0account) | Create a full account |
 | GET | [`/api/v0/account/:did`](#get-apiv0accountdid) | Get account information by DID |
 | POST | [`/api/v0/account/:did/link`](#post-apiv0accountdidlink) | Login from another device via email code |
-| GET | [`/api/v0/account/:username/did`](#get-apiv0accountusernamedid) | Get the did of an account by username |
-| PATCH | [`/api/v0/account/:did/username/:username`](#patch-apiv0accountdidusernameusername) | Change an account's username |
+| PATCH | [`/api/v0/account/username/:username`](#patch-apiv0accountusernameusername) | Change an account's username |
+| PATCH | [`/api/v0/account/handle/:handle`](#patch-apiv0accounthandlehandle) | Change the handle that's associated with an account |
+| DELETE | [`/api/v0/account/handle`](#delete-apiv0accounthandle) | Disassociate an account's handle |
+| DELETE | [`/api/v0/account`](#delete-apiv0account) | Delete an account |
+| GET | [`/dns-query`](#get-dns-query) | Perform a DNS-over-HTTPS request |
 | GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
 | POST | [`/api/v0/revocations`](#post-apiv0revocations) | Revoke a UCAN |
 
@@ -119,24 +122,9 @@ Get a UCAN for a DID that hasn't been associated with this account yet, given an
 
 ---
 
-### GET `/api/v0/account/:username/did`
+### PATCH `/api/v0/account/username/:username`
 
-Find out an account's DID. This information may be substituted by DoH & a DNS record in the future.
-
-**Authorization**: UCAN with ability `account/link`. The resource DID will be the audience for returned UCANs.
-
-**Response**:
-
-| Field | Type     |
-|-------|----------|
-| `did` | `string` |
-
-
----
-
-### PATCH `/api/v0/account/:did/username/:username`
-
-Change the account's username.
+Change the account's username. The account DID to change is determined by the resource DID in the authorization UCAN.
 
 **Authorization**: UCAN with ability `account/manage`.
 
@@ -145,6 +133,65 @@ Change the account's username.
 Status 200 OK and `{ success: true }`, if successful.
 
 Status 409 Conflict and `{ success: false }`, if the username is already taken.
+
+---
+
+### PATCH `/api/v0/account/handle/:handle`
+
+Associate a domain name with an existing account. This will function as the username for the account in the future.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Status 200 OK and `{ success: true }`, if successful.
+
+Status 409 Conflict and `{ success: false }`, if the username is already taken.
+
+---
+
+### DELETE `/api/v0/account/handle`
+
+Disassociate a handle from an existing account. It won't be returned as the canoncial username in get account queries anymore.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Status 200 OK and `{ success: true }`, if successful.
+
+---
+
+### DELETE `/api/v0/account`
+
+Delete an account.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Status 200 OK and `{ success: true }`, if successful.
+
+---
+
+### GET `/dns-query`
+
+Perform a DNS-over-HTTPS query.
+The server stores user DIDs as DNS TXT records under `_did.username.<user-domain>` and users can associate their own handle with their account by creating their own DNS TXT `_did` record under their domain, set to the account DID they control.
+
+This works similar to [google](google-doh) and [cloudflare](cloudflare-doh) DoH APIs.
+
+Examples:
+- `GET /dns-query?name=_did.everywhere.computer&type=TXT`
+- `GET /dns-query?name=_did.some-user.e9c7.name&type=TXT`
+- `GET /dns-query?name=_did.matheus23.com&type=TXT`
+- `POST /dns-query?dns=<base64url encoded dns query message>`
+
+**Authorization**: *Unauthorized*
+
+**Response**:
+
+You need to set either the `Accept: application/dns-json` or `Accept: application/dns-message` header. Depending on that, you'll either get a DNS message encoded in json or in binary, respecively.
 
 ---
 
@@ -252,3 +299,5 @@ Allows finding UCANs known to the server to give capabilities to the associated 
 [UCAN]: https://github.com/ucan-wg
 [design document]: ./README.md
 [revocation validation]: https://github.com/ucan-wg/spec/tree/16ee2ce7815c60a0ea870283d3b53ddcb3043c02#66-revocation
+[google-doh]: https://developers.google.com/speed/public-dns/docs/doh/json
+[cloudflare-doh]: https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/

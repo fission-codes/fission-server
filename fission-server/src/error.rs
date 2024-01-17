@@ -1,6 +1,7 @@
 //! Generic result/error resprentation(s).
 
 use axum::{
+    extract::rejection::{ExtensionRejection, QueryRejection},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -8,9 +9,9 @@ use axum::{
 
 use http::header::ToStrError;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 use ulid::Ulid;
 use utoipa::ToSchema;
+use validator::ValidationErrors;
 
 /// Standard return type out of routes / handlers
 pub type AppResult<T> = std::result::Result<T, AppError>;
@@ -35,10 +36,12 @@ pub type AppResult<T> = std::result::Result<T, AppError>;
 /// - meta - a meta object containing arbitrary information about the error
 #[derive(ToSchema, thiserror::Error, Eq, PartialEq, Debug, Deserialize, Serialize)]
 pub struct AppError {
-    #[schema(value_type = u16, example = 200)]
+    #[schema(value_type = u16, example = 404)]
     #[serde(with = "crate::error::serde_status_code")]
     pub(crate) status: StatusCode,
+    #[schema(example = "Not Found")]
     pub(crate) detail: Option<String>,
+    #[schema(example = "Entity with id 123 not found")]
     pub(crate) title: Option<String>,
 }
 
@@ -102,20 +105,22 @@ impl From<anyhow::Error> for AppError {
             Err(e) => e,
         };
 
-        warn!(
-            subject = "app_error",
-            category = "app_error",
-            "encountered unexpected error {:#}: {:#}",
-            err,
-            err.backtrace()
-        );
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            title: StatusCode::INTERNAL_SERVER_ERROR
-                .canonical_reason()
-                .map(|r| r.to_string()),
-            detail: Some(err.to_string()),
-        }
+        let err = match err.downcast::<ValidationErrors>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        let err = match err.downcast::<QueryRejection>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        let err = match err.downcast::<ExtensionRejection>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
 
@@ -135,58 +140,44 @@ impl From<diesel::result::Error> for AppError {
                     None => info.message().to_string(),
                 }),
             ),
-            _ => {
-                warn!(
-                    subject = "app_error",
-                    category = "app_error",
-                    "encountered unexpected error {:#}",
-                    err,
-                );
-                Self {
-                    status: StatusCode::INTERNAL_SERVER_ERROR,
-                    title: StatusCode::INTERNAL_SERVER_ERROR
-                        .canonical_reason()
-                        .map(|r| r.to_string()),
-                    detail: Some(err.to_string()),
-                }
-            }
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
         }
     }
 }
 
 impl From<ToStrError> for AppError {
-    fn from(_err: ToStrError) -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            title: StatusCode::BAD_REQUEST
-                .canonical_reason()
-                .map(|r| r.to_string()),
-            detail: None,
-        }
+    fn from(err: ToStrError) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
 
 impl From<String> for AppError {
-    fn from(_err: String) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            title: StatusCode::INTERNAL_SERVER_ERROR
-                .canonical_reason()
-                .map(|r| r.to_string()),
-            detail: None, //Some(err),
-        }
+    fn from(err: String) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
 
 impl From<rs_ucan::error::Error> for AppError {
     fn from(err: rs_ucan::error::Error) -> Self {
-        warn!(
-            subject = "app_error",
-            category = "app_error",
-            "encountered unexpected error {:#}",
-            err,
-        );
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
+    }
+}
+
+impl From<ValidationErrors> for AppError {
+    fn from(err: ValidationErrors) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, Some(err))
+    }
+}
+
+impl From<QueryRejection> for AppError {
+    fn from(value: QueryRejection) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, Some(value))
+    }
+}
+
+impl From<ExtensionRejection> for AppError {
+    fn from(value: ExtensionRejection) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, Some(value))
     }
 }
 

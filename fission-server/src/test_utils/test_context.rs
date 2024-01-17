@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use crate::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Conn, MIGRATIONS},
-    dns::DnsServer,
+    dns::server::DnsServer,
     router::setup_app_router,
     settings::Dns,
     setups::test::{TestIpfsDatabase, TestSetup, TestVerificationCodeSender},
@@ -12,7 +12,7 @@ use axum::{extract::connect_info::MockConnectInfo, Router};
 use axum_server::service::SendService;
 use diesel::{Connection, PgConnection, RunQueryDsl};
 use diesel_migrations::MigrationHarness;
-use fission_core::ed_did_key::EdDidKey;
+use fission_core::{ed_did_key::EdDidKey, username::Handle};
 use uuid::Uuid;
 
 pub(crate) struct TestContext {
@@ -69,6 +69,7 @@ impl TestContext {
             .expect("Could not initialize DNS server");
 
         let builder = AppStateBuilder::default()
+            .with_dns_settings(dns_settings)
             .with_db_pool(db_pool)
             .with_ipfs_db(TestIpfsDatabase::default())
             .with_verification_code_sender(TestVerificationCodeSender::default())
@@ -112,6 +113,10 @@ impl TestContext {
 
     pub(crate) fn app_state(&self) -> &AppState<TestSetup> {
         &self.app_state
+    }
+
+    pub(crate) fn user_handle(&self, username: &str) -> Handle {
+        Handle::new(username, &self.app_state.dns_settings.users_origin).unwrap()
     }
 }
 

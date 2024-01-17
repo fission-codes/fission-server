@@ -1575,6 +1575,7 @@ dependencies = [
  "ed25519-dalek 2.1.0",
  "erased-serde",
  "hickory-proto",
+ "idna 0.5.0",
  "libipld",
  "linkme",
  "rand 0.8.5",

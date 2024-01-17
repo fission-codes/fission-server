@@ -2,7 +2,7 @@
 use crate::{
     logging::{LogAndHandleErrorMiddleware, LoggingCacheManager},
     paths::config_file,
-    responses::{AccountInfo, AccountResponse},
+    responses::AccountAndAuth,
     settings::Settings,
     ucan::{encode_ucan_header, find_delegation_chain},
 };
@@ -11,9 +11,12 @@ use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility, indexing::IndexingAbility},
-    common::{AccountCreationRequest, AccountLinkRequest, EmailVerifyRequest, UcansResponse},
+    common::{
+        Account, AccountCreationRequest, AccountLinkRequest, EmailVerifyRequest, UcansResponse,
+    },
     dns,
     ed_did_key::EdDidKey,
+    username::{Handle, Username},
 };
 use hickory_proto::rr::RecordType;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
@@ -45,13 +48,13 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Account and login management commands
-    Account(Account),
+    Account(AccountCmds),
     /// Print file paths used by the application (e.g. the path to config)
     Paths,
 }
 
 #[derive(Debug, Parser)]
-pub struct Account {
+pub struct AccountCmds {
     #[command(subcommand)]
     command: AccountCommands,
 }
@@ -111,21 +114,21 @@ impl Cli {
                         tracing::info!(?account, "Logged into account");
                     }
                     AccountCommands::List => {
-                        let accounts = state.find_accounts(state.find_capabilities()?).await;
-                        if accounts.is_empty() {
+                        let auths = state.find_accounts(state.find_capabilities()?).await;
+                        if auths.is_empty() {
                             println!("You don't have access to any accounts yet. Use \"fission-cli account create\" to create a new one.");
                         } else {
                             println!(
                                 "Here's a list of accounts you have access to from this device:"
                             );
 
-                            for (info, did, _) in accounts {
-                                match &info.username {
+                            for auth in auths {
+                                match &auth.account.username {
                                     Some(username) => {
-                                        println!("{username}");
+                                        println!("{}", username.to_unicode());
                                     }
                                     None => {
-                                        println!("Anonymous account with DID {did}.");
+                                        println!("Anonymous account with DID {}", auth.account.did);
                                     }
                                 }
                             }
@@ -134,28 +137,50 @@ impl Cli {
                     AccountCommands::Rename(rename) => {
                         let accounts = state.find_accounts(state.find_capabilities()?).await;
 
-                        let (_info, did, chain) = state.pick_account(
+                        let auth = state.pick_account(
                             accounts,
                             &rename.username,
                             "Which account do you want to rename?",
                         )?;
+                        let did = Did(auth.account.did.to_string());
 
                         let new_username = inquire::Text::new("Pick a new username:").prompt()?;
 
-                        state.rename_account(did, chain, new_username).await?;
+                        if new_username.contains('.') {
+                            println!(
+                                "Looks like you're trying to associate a handle with your account."
+                            );
+                            println!("Please make sure to have a DNS TXT record for _did.{new_username} with its value set to {did}");
+                            println!(
+                                "This is needed for our backend to verify that you are the owner of that domain name."
+                            );
+                            let new_handle = Handle::from_unicode(&new_username)?;
 
+                            inquire::Confirm::new("Have you verified that the DNS record is set?")
+                                .prompt()?;
+
+                            state
+                                .add_handle_account(did, &auth.ucans, new_handle)
+                                .await?;
+                        } else {
+                            let new_username = Username::from_unicode(&new_username)?;
+
+                            state.rename_account(did, &auth.ucans, new_username).await?;
+                        }
                         println!("Successfully changed your username.");
                     }
                     AccountCommands::Delete(delete) => {
                         let accounts = state.find_accounts(state.find_capabilities()?).await;
 
-                        let (_info, did, chain) = state.pick_account(
+                        let auth = state.pick_account(
                             accounts,
                             &delete.username,
                             "Which account do you want to delete?",
                         )?;
 
-                        state.delete_account(did, chain).await?;
+                        state
+                            .delete_account(Did(auth.account.did.to_string()), &auth.ucans)
+                            .await?;
 
                         println!("Successfully deleted your account.");
                     }
@@ -261,15 +286,16 @@ impl<'s> CliState<'s> {
         Ok((email, code))
     }
 
-    async fn create_account(&mut self) -> Result<AccountInfo> {
+    async fn create_account(&mut self) -> Result<Account> {
         let (email, code) = self.request_email_verification().await?;
 
         let (ucan, proofs) = self.issue_ucan(self.device_did(), FissionAbility::AccountCreate)?;
 
         // TODO Check for availablility. Allow retries.
         let username = inquire::Text::new("Choose a username:").prompt()?;
+        let username = Username::from_unicode(&username)?;
 
-        let response: AccountResponse = self
+        let response: AccountAndAuth = self
             .server_request(Method::POST, "/api/v0/account")?
             .bearer_auth(ucan.encode()?)
             .header("ucan", encode_ucan_header(&proofs)?)
@@ -289,7 +315,7 @@ impl<'s> CliState<'s> {
         Ok(response.account)
     }
 
-    async fn link_account(&mut self) -> Result<AccountInfo> {
+    async fn link_account(&mut self) -> Result<Account> {
         let username = inquire::Text::new("What's your username?").prompt()?;
 
         let account_did = doh_request(
@@ -306,7 +332,7 @@ impl<'s> CliState<'s> {
 
         let (ucan, proofs) = self.issue_ucan(self.device_did(), FissionAbility::AccountLink)?;
 
-        let response: AccountResponse = self
+        let response: AccountAndAuth = self
             .server_request(Method::POST, &format!("/api/v0/account/{account_did}/link"))?
             .bearer_auth(ucan.encode()?)
             .header("ucan", encode_ucan_header(&proofs)?)
@@ -324,7 +350,7 @@ impl<'s> CliState<'s> {
         Ok(response.account)
     }
 
-    fn find_capabilities(&'s self) -> Result<Vec<(Did, Vec<&'s Ucan>)>> {
+    fn find_capabilities(&self) -> Result<Vec<(Did, Vec<Ucan>)>> {
         let mut caps = Vec::new();
 
         tracing::info!(
@@ -367,11 +393,8 @@ impl<'s> CliState<'s> {
         Ok(caps)
     }
 
-    async fn find_accounts<'u>(
-        &self,
-        caps: Vec<(Did, Vec<&'u Ucan>)>,
-    ) -> Vec<(AccountInfo, Did, Vec<&'u Ucan>)> {
-        let mut accounts = Vec::new();
+    async fn find_accounts(&self, caps: Vec<(Did, Vec<Ucan>)>) -> Vec<AccountAndAuth> {
+        let mut auths = Vec::new();
         for (did, chain) in caps {
             tracing::info!(%did, "Checking if given capability is a valid account");
 
@@ -379,57 +402,68 @@ impl<'s> CliState<'s> {
                 let ucan =
                     self.issue_ucan_with(did.clone(), FissionAbility::AccountRead, &chain)?;
 
-                let response = self
+                let account: Account = self
                     .server_request(Method::GET, &format!("/api/v0/account/{did}"))?
                     .bearer_auth(ucan.encode()?)
                     .header("ucan", encode_ucan_header(&chain)?)
                     .send()
+                    .await?
+                    .json()
                     .await?;
 
-                let account_info: AccountInfo = response.json().await?;
-                tracing::info!(?account_info.username, "Found user");
-                Ok::<_, anyhow::Error>(account_info)
+                tracing::info!(?account.username, "Found user");
+
+                Ok::<_, anyhow::Error>(AccountAndAuth {
+                    account,
+                    ucans: chain,
+                })
             };
 
             match resolve_account.await {
-                Ok(info) => accounts.push((info, did, chain)),
+                Ok(auth) => auths.push(auth),
                 Err(e) => {
                     tracing::debug!(%e, "Error filtered during find_accounts");
                 }
             };
         }
-        accounts
+        auths
     }
 
-    fn pick_account<'u>(
-        &'u self,
-        accounts: Vec<(AccountInfo, Did, Vec<&'u Ucan>)>,
+    fn pick_account(
+        &self,
+        accounts: Vec<AccountAndAuth>,
         user_choice: &Option<String>,
         prompt: &str,
-    ) -> Result<(AccountInfo, Did, Vec<&Ucan>)> {
+    ) -> Result<AccountAndAuth> {
         Ok(match user_choice {
             Some(username) => accounts
                 .into_iter()
-                .find(|(info, _, _)| info.username.as_ref() == Some(username))
+                .find(|auth| auth.account.username.as_ref().map(Handle::as_str) == Some(username))
                 .ok_or_else(|| anyhow!("Couldn't find access to an account with this username."))?,
             None => {
                 if accounts.len() > 1 {
                     let account_names = accounts
                         .iter()
-                        .map(|(info, Did(did), _)| info.username.as_ref().unwrap_or(did))
+                        .map(|auth| {
+                            auth.account
+                                .username
+                                .as_ref()
+                                .map_or(auth.account.did.to_string(), |handle| handle.to_unicode())
+                        })
                         .collect();
-                    let account_name = inquire::Select::new(prompt, account_names)
-                        .prompt()?
-                        .clone();
+
+                    let account_name = inquire::Select::new(prompt, account_names).prompt()?;
 
                     accounts
                         .into_iter()
-                        .find(|(info, Did(did), _)| {
-                            info.username.as_ref().unwrap_or(did) == &account_name
+                        .find(|auth| {
+                            auth.account
+                                .username
+                                .as_ref()
+                                .map_or(auth.account.did.to_string(), |handle| handle.to_unicode())
+                                == account_name
                         })
-                        .ok_or_else(|| {
-                            anyhow!("Something went wrong. Couldn't selected account.")
-                        })?
+                        .ok_or_else(|| anyhow!("Something went wrong. Couldn't select account."))?
                 } else {
                     accounts.into_iter().next().ok_or_else(|| {
                         anyhow!("Please provide the username in the command argument.")
@@ -439,32 +473,39 @@ impl<'s> CliState<'s> {
         })
     }
 
-    async fn rename_account(
-        &self,
-        did: Did,
-        chain: Vec<&Ucan>,
-        new_username: String,
-    ) -> Result<()> {
-        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, &chain)?;
+    async fn rename_account(&self, did: Did, chain: &[Ucan], new_username: Username) -> Result<()> {
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, chain)?;
 
         self.server_request(
             Method::PATCH,
             &format!("/api/v0/account/username/{new_username}"),
         )?
         .bearer_auth(ucan.encode()?)
-        .header("ucan", encode_ucan_header(&chain)?)
+        .header("ucan", encode_ucan_header(chain)?)
         .send()
         .await?;
 
         Ok(())
     }
 
-    async fn delete_account(&self, did: Did, chain: Vec<&Ucan>) -> Result<()> {
-        let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, &chain)?;
+    async fn add_handle_account(&self, did: Did, chain: &[Ucan], handle: Handle) -> Result<()> {
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, chain)?;
+
+        self.server_request(Method::PATCH, &format!("/api/v0/account/handle/{handle}"))?
+            .bearer_auth(ucan.encode()?)
+            .header("ucan", encode_ucan_header(chain)?)
+            .send()
+            .await?;
+
+        Ok(())
+    }
+
+    async fn delete_account(&self, did: Did, chain: &[Ucan]) -> Result<()> {
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, chain)?;
 
         self.server_request(Method::DELETE, "/api/v0/account")?
             .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(&chain)?)
+            .header("ucan", encode_ucan_header(chain)?)
             .send()
             .await?;
 
@@ -481,7 +522,7 @@ impl<'s> CliState<'s> {
         &self,
         subject_did: Did,
         ability: impl Ability + Debug,
-    ) -> Result<(Ucan, Vec<&Ucan>)> {
+    ) -> Result<(Ucan, Vec<Ucan>)> {
         let Some(chain) =
             find_delegation_chain(&subject_did, &ability, self.key.did_as_str(), &self.ucans)
         else {
@@ -497,7 +538,7 @@ impl<'s> CliState<'s> {
         &self,
         subject_did: Did,
         ability: impl Ability,
-        chain: &[&Ucan],
+        chain: &[Ucan],
     ) -> Result<Ucan> {
         let mut builder = UcanBuilder::default()
             .for_audience(&self.server_did)

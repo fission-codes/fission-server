@@ -4,12 +4,12 @@ use rs_ucan::{semantics::ability::Ability, ucan::Ucan};
 use std::fmt::Debug;
 
 #[tracing::instrument(skip(ucans))]
-pub(crate) fn find_delegation_chain<'u>(
+pub(crate) fn find_delegation_chain(
     subject_did: &Did,
     ability: &(impl Ability + ?Sized + Debug),
     target_did: &str,
-    ucans: &'u [Ucan],
-) -> Option<Vec<&'u Ucan>> {
+    ucans: &[Ucan],
+) -> Option<Vec<Ucan>> {
     // This kinda fakes it for now
     // Would make a lot more sense in UCAN v1.0
     // We don't really follow the `prf`s
@@ -60,7 +60,7 @@ pub(crate) fn find_delegation_chain<'u>(
 
         current_target = ucan.issuer();
 
-        chain.push(ucan);
+        chain.push(ucan.clone());
 
         if current_target == subject_did.as_ref() {
             tracing::debug!("Finished chain");
@@ -69,7 +69,7 @@ pub(crate) fn find_delegation_chain<'u>(
     }
 }
 
-pub(crate) fn encode_ucan_header(proofs: &[&Ucan]) -> Result<String> {
+pub(crate) fn encode_ucan_header(proofs: &[Ucan]) -> Result<String> {
     Ok(proofs
         .iter()
         .map(|ucan| Ok(ucan.encode()?))

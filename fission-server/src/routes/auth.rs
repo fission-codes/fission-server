@@ -19,10 +19,7 @@ use validator::Validate;
 #[utoipa::path(
     post,
     path = "/api/v0/auth/email/verify",
-    request_body = email_verification::Request,
-    security(
-        ("ucan_bearer" = []),
-    ),
+    request_body = EmailVerifyRequest,
     responses(
         (status = 200, description = "Successfully sent request token", body = SuccessResponse),
         (status = 400, description = "Invalid request"),
@@ -52,19 +49,6 @@ pub async fn request_token<S: ServerSetup>(
     Ok((StatusCode::OK, Json(SuccessResponse { success: true })))
 }
 
-/// GET handler for the server's current DID
-/// TODO: Keep this? Replace with DoH & DNS?
-#[utoipa::path(
-    get,
-    path = "/api/v0/server-did",
-    responses(
-        (status = 200, description = "Responds with the server DID in the body", body = String),
-    )
-)]
-pub async fn server_did<S: ServerSetup>(State(state): State<AppState<S>>) -> String {
-    state.server_keypair.did()
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -77,6 +61,7 @@ mod tests {
     use assert_matches::assert_matches;
     use chrono::{Duration, Local};
     use diesel_async::RunQueryDsl;
+    use fission_core::dns;
     use http::{Method, StatusCode};
     use rs_ucan::DefaultFact;
     use serde_json::json;
@@ -193,16 +178,26 @@ mod tests {
     async fn test_get_server_did() -> TestResult {
         let ctx = TestContext::new().await;
 
-        let (status, bytes) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/server-did")
-                .into_raw_response()
-                .await?;
+        let (status, response) = RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::GET,
+            "/dns-query?name=_did.localhost&type=TXT",
+        )
+        .with_accept_mime("application/dns-json".parse()?)
+        .into_json_response::<dns::Response>()
+        .await?;
 
         assert_eq!(status, StatusCode::OK);
 
-        let parsed = String::from_utf8(bytes.to_vec())?;
+        let answer = response
+            .answer
+            .into_iter()
+            .next()
+            .ok_or("Missing DNS answer")?;
 
-        assert_eq!(parsed, ctx.app_state().server_keypair.did());
+        let did = answer.data;
+
+        assert_eq!(did, ctx.app_state().server_keypair.did());
 
         Ok(())
     }

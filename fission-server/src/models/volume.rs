@@ -22,8 +22,10 @@ pub struct Volume {
     pub id: i32,
 
     /// Inserted at timestamp
+    #[schema(value_type = String)]
     pub inserted_at: NaiveDateTime,
     /// Updated at timestamp
+    #[schema(value_type = String)]
     pub updated_at: NaiveDateTime,
 
     /// CID of the Storage Volume

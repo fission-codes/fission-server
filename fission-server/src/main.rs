@@ -11,7 +11,7 @@ use fission_core::{ed_did_key::EdDidKey, serde_value_source::SerdeValueSource};
 use fission_server::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Pool},
-    dns::DnsServer,
+    dns::server::DnsServer,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},
@@ -208,6 +208,7 @@ async fn setup_prod_app_state(
     let dns_server = DnsServer::new(&settings.dns, db_pool.clone(), server_keypair.did())?;
 
     let app_state = AppStateBuilder::<ProdSetup>::default()
+        .with_dns_settings(settings.dns.clone())
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun.clone()))
@@ -229,6 +230,7 @@ async fn setup_local_app_state(
     let ws_peer_map = Arc::new(WsPeerMap::default());
 
     let app_state = AppStateBuilder::<LocalSetup>::default()
+        .with_dns_settings(settings.dns.clone())
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_ws_peer_map(Arc::clone(&ws_peer_map))

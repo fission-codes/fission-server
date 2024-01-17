@@ -7,13 +7,19 @@ use crate::{
         Conn,
     },
     models::volume::{NewVolumeRecord, Volume},
+    settings,
     setups::IpfsDatabase,
 };
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
+use fission_core::{
+    capabilities::did::Did,
+    common::Account,
+    ed_did_key::EdDidKey,
+    username::{Handle, Username},
+};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
@@ -47,8 +53,8 @@ struct NewAccountRecord {
 )]
 #[diesel(belongs_to(Volume))]
 #[diesel(table_name = accounts)]
-/// Fission Account model
-pub struct Account {
+/// The model for a row in the accounts table
+pub struct AccountRecord {
     /// Internal Database Identifier
     pub id: i32,
 
@@ -62,23 +68,29 @@ pub struct Account {
     pub email: Option<String>,
 
     /// Inserted at timestamp
+    #[schema(value_type = String)]
     pub inserted_at: NaiveDateTime,
 
     /// Updated at timestamp
+    #[schema(value_type = String)]
     pub updated_at: NaiveDateTime,
 
     /// Volume ID
     pub volume_id: Option<i32>,
+
+    /// Custom domain handle associated with the account
+    pub handle: Option<String>,
 }
 
-impl Account {
+impl AccountRecord {
     /// Create a new Account. Inserts the account into the database.
     pub async fn new(
         conn: &mut Conn<'_>,
-        username: String,
+        username: impl AsRef<str>,
         email: String,
         did: String,
     ) -> Result<Self, diesel::result::Error> {
+        let username = username.as_ref().to_string();
         let new_account = NewAccountRecord {
             did,
             username,
@@ -92,15 +104,14 @@ impl Account {
     }
 
     /// Find a Fission Account by username, validate that the UCAN has permission to access it
-    pub async fn find_by_username<U: AsRef<str>>(
+    pub async fn find_by_username(
         conn: &mut Conn<'_>,
-        username: U,
+        username: impl AsRef<str>,
     ) -> Result<Self, diesel::result::Error> {
         let username = username.as_ref();
-        //let account = accounts::dsl::accounts
         accounts::dsl::accounts
             .filter(accounts::username.eq(username))
-            .first::<Account>(conn)
+            .first::<AccountRecord>(conn)
             .await
     }
 
@@ -162,36 +173,61 @@ impl Account {
             bail!("No volume associated with account")
         }
     }
+
+    /// Turn this database record into an account struct used in APIs
+    pub fn to_account(self, dns_settings: &settings::Dns) -> Result<Account> {
+        let username = match (self.handle.as_ref(), self.username.as_ref()) {
+            // Prefer using the user's handle
+            (Some(handle), _) => Some(Handle::from_str(handle)?),
+            // Otherwise use their username
+            (_, Some(username)) => Some(Handle::new(username, &dns_settings.users_origin)?),
+            // If nothing is set, we can't help
+            (None, None) => None,
+        };
+
+        Ok(Account {
+            did: self.did,
+            username,
+            email: self.email,
+        })
+    }
 }
 
-/// Account with Root Authority (UCAN)
+/// Account with UCANs that give root auth to a specific DID
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-pub struct RootAccount {
+pub struct AccountAndAuth {
     /// The Associated Account
     pub account: Account,
     /// UCANs that give root access
+    #[schema(value_type = Vec<String>)]
     pub ucans: Vec<Ucan>,
 }
 
-/// Account with Root Authority
-impl RootAccount {
-    /// Create a new Account with a Root Authority
+impl AccountAndAuth {
+    /// Create a new account and generate some UCANs that give root rights
+    /// to given agent DID.
     ///
     /// This creates an account and generates a keypair that has top-level
     /// authority over the account. The private key is immediately discarded,
     /// and authority is delegated via a UCAN to the DID provided in
-    /// `user_did`
+    /// `agent_did`.
+    /// The UCAN chain moves through the server to make it possible to
+    /// recover access.
     pub async fn new(
-        conn: &mut Conn<'_>,
-        username: String,
+        username: Username,
         email: String,
-        user_did: &str,
+        agent_did: &str,
         server: &EdDidKey,
+        dns_settings: &settings::Dns,
+        conn: &mut Conn<'_>,
     ) -> Result<Self> {
-        let (ucans, account_did) = Self::issue_root_ucans(server, user_did, conn).await?;
-        let account = Account::new(conn, username, email, account_did).await?;
+        let (ucans, account_did) = Self::issue_root_ucans(server, agent_did, conn).await?;
+        let record = AccountRecord::new(conn, username, email, account_did).await?;
 
-        Ok(Self { ucans, account })
+        Ok(Self {
+            ucans,
+            account: record.to_account(dns_settings)?,
+        })
     }
 
     /// Give an agent access to an existing account.
@@ -200,9 +236,10 @@ impl RootAccount {
     /// This will generate another delegation from the server to the
     /// account.
     pub async fn link_agent(
-        account: Account,
+        account: AccountRecord,
         agent_did: &str,
         server: &EdDidKey,
+        dns_settings: &settings::Dns,
         conn: &mut Conn<'_>,
     ) -> Result<Self> {
         let server_ucan: String = ucans::table
@@ -221,7 +258,7 @@ impl RootAccount {
 
         Ok(Self {
             ucans: vec![server_ucan, agent_ucan],
-            account,
+            account: account.to_account(dns_settings)?,
         })
     }
 

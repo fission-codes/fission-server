@@ -16,10 +16,15 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Revocation {
     /// The issuer of the revocation
+    #[schema(example = "did:key:z6MkemkqoaUBYisJbrE9onCPgJoZve1yji2azp3oJo9W6u2A")]
     pub iss: String,
     /// The CID of the UCAN that's revoked
+    #[schema(example = "bafkreif6pumxifau54tfxthpwpny4s3cg4pauourm4wvgbt2mjbn53gvga")]
     pub revoke: String,
     /// The signature of `REVOKE:<revoke>`
+    #[schema(
+        example = "vgDJZmkvpLSKQx84usJ_70vtngV6LbDdWHCCaR76-k1qiZJm-ED0ts3KfYqhkqgDzXwbudGb9Y9EZQeN6nAcDQ"
+    )]
     pub challenge: String,
 }
 
