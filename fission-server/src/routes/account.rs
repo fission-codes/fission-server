@@ -920,14 +920,14 @@ mod tests {
                 .find(|ucan| ucan.audience() == issuer.did_as_str());
 
             let Some(account_ucan) = account_ucan else {
-            bail!("Missing Ucan!");
-        };
+                bail!("Missing Ucan!");
+            };
             let Some(account_did) = account_ucan
-            .capabilities()
-            .find_map(|cap| cap.resource().downcast_ref::<Did>())
-        else {
-            bail!("Missing account capability");
-        };
+                .capabilities()
+                .find_map(|cap| cap.resource().downcast_ref::<Did>())
+            else {
+                bail!("Missing account capability");
+            };
 
             assert_eq!(account_did.to_string(), account.account.did);
 

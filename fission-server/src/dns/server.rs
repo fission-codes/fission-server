@@ -2,8 +2,10 @@
 
 use crate::{
     db::Pool,
-    dns::response_handler::Handle,
-    dns::user_dids::{did_record_set, record_set, UserDidsAuthority},
+    dns::{
+        response_handler::Handle,
+        user_dids::{did_record_set, record_set, UserDidsAuthority},
+    },
     settings::Dns,
 };
 use anyhow::{anyhow, Result};
