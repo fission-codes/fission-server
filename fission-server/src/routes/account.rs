@@ -161,18 +161,26 @@ pub async fn link_account<S: ServerSetup>(
 /// GET handler to retrieve account details
 #[utoipa::path(
     get,
-    path = "/api/v0/account/{did}",
+    path = "/api/v0/account",
+    security(
+        ("ucan_bearer" = []),
+    ),
     responses(
         (status = 200, description = "Found account", body = Account),
         (status = 400, description = "Invalid request", body = AppError),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Not found"),
     )
 )]
 pub async fn get_account<S: ServerSetup>(
     State(state): State<AppState<S>>,
-    Path(did): Path<String>,
+    authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
+    let Did(did) = authority
+        .get_capability(&state, FissionAbility::AccountInfo)
+        .await?;
+
     let conn = &mut db::connect(&state.db_pool).await?;
 
     let account: AccountRecord = accounts::dsl::accounts
@@ -417,7 +425,6 @@ pub async fn delete_account<S: ServerSetup>(
 mod tests {
     use self::helpers::*;
     use crate::{
-        db::schema::accounts,
         dns::user_dids::did_record_set,
         error::{AppError, ErrorResponse},
         models::account::AccountAndAuth,
@@ -425,8 +432,6 @@ mod tests {
     };
     use anyhow::{bail, Result};
     use assert_matches::assert_matches;
-    use diesel::ExpressionMethods;
-    use diesel_async::RunQueryDsl;
     use fission_core::{
         capabilities::{did::Did, fission::FissionAbility},
         common::{Account, SuccessResponse},
@@ -544,28 +549,14 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn test_get_account_ok() -> TestResult {
         let ctx = TestContext::new().await;
-        let mut conn = ctx.get_db_conn().await;
 
         let username = "donnie";
         let email = "donnie@example.com";
-        let did = "did:28:06:42:12";
+        let issuer = &EdDidKey::generate();
 
-        diesel::insert_into(accounts::table)
-            .values((
-                accounts::username.eq(username),
-                accounts::email.eq(email),
-                accounts::did.eq(did),
-            ))
-            .execute(&mut conn)
-            .await?;
+        let (_, auth) = create_account(username, email, issuer, &ctx).await?;
 
-        let (status, body) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!("/api/v0/account/{did}"),
-        )
-        .into_json_response::<Account>()
-        .await?;
+        let (status, body) = get_account::<Account>(&auth, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body.username, Some(ctx.user_handle(username)));
@@ -1035,16 +1026,16 @@ mod tests {
 
         pub(super) async fn get_account<T: DeserializeOwned>(
             auth: &AccountAndAuth,
-            _issuer: &EdDidKey,
+            issuer: &EdDidKey,
             ctx: &TestContext,
         ) -> Result<(StatusCode, T)> {
-            RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
-                Method::GET,
-                format!("/api/v0/account/{}", auth.account.did),
-            )
-            .into_json_response::<T>()
-            .await
+            let invocation = build_acc_invocation(FissionAbility::AccountInfo, auth, issuer, ctx)?;
+
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/account")
+                .with_ucan(invocation)
+                .with_ucan_proofs(auth.ucans.clone())
+                .into_json_response()
+                .await
         }
     }
 }
