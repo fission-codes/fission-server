@@ -21,6 +21,7 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | PATCH | [`/api/v0/account/handle/:handle`](#patch-apiv0accounthandlehandle) | Change the handle that's associated with an account |
 | DELETE | [`/api/v0/account/handle`](#delete-apiv0accounthandle) | Disassociate an account's handle |
 | DELETE | [`/api/v0/account`](#delete-apiv0account) | Delete an account |
+| GET | [`/dns-query`](#get-dns-query) | Perform a DNS-over-HTTPS request |
 | GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
 | POST | [`/api/v0/revocations`](#post-apiv0revocations) | Revoke a UCAN |
 
@@ -173,6 +174,27 @@ Status 200 OK and `{ success: true }`, if successful.
 
 ---
 
+### GET `/dns-query`
+
+Perform a DNS-over-HTTPS query.
+The server stores user DIDs as DNS TXT records under `_did.username.<user-domain>` and users can associate their own handle with their account by creating their own DNS TXT `_did` record under their domain, set to the account DID they control.
+
+This works similar to [google](google-doh) and [cloudflare](cloudflare-doh) DoH APIs.
+
+Examples:
+- `GET /dns-query?name=_did.everywhere.computer&type=TXT`
+- `GET /dns-query?name=_did.some-user.e9c7.name&type=TXT`
+- `GET /dns-query?name=_did.matheus23.com&type=TXT`
+- `POST /dns-query?dns=<base64url encoded dns query message>`
+
+**Authorization**: *Unauthorized*
+
+**Response**:
+
+You need to set either the `Accept: application/dns-json` or `Accept: application/dns-message` header. Depending on that, you'll either get a DNS message encoded in json or in binary, respecively.
+
+---
+
 ### GET `/api/v0/capabilities`
 
 This returns the set of UCANs in UCAN chains that have the authorization UCAN's resource DID as final audience.
@@ -277,3 +299,5 @@ Allows finding UCANs known to the server to give capabilities to the associated 
 [UCAN]: https://github.com/ucan-wg
 [design document]: ./README.md
 [revocation validation]: https://github.com/ucan-wg/spec/tree/16ee2ce7815c60a0ea870283d3b53ddcb3043c02#66-revocation
+[google-doh]: https://developers.google.com/speed/public-dns/docs/doh/json
+[cloudflare-doh]: https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/
