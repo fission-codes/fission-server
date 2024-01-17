@@ -61,7 +61,7 @@ mod tests {
         let ucan: Ucan = UcanBuilder::default()
             .claiming_capability(Capability::new(
                 Did(issuer.did()),
-                FissionAbility::AccountRead,
+                FissionAbility::AccountInfo,
                 EmptyCaveat,
             ))
             .for_audience("did:web:someone.malicious.com")
@@ -92,7 +92,7 @@ mod tests {
         let ucan: Ucan = UcanBuilder::default()
             .claiming_capability(Capability::new(
                 Did(foreign.did()),
-                FissionAbility::AccountRead,
+                FissionAbility::AccountInfo,
                 EmptyCaveat,
             ))
             .for_audience("did:web:someone")

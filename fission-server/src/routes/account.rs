@@ -178,7 +178,7 @@ pub async fn get_account<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountRead)
+        .get_capability(&state, FissionAbility::AccountInfo)
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -1029,7 +1029,7 @@ mod tests {
             issuer: &EdDidKey,
             ctx: &TestContext,
         ) -> Result<(StatusCode, T)> {
-            let invocation = build_acc_invocation(FissionAbility::AccountRead, auth, issuer, ctx)?;
+            let invocation = build_acc_invocation(FissionAbility::AccountInfo, auth, issuer, ctx)?;
 
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/account")
                 .with_ucan(invocation)

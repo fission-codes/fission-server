@@ -17,8 +17,8 @@ rs_ucan::register_plugin!(FISSION, &FissionPlugin);
 /// Abilities for fission accounts
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FissionAbility {
-    /// `account/read`, the ability to read account details like email address/username, etc.
-    AccountRead,
+    /// `account/info`, the ability to read account information like email address/username, etc.
+    AccountInfo,
     /// `account/create`, the ability to create an account
     AccountCreate,
     /// `account/link`, the ability to link the originator to an existing account via email challenge
@@ -31,7 +31,7 @@ pub enum FissionAbility {
     AccountDelete,
 }
 
-const ACCOUNT_READ: &str = "account/read";
+const ACCOUNT_READ: &str = "account/info";
 const ACCOUNT_CREATE: &str = "account/create";
 const ACCOUNT_LINK: &str = "account/link";
 const ACCOUNT_MANAGE: &str = "account/manage";
@@ -62,7 +62,7 @@ impl Plugin for FissionPlugin {
         ability: &str,
     ) -> Result<Option<Self::Ability>, Self::Error> {
         Ok(match ability {
-            ACCOUNT_READ => Some(FissionAbility::AccountRead),
+            ACCOUNT_READ => Some(FissionAbility::AccountInfo),
             ACCOUNT_CREATE => Some(FissionAbility::AccountCreate),
             ACCOUNT_LINK => Some(FissionAbility::AccountLink),
             ACCOUNT_MANAGE => Some(FissionAbility::AccountManage),
@@ -92,7 +92,7 @@ impl Ability for FissionAbility {
 
         if matches!(other, Self::AccountNonCritical) {
             return match self {
-                Self::AccountRead => true,
+                Self::AccountInfo => true,
                 Self::AccountCreate => true,
                 Self::AccountLink => true,
                 Self::AccountManage => false,
@@ -108,7 +108,7 @@ impl Ability for FissionAbility {
 impl Display for FissionAbility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::AccountRead => ACCOUNT_READ,
+            Self::AccountInfo => ACCOUNT_READ,
             Self::AccountCreate => ACCOUNT_CREATE,
             Self::AccountLink => ACCOUNT_LINK,
             Self::AccountManage => ACCOUNT_MANAGE,
@@ -159,7 +159,7 @@ mod tests {
             .for_audience("did:web:fission.codes")
             .claiming_capability(Capability::new(
                 Did("did:key:sth".to_string()),
-                FissionAbility::AccountRead,
+                FissionAbility::AccountInfo,
                 EmptyCaveat {},
             ))
             .witnessed_by(&root_ucan, None)
@@ -171,7 +171,7 @@ mod tests {
         let capabilities = invocation.capabilities_for(
             alice.did(),
             Did("did:key:sth".to_string()),
-            FissionAbility::AccountRead,
+            FissionAbility::AccountInfo,
             time,
             &did_verifier_map,
             &store,
