@@ -576,6 +576,26 @@ mod tests {
         .await
     }
 
+    async fn patch_handle<T: DeserializeOwned>(
+        new_handle: &str,
+        account: &AccountAndAuth,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, T)> {
+        let invocation =
+            build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
+
+        RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::PATCH,
+            format!("/api/v0/account/handle/{new_handle}"),
+        )
+        .with_ucan(invocation)
+        .with_ucan_proofs(account.ucans.clone())
+        .into_json_response()
+        .await
+    }
+
     async fn delete_account<T: DeserializeOwned>(
         account: &AccountAndAuth,
         issuer: &EdDidKey,
@@ -907,6 +927,26 @@ mod tests {
 
         let (status, _) =
             link_account::<Value>(&response.account.did, email2, issuer2, &ctx).await?;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_patch_handle_invalid_err() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, auth) =
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let (status, _) = patch_handle::<Value>("oedipa.example.com", &auth, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
