@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use crate::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Conn, MIGRATIONS},
-    dns::DnsServer,
+    dns::server::DnsServer,
     router::setup_app_router,
     settings::Dns,
     setups::test::{TestIpfsDatabase, TestSetup, TestVerificationCodeSender},

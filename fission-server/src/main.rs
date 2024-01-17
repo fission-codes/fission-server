@@ -11,7 +11,7 @@ use fission_core::{ed_did_key::EdDidKey, serde_value_source::SerdeValueSource};
 use fission_server::{
     app_state::{AppState, AppStateBuilder},
     db::{self, Pool},
-    dns::DnsServer,
+    dns::server::DnsServer,
     docs::ApiDoc,
     metrics::{process, prom::setup_metrics_recorder},
     middleware::{self, request_ulid::MakeRequestUlid, runtime},

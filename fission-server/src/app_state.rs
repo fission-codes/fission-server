@@ -2,7 +2,7 @@
 
 use crate::{
     db::Pool,
-    dns::DnsServer,
+    dns::server::DnsServer,
     routes::ws::WsPeerMap,
     settings::{self},
     setups::ServerSetup,
