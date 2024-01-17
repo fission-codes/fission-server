@@ -418,6 +418,7 @@ mod tests {
     use super::*;
     use crate::{
         db::schema::accounts,
+        dns::user_dids::did_record_set,
         error::{AppError, ErrorResponse},
         models::account::AccountAndAuth,
         test_utils::{route_builder::RouteBuilder, test_context::TestContext},
@@ -427,6 +428,7 @@ mod tests {
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use fission_core::{capabilities::did::Did, common::SuccessResponse, ed_did_key::EdDidKey};
+    use hickory_server::resolver::Name;
     use http::{Method, StatusCode};
     use rs_ucan::{
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
@@ -596,6 +598,25 @@ mod tests {
         .await
     }
 
+    async fn delete_handle<T: DeserializeOwned>(
+        account: &AccountAndAuth,
+        issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, T)> {
+        let invocation =
+            build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
+
+        RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::DELETE,
+            format!("/api/v0/account/handle"),
+        )
+        .with_ucan(invocation)
+        .with_ucan_proofs(account.ucans.clone())
+        .into_json_response()
+        .await
+    }
+
     async fn delete_account<T: DeserializeOwned>(
         account: &AccountAndAuth,
         issuer: &EdDidKey,
@@ -607,6 +628,20 @@ mod tests {
             .with_ucan_proofs(account.ucans.clone())
             .into_json_response()
             .await
+    }
+
+    async fn get_account<T: DeserializeOwned>(
+        auth: &AccountAndAuth,
+        _issuer: &EdDidKey,
+        ctx: &TestContext,
+    ) -> Result<(StatusCode, T)> {
+        RouteBuilder::<DefaultFact>::new(
+            ctx.app(),
+            Method::GET,
+            format!("/api/v0/account/{}", auth.account.did),
+        )
+        .into_json_response::<T>()
+        .await
     }
 
     #[test_log::test(tokio::test)]
@@ -949,6 +984,161 @@ mod tests {
         let (status, _) = patch_handle::<Value>("oedipa.example.com", &auth, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_patch_handle_ok() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, auth) =
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let did_record = did_record_set(
+            &Name::parse("_did.oedipa.test.", None)?,
+            auth.account.did.clone(),
+            3600,
+            1,
+        );
+
+        ctx.app_state()
+            .dns_server
+            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
+            .await?;
+
+        let (status, response) =
+            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_patch_handle_wrong_did_err() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, auth) =
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let did_record = did_record_set(
+            &Name::parse("_did.oedipa.test.", None)?,
+            // wrong DID
+            EdDidKey::generate().did(),
+            3600,
+            1,
+        );
+
+        ctx.app_state()
+            .dns_server
+            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
+            .await?;
+
+        let (status, _) = patch_handle::<Value>("oedipa.test", &auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_handle_is_returned_as_username() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, auth) =
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let did_record = did_record_set(
+            &Name::parse("_did.oedipa.test.", None)?,
+            auth.account.did.clone(),
+            3600,
+            1,
+        );
+
+        ctx.app_state()
+            .dns_server
+            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
+            .await?;
+
+        let (status, response) =
+            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
+
+        let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(account.username, Some(Handle::from_str("oedipa.test")?));
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_delete_handle_causes_username_to_be_reset() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (status, auth) =
+            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::CREATED);
+
+        let did_record = did_record_set(
+            &Name::parse("_did.oedipa.test.", None)?,
+            auth.account.did.clone(),
+            3600,
+            1,
+        );
+
+        ctx.app_state()
+            .dns_server
+            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
+            .await?;
+
+        let (status, response) =
+            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
+
+        let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(account.username, Some(Handle::from_str("oedipa.test")?));
+
+        let (status, response) = delete_handle::<SuccessResponse>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.success);
+
+        let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(
+            account.username,
+            Some(Handle::from_str("oedipa.localhost")?)
+        );
 
         Ok(())
     }

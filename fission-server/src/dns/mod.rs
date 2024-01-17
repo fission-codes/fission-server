@@ -11,7 +11,7 @@ use bytes::Bytes;
 use hickory_server::{
     authority::{Authority, Catalog, ZoneType},
     proto::{
-        rr::{rdata, RData, Record, RecordType, RrKey},
+        rr::{rdata, RData, Record, RecordSet, RecordType, RrKey},
         serialize::txt::RDataParser,
     },
     resolver::{config::NameServerConfigGroup, Name},
@@ -36,6 +36,13 @@ pub struct DnsServer {
     pub user_did_authority: Arc<UserDidsAuthority>,
     /// The catch-all authority that forwards requests to secondary nameservers
     pub forwarder: Arc<ForwardAuthority>,
+    /// The authority handling the `.test` TLD for mocking in tests.
+    /// The idea is that this would *normally* resolve in the
+    /// `ForwardAuthority` in the real world, but we don't want to
+    /// depend on that functionality in unit tests.
+    pub test_authority: Arc<InMemoryAuthority>,
+    /// The default SOA record used for all zones that this DNS server controls
+    pub default_soa: rdata::SOA,
 }
 
 impl std::fmt::Debug for DnsServer {
@@ -69,9 +76,11 @@ impl DnsServer {
             user_did_authority: Arc::new(Self::setup_user_did_authority(
                 settings,
                 db_pool,
-                default_soa,
+                default_soa.clone(),
             )?),
             forwarder: Arc::new(Self::setup_forwarder()?),
+            test_authority: Arc::new(Self::setup_test_authority(default_soa.clone())?),
+            default_soa,
         })
     }
 
@@ -151,6 +160,39 @@ impl DnsServer {
 
         Ok(forwarder)
     }
+
+    fn setup_test_authority(default_soa: rdata::SOA) -> Result<InMemoryAuthority> {
+        let origin = Name::parse("test", Some(&Name::root()))?;
+        let serial = default_soa.serial();
+        InMemoryAuthority::new(
+            origin.clone(),
+            BTreeMap::from([(
+                RrKey::new(origin.clone().into(), RecordType::SOA),
+                record_set(
+                    &origin,
+                    RecordType::SOA,
+                    serial,
+                    Record::from_rdata(origin.clone(), 1209600, RData::SOA(default_soa)),
+                ),
+            )]),
+            ZoneType::Primary,
+            false,
+        )
+        .map_err(|e| anyhow!(e))
+    }
+
+    /// Add a DNS record under `<subdomain>.test.`
+    pub async fn set_test_record(
+        &self,
+        subdomain: &str,
+        record_type: RecordType,
+        rset: RecordSet,
+    ) -> Result<()> {
+        let name = Name::parse(subdomain, Some(&self.test_authority.origin().into()))?;
+        let mut records = self.test_authority.records_mut().await;
+        records.insert(RrKey::new(name.into(), record_type), Arc::new(rset));
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -170,6 +212,10 @@ impl RequestHandler for DnsServer {
         catalog.upsert(
             self.server_did_authority.origin().clone(),
             Box::new(Arc::clone(&self.server_did_authority)),
+        );
+        catalog.upsert(
+            self.test_authority.origin().clone(),
+            Box::new(Arc::clone(&self.test_authority)),
         );
         catalog.upsert(Name::root().into(), Box::new(Arc::clone(&self.forwarder)));
 
