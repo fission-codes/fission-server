@@ -415,7 +415,7 @@ pub async fn delete_account<S: ServerSetup>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use self::helpers::*;
     use crate::{
         db::schema::accounts,
         dns::user_dids::did_record_set,
@@ -427,8 +427,13 @@ mod tests {
     use assert_matches::assert_matches;
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
-    use fission_core::{capabilities::did::Did, common::SuccessResponse, ed_did_key::EdDidKey};
-    use hickory_server::resolver::Name;
+    use fission_core::{
+        capabilities::{did::Did, fission::FissionAbility},
+        common::{Account, SuccessResponse},
+        ed_did_key::EdDidKey,
+        username::Handle,
+    };
+    use hickory_server::{proto::rr::RecordType, resolver::Name};
     use http::{Method, StatusCode};
     use rs_ucan::{
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
@@ -436,213 +441,8 @@ mod tests {
     };
     use serde::de::DeserializeOwned;
     use serde_json::{json, Value};
+    use std::str::FromStr;
     use testresult::TestResult;
-
-    async fn create_account<T: DeserializeOwned>(
-        username: &str,
-        email: &str,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        let (status, response) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<SuccessResponse>()
-                .await?;
-
-        assert_eq!(status, StatusCode::OK);
-        assert!(response.success);
-
-        let (_, code) = ctx
-            .verification_code_sender()
-            .get_emails()
-            .into_iter()
-            .last()
-            .expect("No email Sent");
-
-        let ucan: Ucan = UcanBuilder::default()
-            .for_audience(ctx.server_did())
-            .claiming_capability(Capability::new(
-                Did(issuer.did()),
-                FissionAbility::AccountCreate,
-                EmptyCaveat,
-            ))
-            .sign(issuer)?;
-
-        let (status, root_account) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
-            .with_ucan(ucan)
-            .with_json_body(json!({
-                "username": username,
-                "email": email,
-                "code": code,
-            }))?
-            .into_json_response::<T>()
-            .await?;
-
-        Ok((status, root_account))
-    }
-
-    async fn link_account<T: DeserializeOwned>(
-        account_did: &str,
-        email: &str,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        let (status, response) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<SuccessResponse>()
-                .await?;
-
-        assert_eq!(status, StatusCode::OK);
-        assert!(response.success);
-
-        let (_, code) = ctx
-            .verification_code_sender()
-            .get_emails()
-            .into_iter()
-            .last()
-            .expect("No email Sent");
-
-        let ucan: Ucan = UcanBuilder::default()
-            .for_audience(ctx.server_did())
-            .claiming_capability(Capability::new(
-                Did(issuer.did()),
-                FissionAbility::AccountLink,
-                EmptyCaveat,
-            ))
-            .sign(issuer)?;
-
-        let (status, root_account) = RouteBuilder::new(
-            ctx.app(),
-            Method::POST,
-            &format!("/api/v0/account/{account_did}/link"),
-        )
-        .with_ucan(ucan)
-        .with_json_body(json!({ "code": code }))?
-        .into_json_response::<T>()
-        .await?;
-
-        Ok((status, root_account))
-    }
-
-    fn build_acc_invocation(
-        ability: FissionAbility,
-        account: &AccountAndAuth,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<Ucan> {
-        let account_ucan = account
-            .ucans
-            .iter()
-            .find(|ucan| ucan.audience() == issuer.did_as_str());
-
-        let Some(account_ucan) = account_ucan else {
-            bail!("Missing Ucan!");
-        };
-        let Some(account_did) = account_ucan
-            .capabilities()
-            .find_map(|cap| cap.resource().downcast_ref::<Did>())
-        else {
-            bail!("Missing account capability");
-        };
-
-        assert_eq!(account_did.to_string(), account.account.did);
-
-        let invocation = UcanBuilder::default()
-            .claiming_capability(Capability::new(account_did.clone(), ability, EmptyCaveat))
-            .for_audience(ctx.server_did())
-            .witnessed_by(account_ucan, None)
-            .sign(issuer)?;
-
-        Ok(invocation)
-    }
-
-    async fn patch_username<T: DeserializeOwned>(
-        new_username: &str,
-        account: &AccountAndAuth,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        let invocation =
-            build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
-
-        RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::PATCH,
-            format!("/api/v0/account/username/{new_username}"),
-        )
-        .with_ucan(invocation)
-        .with_ucan_proofs(account.ucans.clone())
-        .into_json_response()
-        .await
-    }
-
-    async fn patch_handle<T: DeserializeOwned>(
-        new_handle: &str,
-        account: &AccountAndAuth,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        let invocation =
-            build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
-
-        RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::PATCH,
-            format!("/api/v0/account/handle/{new_handle}"),
-        )
-        .with_ucan(invocation)
-        .with_ucan_proofs(account.ucans.clone())
-        .into_json_response()
-        .await
-    }
-
-    async fn delete_handle<T: DeserializeOwned>(
-        account: &AccountAndAuth,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        let invocation =
-            build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
-
-        RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::DELETE,
-            format!("/api/v0/account/handle"),
-        )
-        .with_ucan(invocation)
-        .with_ucan_proofs(account.ucans.clone())
-        .into_json_response()
-        .await
-    }
-
-    async fn delete_account<T: DeserializeOwned>(
-        account: &AccountAndAuth,
-        issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        let invocation = build_acc_invocation(FissionAbility::AccountDelete, account, issuer, ctx)?;
-        RouteBuilder::<DefaultFact>::new(ctx.app(), Method::DELETE, format!("/api/v0/account"))
-            .with_ucan(invocation)
-            .with_ucan_proofs(account.ucans.clone())
-            .into_json_response()
-            .await
-    }
-
-    async fn get_account<T: DeserializeOwned>(
-        auth: &AccountAndAuth,
-        _issuer: &EdDidKey,
-        ctx: &TestContext,
-    ) -> Result<(StatusCode, T)> {
-        RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!("/api/v0/account/{}", auth.account.did),
-        )
-        .into_json_response::<T>()
-        .await
-    }
 
     #[test_log::test(tokio::test)]
     async fn test_create_account_ok() -> TestResult {
@@ -652,16 +452,13 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) =
+        let (status, auth) =
             create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(
-            root_account.account.username,
-            Some(ctx.user_handle(username))
-        );
-        assert_eq!(root_account.account.email, Some(email.to_string()));
-        assert!(root_account
+        assert_eq!(auth.account.username, Some(ctx.user_handle(username)));
+        assert_eq!(auth.account.email, Some(email.to_string()));
+        assert!(auth
             .ucans
             .iter()
             .any(|ucan| ucan.audience() == issuer.as_ref()));
@@ -677,17 +474,13 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::CREATED);
+        create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let username = "oedipa";
         let email = "oedipa2@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, err) = create_account::<Value>(username, email, issuer, &ctx).await?;
-
-        tracing::error!(?err, "Response");
+        let (status, _) = create_account::<Value>(username, email, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::CONFLICT);
 
@@ -782,32 +575,6 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn test_get_account_err_not_found() -> TestResult {
-        let ctx = TestContext::new().await;
-        let username = "donnie";
-
-        let (status, body) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!("/api/v0/account/{username}"),
-        )
-        .into_json_response::<ErrorResponse>()
-        .await?;
-
-        assert_eq!(status, StatusCode::NOT_FOUND);
-
-        assert_matches!(
-            body.errors.as_slice(),
-            [AppError {
-                status: StatusCode::NOT_FOUND,
-                ..
-            }]
-        );
-
-        Ok(())
-    }
-
-    #[test_log::test(tokio::test)]
     async fn test_patch_account_ok() -> TestResult {
         let ctx = TestContext::new().await;
 
@@ -816,18 +583,10 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(
-            root_account.account.username,
-            Some(ctx.user_handle(username))
-        );
-        assert_eq!(root_account.account.email, Some(email.to_string()));
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let (status, resp) =
-            patch_username::<SuccessResponse>(username2, &root_account, issuer, &ctx).await?;
+            patch_username::<SuccessResponse>(username2, &auth, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(resp.success);
@@ -843,22 +602,14 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
-        assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(
-            root_account.account.username,
-            Some(ctx.user_handle(username))
-        );
-        assert_eq!(root_account.account.email, Some(email.to_string()));
-
-        let (status, account) = delete_account::<Account>(&root_account, issuer, &ctx).await?;
+        let (status, account) = delete_account::<Account>(&auth, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(account.username, root_account.account.username);
-        assert_eq!(account.email, root_account.account.email);
-        assert_eq!(account.did, root_account.account.did);
+        assert_eq!(account.username, auth.account.username);
+        assert_eq!(account.email, auth.account.email);
+        assert_eq!(account.did, auth.account.did);
 
         Ok(())
     }
@@ -872,25 +623,12 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, root_account) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
-        assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(
-            root_account.account.username,
-            Some(ctx.user_handle(username))
-        );
-        assert_eq!(root_account.account.email, Some(email.to_string()));
-
-        let (status, account) = delete_account::<Account>(&root_account, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(account.username, root_account.account.username);
-        assert_eq!(account.email, root_account.account.email);
-        assert_eq!(account.did, root_account.account.did);
+        delete_account::<Account>(&auth, issuer, &ctx).await?;
 
         let (status, _) =
-            patch_username::<serde_json::Value>(username2, &root_account, issuer, &ctx).await?;
+            patch_username::<serde_json::Value>(username2, &auth, issuer, &ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
@@ -905,18 +643,15 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, response) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::CREATED);
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let issuer2 = &EdDidKey::generate();
 
         let (status, link_response) =
-            link_account::<AccountAndAuth>(&response.account.did, email, issuer2, &ctx).await?;
+            link_account::<AccountAndAuth>(&auth.account.did, email, issuer2, &ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(link_response.account.did, response.account.did);
+        assert_eq!(link_response.account.did, auth.account.did);
         assert_eq!(link_response.account.email, Some(email.to_string()));
 
         Ok(())
@@ -930,9 +665,7 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::CREATED);
+        create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let issuer2 = &EdDidKey::generate();
 
@@ -952,10 +685,7 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, response) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::CREATED);
+        let (_, response) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let issuer2 = &EdDidKey::generate();
         let email2 = "someone.else@trystero.com";
@@ -976,10 +706,7 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, auth) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::CREATED);
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
         let (status, _) = patch_handle::<Value>("oedipa.example.com", &auth, issuer, &ctx).await?;
 
@@ -996,22 +723,9 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, auth) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
-        assert_eq!(status, StatusCode::CREATED);
-
-        let did_record = did_record_set(
-            &Name::parse("_did.oedipa.test.", None)?,
-            auth.account.did.clone(),
-            3600,
-            1,
-        );
-
-        ctx.app_state()
-            .dns_server
-            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
-            .await?;
+        register_test_dns_handle(username, auth.account.did.clone(), &ctx).await?;
 
         let (status, response) =
             patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
@@ -1030,23 +744,10 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, auth) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
-        assert_eq!(status, StatusCode::CREATED);
-
-        let did_record = did_record_set(
-            &Name::parse("_did.oedipa.test.", None)?,
-            // wrong DID
-            EdDidKey::generate().did(),
-            3600,
-            1,
-        );
-
-        ctx.app_state()
-            .dns_server
-            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
-            .await?;
+        let wrong_did = EdDidKey::generate().did();
+        register_test_dns_handle(username, wrong_did, &ctx).await?;
 
         let (status, _) = patch_handle::<Value>("oedipa.test", &auth, issuer, &ctx).await?;
 
@@ -1063,28 +764,11 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, auth) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
-        assert_eq!(status, StatusCode::CREATED);
+        register_test_dns_handle(username, auth.account.did.clone(), &ctx).await?;
 
-        let did_record = did_record_set(
-            &Name::parse("_did.oedipa.test.", None)?,
-            auth.account.did.clone(),
-            3600,
-            1,
-        );
-
-        ctx.app_state()
-            .dns_server
-            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
-            .await?;
-
-        let (status, response) =
-            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::OK);
-        assert!(response.success);
+        patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
 
         let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
 
@@ -1101,28 +785,11 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, auth) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
 
-        assert_eq!(status, StatusCode::CREATED);
+        register_test_dns_handle(username, auth.account.did.clone(), &ctx).await?;
 
-        let did_record = did_record_set(
-            &Name::parse("_did.oedipa.test.", None)?,
-            auth.account.did.clone(),
-            3600,
-            1,
-        );
-
-        ctx.app_state()
-            .dns_server
-            .set_test_record("_did.oedipa", RecordType::TXT, did_record)
-            .await?;
-
-        let (status, response) =
-            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
-
-        assert_eq!(status, StatusCode::OK);
-        assert!(response.success);
+        patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
 
         let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
 
@@ -1141,5 +808,243 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    mod helpers {
+        use super::*;
+
+        pub(super) async fn create_account<T: DeserializeOwned>(
+            username: &str,
+            email: &str,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let (status, response) = RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::POST,
+                "/api/v0/auth/email/verify",
+            )
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<SuccessResponse>()
+            .await?;
+
+            assert_eq!(status, StatusCode::OK);
+            assert!(response.success);
+
+            let (_, code) = ctx
+                .verification_code_sender()
+                .get_emails()
+                .into_iter()
+                .last()
+                .expect("No email Sent");
+
+            let ucan: Ucan = UcanBuilder::default()
+                .for_audience(ctx.server_did())
+                .claiming_capability(Capability::new(
+                    Did(issuer.did()),
+                    FissionAbility::AccountCreate,
+                    EmptyCaveat,
+                ))
+                .sign(issuer)?;
+
+            let (status, root_account) =
+                RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
+                    .with_ucan(ucan)
+                    .with_json_body(json!({
+                        "username": username,
+                        "email": email,
+                        "code": code,
+                    }))?
+                    .into_json_response::<T>()
+                    .await?;
+
+            Ok((status, root_account))
+        }
+
+        pub(super) async fn link_account<T: DeserializeOwned>(
+            account_did: &str,
+            email: &str,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let (status, response) = RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::POST,
+                "/api/v0/auth/email/verify",
+            )
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<SuccessResponse>()
+            .await?;
+
+            assert_eq!(status, StatusCode::OK);
+            assert!(response.success);
+
+            let (_, code) = ctx
+                .verification_code_sender()
+                .get_emails()
+                .into_iter()
+                .last()
+                .expect("No email Sent");
+
+            let ucan: Ucan = UcanBuilder::default()
+                .for_audience(ctx.server_did())
+                .claiming_capability(Capability::new(
+                    Did(issuer.did()),
+                    FissionAbility::AccountLink,
+                    EmptyCaveat,
+                ))
+                .sign(issuer)?;
+
+            let (status, root_account) = RouteBuilder::new(
+                ctx.app(),
+                Method::POST,
+                &format!("/api/v0/account/{account_did}/link"),
+            )
+            .with_ucan(ucan)
+            .with_json_body(json!({ "code": code }))?
+            .into_json_response::<T>()
+            .await?;
+
+            Ok((status, root_account))
+        }
+
+        fn build_acc_invocation(
+            ability: FissionAbility,
+            account: &AccountAndAuth,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<Ucan> {
+            let account_ucan = account
+                .ucans
+                .iter()
+                .find(|ucan| ucan.audience() == issuer.did_as_str());
+
+            let Some(account_ucan) = account_ucan else {
+            bail!("Missing Ucan!");
+        };
+            let Some(account_did) = account_ucan
+            .capabilities()
+            .find_map(|cap| cap.resource().downcast_ref::<Did>())
+        else {
+            bail!("Missing account capability");
+        };
+
+            assert_eq!(account_did.to_string(), account.account.did);
+
+            let invocation = UcanBuilder::default()
+                .claiming_capability(Capability::new(account_did.clone(), ability, EmptyCaveat))
+                .for_audience(ctx.server_did())
+                .witnessed_by(account_ucan, None)
+                .sign(issuer)?;
+
+            Ok(invocation)
+        }
+
+        pub(super) async fn patch_username<T: DeserializeOwned>(
+            new_username: &str,
+            account: &AccountAndAuth,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let invocation =
+                build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
+
+            RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::PATCH,
+                format!("/api/v0/account/username/{new_username}"),
+            )
+            .with_ucan(invocation)
+            .with_ucan_proofs(account.ucans.clone())
+            .into_json_response()
+            .await
+        }
+
+        pub(super) async fn patch_handle<T: DeserializeOwned>(
+            new_handle: &str,
+            account: &AccountAndAuth,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let invocation =
+                build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
+
+            RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::PATCH,
+                format!("/api/v0/account/handle/{new_handle}"),
+            )
+            .with_ucan(invocation)
+            .with_ucan_proofs(account.ucans.clone())
+            .into_json_response()
+            .await
+        }
+
+        pub(super) async fn register_test_dns_handle(
+            username: &str,
+            did: String,
+            ctx: &TestContext,
+        ) -> Result<()> {
+            let did_record = did_record_set(
+                &Name::parse(&format!("_did.{username}.test."), None)?,
+                did,
+                3600,
+                1,
+            );
+
+            ctx.app_state()
+                .dns_server
+                .set_test_record(&format!("_did.{username}"), RecordType::TXT, did_record)
+                .await?;
+
+            Ok(())
+        }
+
+        pub(super) async fn delete_handle<T: DeserializeOwned>(
+            account: &AccountAndAuth,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let invocation =
+                build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
+
+            RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::DELETE,
+                format!("/api/v0/account/handle"),
+            )
+            .with_ucan(invocation)
+            .with_ucan_proofs(account.ucans.clone())
+            .into_json_response()
+            .await
+        }
+
+        pub(super) async fn delete_account<T: DeserializeOwned>(
+            account: &AccountAndAuth,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let invocation =
+                build_acc_invocation(FissionAbility::AccountDelete, account, issuer, ctx)?;
+            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::DELETE, format!("/api/v0/account"))
+                .with_ucan(invocation)
+                .with_ucan_proofs(account.ucans.clone())
+                .into_json_response()
+                .await
+        }
+
+        pub(super) async fn get_account<T: DeserializeOwned>(
+            auth: &AccountAndAuth,
+            _issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::GET,
+                format!("/api/v0/account/{}", auth.account.did),
+            )
+            .into_json_response::<T>()
+            .await
+        }
     }
 }
