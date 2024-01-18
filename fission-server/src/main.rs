@@ -77,7 +77,10 @@ const REQUEST_ID: &str = "request_id";
 struct Cli {
     #[arg(long, short = 'c', help = "Path to the settings.toml")]
     config_path: Option<PathBuf>,
-    #[arg(long, help = "Whether to turn off colors")]
+    #[arg(
+        long,
+        help = "Whether to turn off ansi terminal colors in log messages"
+    )]
     no_colors: bool,
 }
 
@@ -97,7 +100,7 @@ async fn main() -> Result<()> {
     let settings = Settings::load(cli.config_path)?;
 
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
-    setup_tracing(stdout_writer, &settings.otel, cli.no_colors)?;
+    setup_tracing(stdout_writer, &settings.otel, !cli.no_colors)?;
 
     info!(
         subject = "app_settings",

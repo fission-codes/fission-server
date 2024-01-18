@@ -248,7 +248,6 @@ impl<W: Write> FieldPrinter<W> {
         }
     }
 
-    #[cfg(feature = "ansi-logs")]
     fn write_level(&mut self, level: &Level) {
         let level_str = match *level {
             Level::TRACE => "trace",
@@ -259,8 +258,8 @@ impl<W: Write> FieldPrinter<W> {
         }
         .to_uppercase();
 
-        let level_str = if self.ansi_colors {
-            match *level {
+        if self.ansi_colors {
+            let level_name = match *level {
                 Level::TRACE => ansi_term::Color::Purple,
                 Level::DEBUG => ansi_term::Color::Blue,
                 Level::INFO => ansi_term::Color::Green,
@@ -269,36 +268,23 @@ impl<W: Write> FieldPrinter<W> {
             }
             .bold()
             .paint(level_str);
+
+            write!(
+                self.writer,
+                r#"{}={}"#,
+                decorate_field_name("level"),
+                level_name
+            )
+            .expect("Logging failed");
         } else {
-            level_str
-        };
-
-        write!(
-            self.writer,
-            r#"{}={}"#,
-            decorate_field_name("level"),
-            level_str
-        )
-        .ok();
-    }
-
-    #[cfg(not(feature = "ansi-logs"))]
-    fn write_level(&mut self, level: &Level) {
-        let level_str = match *level {
-            Level::TRACE => "trace",
-            Level::DEBUG => "debug",
-            Level::INFO => "info",
-            Level::WARN => "warn",
-            Level::ERROR => "error",
-        };
-
-        write!(
-            self.writer,
-            r#"{}={}"#,
-            decorate_field_name("level"),
-            level_str
-        )
-        .ok();
+            write!(
+                self.writer,
+                r#"{}={}"#,
+                decorate_field_name("level"),
+                level_str
+            )
+            .expect("Logging failed");
+        }
     }
 
     fn write_span_name(&mut self, value: &str) {
@@ -308,7 +294,7 @@ impl<W: Write> FieldPrinter<W> {
             decorate_field_name("span_name"),
             quote_and_escape(value)
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     fn write_source_info(&mut self, event: &Event<'_>) {
@@ -325,7 +311,7 @@ impl<W: Write> FieldPrinter<W> {
                 decorate_field_name("target"),
                 quote_and_escape(metadata.target())
             )
-            .ok();
+            .expect("Logging failed");
         }
 
         if let Some(module_path) = metadata.module_path() {
@@ -336,9 +322,10 @@ impl<W: Write> FieldPrinter<W> {
                     decorate_field_name("module_path"),
                     module_path
                 )
-                .ok();
+                .expect("Logging failed");
             }
         }
+
         if let (Some(file), Some(line)) = (metadata.file(), metadata.line()) {
             write!(
                 self.writer,
@@ -347,7 +334,7 @@ impl<W: Write> FieldPrinter<W> {
                 file,
                 line
             )
-            .ok();
+            .expect("Logging failed");
         }
     }
 
@@ -358,7 +345,7 @@ impl<W: Write> FieldPrinter<W> {
             decorate_field_name("span"),
             id.into_u64()
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     fn write_span_event(&mut self, hook: &str) {
@@ -368,7 +355,7 @@ impl<W: Write> FieldPrinter<W> {
             decorate_field_name("span_event"),
             hook
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     fn write_timestamp(&mut self) {
@@ -378,15 +365,16 @@ impl<W: Write> FieldPrinter<W> {
             decorate_field_name("timestamp"),
             to_rfc3339(&SystemTime::now())
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     fn write_kv(&mut self, key: String, value: String) {
-        write!(self.writer, " {}={}", key, quote_and_escape(value.as_str())).ok();
+        write!(self.writer, " {}={}", key, quote_and_escape(value.as_str()))
+            .expect("Logging failed");
     }
 
     fn write_newline(&mut self) {
-        writeln!(self.writer).ok();
+        writeln!(self.writer).expect("Logging failed");
     }
 }
 
@@ -399,7 +387,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(translate_field_name(field.name())),
             value
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     /// Visit an unsigned 64-bit integer value.
@@ -410,7 +398,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(translate_field_name(field.name())),
             value
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     /// Visit a boolean value.
@@ -421,7 +409,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(translate_field_name(field.name())),
             value
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     /// Visit a string value.
@@ -432,7 +420,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(translate_field_name(field.name())),
             quote_and_escape(value)
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
@@ -444,7 +432,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(translate_field_name(field.name())),
             quote_and_escape(&formatted_value)
         )
-        .ok();
+        .expect("Logging failed");
     }
 
     fn record_error(&mut self, field: &Field, value: &(dyn std::error::Error + 'static)) {
@@ -457,7 +445,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(field_name),
             quote_and_escape(&debug_formatted)
         )
-        .ok();
+        .expect("Logging failed");
 
         let display_formatted = format!("{value}");
         write!(
@@ -466,7 +454,7 @@ impl<W: io::Write> Visit for FieldPrinter<W> {
             decorate_field_name(field_name),
             quote_and_escape(&display_formatted)
         )
-        .ok();
+        .expect("Logging failed");
     }
 }
 
