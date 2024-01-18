@@ -1,8 +1,5 @@
 <div align="center">
   <p>
-    <a href="https://crates.io/crates/fission-server">
-      <img src="https://img.shields.io/crates/v/fission-server?label=crates" alt="Crate">
-    </a>
     <a href="https://codecov.io/gh/fission-codes/fission-server">
       <img src="https://codecov.io/gh/fission-codes/fission-server/branch/main/graph/badge.svg?token=SOMETOKEN" alt="Code Coverage"/>
     </a>
@@ -11,9 +8,6 @@
     </a>
     <a href="https://github.com/fission-codes/fission-server/blob/main/LICENSE">
       <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License">
-    </a>
-    <a href="https://docs.rs/fission-server">
-      <img src="https://img.shields.io/static/v1?label=Docs&message=docs.rs&color=blue" alt="Docs">
     </a>
     <a href="https://fission.codes/discord">
       <img src="https://img.shields.io/static/v1?label=Discord&message=join%20us!&color=mediumslateblue" alt="Discord">
