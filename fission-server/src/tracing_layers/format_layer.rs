@@ -73,19 +73,13 @@ const GRAY: u8 = 245;
 
 /// Logging layer for formatting and outputting event-driven logs.
 #[derive(Debug)]
-pub struct LogFmtLayer<Wr, W = fn() -> io::Stdout>
-where
-    Wr: Write,
-    W: for<'writer> MakeWriter<'writer>,
-{
-    writer: W,
-    printer: RwLock<FieldPrinter<Wr>>,
+pub struct LogFmtLayer<W: Write> {
+    printer: RwLock<FieldPrinter<W>>,
 }
 
-impl<Wr, W> LogFmtLayer<Wr, W>
+impl<W> LogFmtLayer<W>
 where
-    Wr: Write,
-    W: for<'writer> MakeWriter<'writer, Writer = Wr>,
+    W: Write,
 {
     /// Create a new logfmt Layer to pass into tracing_subscriber
     ///
@@ -111,11 +105,10 @@ where
     ///    .with(formatter)
     ///    .init();
     /// ```
-    pub fn new(writer: W) -> Self {
-        let make_writer = writer.make_writer();
+    pub fn new(writer: impl for<'w> MakeWriter<'w, Writer = W>) -> Self {
+        let writer = writer.make_writer();
         Self {
-            writer,
-            printer: RwLock::new(FieldPrinter::new(make_writer, true)),
+            printer: RwLock::new(FieldPrinter::new(writer, true, true)),
         }
     }
 
@@ -123,18 +116,23 @@ where
     ///
     /// Note: this API mimics that of other fmt layers in tracing-subscriber crate.
     pub fn with_target(self, display_target: bool) -> Self {
-        let make_writer = self.writer.make_writer();
-        Self {
-            writer: self.writer,
-            printer: RwLock::new(FieldPrinter::new(make_writer, display_target)),
-        }
+        self.printer.write().display_target = display_target;
+        self
+    }
+
+    /// Control whether to use ansi-colors (if enabled), or not.
+    ///
+    /// Note: this API mimics that of other fmt layers in tracing-subscriber crate.
+    pub fn with_ansi(self, ansi_colors: bool) -> Self {
+        self.printer.write().ansi_colors = ansi_colors;
+        self
     }
 }
 
-impl<S, Wr, W> Layer<S> for LogFmtLayer<Wr, W>
+impl<S, W> Layer<S> for LogFmtLayer<W>
 where
-    Wr: Write + 'static,
-    W: for<'writer> MakeWriter<'writer> + 'static,
+    W: Write,
+    W: 'static,
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
     fn max_level_hint(&self) -> Option<LevelFilter> {
@@ -238,13 +236,15 @@ where
 struct FieldPrinter<Wr: io::Write> {
     writer: Wr,
     display_target: bool,
+    ansi_colors: bool,
 }
 
 impl<W: Write> FieldPrinter<W> {
-    fn new(writer: W, display_target: bool) -> Self {
+    fn new(writer: W, display_target: bool, ansi_colors: bool) -> Self {
         Self {
             writer,
             display_target,
+            ansi_colors,
         }
     }
 
@@ -259,21 +259,25 @@ impl<W: Write> FieldPrinter<W> {
         }
         .to_uppercase();
 
-        let level_name = match *level {
-            Level::TRACE => ansi_term::Color::Purple,
-            Level::DEBUG => ansi_term::Color::Blue,
-            Level::INFO => ansi_term::Color::Green,
-            Level::WARN => ansi_term::Color::Yellow,
-            Level::ERROR => ansi_term::Color::Red,
-        }
-        .bold()
-        .paint(level_str);
+        let level_str = if self.ansi_colors {
+            match *level {
+                Level::TRACE => ansi_term::Color::Purple,
+                Level::DEBUG => ansi_term::Color::Blue,
+                Level::INFO => ansi_term::Color::Green,
+                Level::WARN => ansi_term::Color::Yellow,
+                Level::ERROR => ansi_term::Color::Red,
+            }
+            .bold()
+            .paint(level_str);
+        } else {
+            level_str
+        };
 
         write!(
             self.writer,
             r#"{}={}"#,
             decorate_field_name("level"),
-            level_name
+            level_str
         )
         .ok();
     }

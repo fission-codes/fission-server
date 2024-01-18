@@ -75,14 +75,14 @@ const REQUEST_ID: &str = "request_id";
 #[command(name = "fission-server")]
 #[command(about = "Run the fission server")]
 struct Cli {
-    #[arg(long, short('c'), help = "Path to the settings.toml")]
+    #[arg(long, short = 'c', help = "Path to the settings.toml")]
     config_path: Option<PathBuf>,
+    #[arg(long, help = "Whether to turn off colors")]
+    no_colors: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
-
     // Load parameters from both CLI & environment variables
     let cli: Cli = Config::builder()
         .add_source(SerdeValueSource::from(Cli::parse()))
@@ -95,9 +95,9 @@ async fn main() -> Result<()> {
         .try_deserialize()?;
 
     let settings = Settings::load(cli.config_path)?;
-    let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
 
-    setup_tracing(stdout_writer, &settings.otel)?;
+    let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
+    setup_tracing(stdout_writer, &settings.otel, cli.no_colors)?;
 
     info!(
         subject = "app_settings",
@@ -105,6 +105,8 @@ async fn main() -> Result<()> {
         ?settings,
         "starting server",
     );
+
+    let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
 
     let server_keypair = load_keypair(&settings).await?;
 
@@ -405,6 +407,7 @@ async fn capture_sigterm() {
 fn setup_tracing(
     writer: tracing_appender::non_blocking::NonBlocking,
     settings_otel: &Otel,
+    colors: bool,
 ) -> Result<()> {
     let tracer = init_tracer(settings_otel)?;
 
@@ -422,7 +425,7 @@ fn setup_tracing(
                         .unwrap_or_default()
                 })),
         )
-        .with(LogFmtLayer::new(writer).with_target(true).with_filter(
+        .with(LogFmtLayer::new(writer).with_target(true).with_ansi(colors).with_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 EnvFilter::new(
                     std::env::var("RUST_LOG")

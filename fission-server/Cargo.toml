@@ -16,14 +16,14 @@ authors = [
     "Steven Vandevelde <icid.asset@gmail.com>",
     "Blaine Cook <blaine@fission.codes>",
 ]
-default-run = "fission-server-app"
+default-run = "fission-server"
 
 [lib]
 path = "src/lib.rs"
 doctest = true
 
 [[bin]]
-name = "fission-server-app"
+name = "fission-server"
 path = "src/main.rs"
 doc = false
 

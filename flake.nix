@@ -143,7 +143,7 @@
         cargoLock = {
           lockFile = ./Cargo.lock;
           outputHashes = {
-            "rs-ucan-0.1.0" = "sha256-bJq5mMk5TLvE9w1dtY1sRCyE2uVfcMFSupsSFTXw9rY=";
+            "rs-ucan-0.1.0" = "sha256-HSxIzqPECJ9KbPYU0aitjxpCf0CSDAv7su1PGxZlpHc=";
           };
         };
         buildInputs = with pkgs;
