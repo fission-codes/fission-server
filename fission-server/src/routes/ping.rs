@@ -26,7 +26,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_ping() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let (status, _) = RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/ping")
             .into_raw_response()

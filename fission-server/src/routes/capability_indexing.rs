@@ -108,15 +108,15 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_capabilities_ok() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let device = &EdDidKey::generate();
         let server = ctx.server_did();
 
         let ucan = index_test_ucan(server, device, server.did(), conn).await?;
 
-        let (status, response) = fetch_capabilities(device, &ctx).await?;
+        let (status, response) = fetch_capabilities(device, ctx).await?;
         assert_eq!(status, StatusCode::OK);
 
         let ucans = response.ucans.values().into_iter().collect::<Vec<_>>();
@@ -127,8 +127,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_capabilities_unauthorized() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let device = &EdDidKey::generate();
         let server = ctx.server_did();
@@ -152,8 +152,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_capabilities_filtered_by_audience() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let device = &EdDidKey::generate();
         let device_other = &EdDidKey::generate();
@@ -162,7 +162,7 @@ mod tests {
         // Index a test UCAN from `server` -> `device_other`
         let ucan_other = index_test_ucan(server, device_other, server.did(), conn).await?;
         // Requesting UCANs delegated to `device` should end up empty
-        let (status, response) = fetch_capabilities(device, &ctx).await?;
+        let (status, response) = fetch_capabilities(device, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(response.ucans.is_empty());
@@ -171,8 +171,8 @@ mod tests {
         let ucan = index_test_ucan(server, device, server.did(), conn).await?;
 
         // Requesting UCANs should only return the ones that end in the relevant issuer's DID
-        let (_, response) = fetch_capabilities(device, &ctx).await?;
-        let (_, response_other) = fetch_capabilities(device_other, &ctx).await?;
+        let (_, response) = fetch_capabilities(device, ctx).await?;
+        let (_, response_other) = fetch_capabilities(device_other, ctx).await?;
 
         let ucans = response.ucans.into_values().into_iter().collect::<Vec<_>>();
         let ucans_other = response_other
@@ -188,8 +188,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_capabilities_fetches_whole_chain() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let id_one = &EdDidKey::generate();
         let id_two = &EdDidKey::generate();
@@ -198,7 +198,7 @@ mod tests {
         let ucan_one = index_test_ucan(server, id_one, server.did(), conn).await?;
         let ucan_two = index_test_ucan(id_one, id_two, server.did(), conn).await?;
 
-        let (status, response) = fetch_capabilities(id_two, &ctx).await?;
+        let (status, response) = fetch_capabilities(id_two, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
 

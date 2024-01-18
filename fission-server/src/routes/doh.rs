@@ -86,7 +86,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_dns_json_soa() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let (status, body) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
@@ -133,8 +133,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_dns_json_did_username_ok() -> TestResult {
-        let ctx = TestContext::new().await;
-        let mut conn = ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let username = "donnie";
         let email = "donnie@example.com";
@@ -146,7 +146,7 @@ mod tests {
                 accounts::email.eq(email),
                 accounts::did.eq(did),
             ))
-            .execute(&mut conn)
+            .execute(conn)
             .await?;
 
         let (status, body) = RouteBuilder::<DefaultFact>::new(
@@ -198,7 +198,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_dns_json_did_username_err_not_found() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
         let username = "donnie";
 
         let (status, body) = RouteBuilder::<DefaultFact>::new(

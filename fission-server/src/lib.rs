@@ -25,5 +25,5 @@ pub mod setups;
 pub mod tracer;
 pub mod tracing_layers;
 
-#[cfg(test)]
-mod test_utils;
+#[cfg(any(feature = "test_utils", test))]
+pub mod test_utils;

@@ -54,7 +54,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_post_revocation_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let issuer = &EdDidKey::generate();
 
@@ -84,7 +84,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_post_revocation_of_foreign_forbidden() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let issuer = &EdDidKey::generate();
         let foreign = &EdDidKey::generate();

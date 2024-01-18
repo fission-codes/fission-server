@@ -101,7 +101,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_healthcheck_healthy() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let (status, body) =
             RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/healthcheck")
@@ -117,7 +117,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_healthcheck_db_unavailable() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = TestContext::new().await?;
         let app = ctx.app();
 
         // Drop the database
@@ -136,13 +136,13 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_healthcheck_db_out_of_date() -> TestResult {
-        let ctx = TestContext::new().await;
-        let mut conn = ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         // Insert a new migration at the end of time
         diesel::insert_into(__diesel_schema_migrations::table)
             .values(__diesel_schema_migrations::version.eq("2239-09-30-desolation".to_string()))
-            .execute(&mut conn)
+            .execute(conn)
             .await?;
 
         let (status, body) =

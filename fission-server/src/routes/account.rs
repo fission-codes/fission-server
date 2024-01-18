@@ -492,17 +492,16 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_create_account_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, auth) =
-            create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (status, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(auth.account.username, Some(ctx.user_handle(username)));
+        assert_eq!(auth.account.username, Some(ctx.user_handle(username)?));
         assert_eq!(auth.account.email, Some(email.to_string()));
         assert!(auth
             .ucans
@@ -514,19 +513,19 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_create_account_same_username_conflict() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let username = "oedipa";
         let email = "oedipa2@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) = create_account::<Value>(username, email, issuer, &ctx).await?;
+        let (status, _) = create_account::<Value>(username, email, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::CONFLICT);
 
@@ -535,7 +534,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_create_account_err_wrong_code() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
@@ -589,18 +588,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_account_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "donnie";
         let email = "donnie@example.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account(username, email, issuer, ctx).await?;
 
-        let (status, body) = get_account::<Account>(&auth, issuer, &ctx).await?;
+        let (status, body) = get_account::<Account>(&auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.username, Some(ctx.user_handle(username)));
+        assert_eq!(body.username, Some(ctx.user_handle(username)?));
         assert_eq!(body.email, Some(email.to_string()));
 
         Ok(())
@@ -608,17 +607,17 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_patch_account_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let username2 = "oedipa2";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let (status, resp) =
-            patch_username::<SuccessResponse>(username2, &auth, issuer, &ctx).await?;
+            patch_username::<SuccessResponse>(username2, &auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(resp.success);
@@ -628,15 +627,15 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_delete_account_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
-        let (status, account) = delete_account::<Account>(&auth, issuer, &ctx).await?;
+        let (status, account) = delete_account::<Account>(&auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(account.username, auth.account.username);
@@ -648,19 +647,19 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_patch_revoked_account_err() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let username2 = "oedipa2";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
-        delete_account::<Account>(&auth, issuer, &ctx).await?;
+        delete_account::<Account>(&auth, issuer, ctx).await?;
 
         let (status, _) =
-            patch_username::<serde_json::Value>(username2, &auth, issuer, &ctx).await?;
+            patch_username::<serde_json::Value>(username2, &auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
@@ -669,18 +668,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_account_link_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let issuer2 = &EdDidKey::generate();
 
         let (status, link_response) =
-            link_account::<AccountAndAuth>(&auth.account.did, email, issuer2, &ctx).await?;
+            link_account::<AccountAndAuth>(&auth.account.did, email, issuer2, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(link_response.account.did, auth.account.did);
@@ -691,18 +690,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_account_link_unknown_did_not_found() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let issuer2 = &EdDidKey::generate();
 
         let (status, _) =
-            link_account::<Value>(EdDidKey::generate().did_as_str(), email, issuer2, &ctx).await?;
+            link_account::<Value>(EdDidKey::generate().did_as_str(), email, issuer2, ctx).await?;
 
         assert_eq!(status, StatusCode::NOT_FOUND);
 
@@ -711,19 +710,19 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_account_link_wrong_email_forbidden() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, response) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, response) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let issuer2 = &EdDidKey::generate();
         let email2 = "someone.else@trystero.com";
 
         let (status, _) =
-            link_account::<Value>(&response.account.did, email2, issuer2, &ctx).await?;
+            link_account::<Value>(&response.account.did, email2, issuer2, ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
@@ -732,15 +731,15 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_patch_handle_invalid_err() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
-        let (status, _) = patch_handle::<Value>("oedipa.example.com", &auth, issuer, &ctx).await?;
+        let (status, _) = patch_handle::<Value>("oedipa.example.com", &auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
@@ -749,18 +748,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_patch_handle_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
-        register_test_dns_handle(username, auth.account.did.clone(), &ctx).await?;
+        register_test_dns_handle(username, auth.account.did.clone(), ctx).await?;
 
         let (status, response) =
-            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
+            patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(response.success);
@@ -770,18 +769,18 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_patch_handle_wrong_did_err() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let wrong_did = EdDidKey::generate().did();
-        register_test_dns_handle(username, wrong_did, &ctx).await?;
+        register_test_dns_handle(username, wrong_did, ctx).await?;
 
-        let (status, _) = patch_handle::<Value>("oedipa.test", &auth, issuer, &ctx).await?;
+        let (status, _) = patch_handle::<Value>("oedipa.test", &auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 
@@ -790,19 +789,19 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_handle_is_returned_as_username() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
-        register_test_dns_handle(username, auth.account.did.clone(), &ctx).await?;
+        register_test_dns_handle(username, auth.account.did.clone(), ctx).await?;
 
-        patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
+        patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, ctx).await?;
 
-        let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
+        let (_, account) = get_account::<Account>(&auth, issuer, ctx).await?;
 
         assert_eq!(account.username, Some(Handle::from_str("oedipa.test")?));
 
@@ -811,28 +810,28 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_delete_handle_causes_username_to_be_reset() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
-        register_test_dns_handle(username, auth.account.did.clone(), &ctx).await?;
+        register_test_dns_handle(username, auth.account.did.clone(), ctx).await?;
 
-        patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, &ctx).await?;
+        patch_handle::<SuccessResponse>("oedipa.test", &auth, issuer, ctx).await?;
 
-        let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
+        let (_, account) = get_account::<Account>(&auth, issuer, ctx).await?;
 
         assert_eq!(account.username, Some(Handle::from_str("oedipa.test")?));
 
-        let (status, response) = delete_handle::<SuccessResponse>(&auth, issuer, &ctx).await?;
+        let (status, response) = delete_handle::<SuccessResponse>(&auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(response.success);
 
-        let (_, account) = get_account::<Account>(&auth, issuer, &ctx).await?;
+        let (_, account) = get_account::<Account>(&auth, issuer, ctx).await?;
 
         assert_eq!(
             account.username,
@@ -844,16 +843,16 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_member_number_starts_at_one() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let (status, response) =
-            get_member_number::<MemberNumberResponse>(&auth, issuer, &ctx).await?;
+            get_member_number::<MemberNumberResponse>(&auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(response.member_number, 1);
@@ -863,16 +862,16 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_member_number_increases() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let (status, response_one) =
-            get_member_number::<MemberNumberResponse>(&auth, issuer, &ctx).await?;
+            get_member_number::<MemberNumberResponse>(&auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
 
@@ -880,10 +879,10 @@ mod tests {
         let email = "oedipa2@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
 
         let (status, response_two) =
-            get_member_number::<MemberNumberResponse>(&auth, issuer, &ctx).await?;
+            get_member_number::<MemberNumberResponse>(&auth, issuer, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(response_two.member_number, response_one.member_number + 1);

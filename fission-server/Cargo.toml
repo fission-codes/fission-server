@@ -127,6 +127,7 @@ uuid = "1.4.1"
 wiremock = "0.5"
 
 [features]
+test_utils = []
 console = ["console-subscriber"]
 default = []
 

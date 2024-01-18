@@ -86,11 +86,11 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_request_code_ok() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let email = "oedipa@trystero.com";
 
-        let (status, email, _) = request_code(email, &ctx).await?;
+        let (status, email, _) = request_code(email, ctx).await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(email, "oedipa@trystero.com");
@@ -100,14 +100,14 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_email_verification_fetch_token() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let email = "oedipa@trystero.com";
 
-        let (_, _, code) = request_code(email, &ctx).await?;
+        let (_, _, code) = request_code(email, ctx).await?;
 
         let token_result =
-            EmailVerification::find_token(&mut ctx.get_db_conn().await, email, &code).await;
+            EmailVerification::find_token(&mut ctx.get_db_conn().await?, email, &code).await;
 
         assert_matches!(
             token_result,
@@ -121,8 +121,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_request_code_expires() -> TestResult {
-        let ctx = TestContext::new().await;
-        let mut conn = ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let email = "oedipa@trystero.com";
         let code = "123456";
@@ -142,10 +142,10 @@ mod tests {
 
         diesel::insert_into(email_verifications::table)
             .values(&record)
-            .execute(&mut conn)
+            .execute(conn)
             .await?;
 
-        let token_result = EmailVerification::find_token(&mut conn, email, code).await;
+        let token_result = EmailVerification::find_token(conn, email, code).await;
 
         assert_matches!(token_result, Err(_));
 
@@ -154,12 +154,12 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_request_code_consumed() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let email = "oedipa@trystero.com";
 
-        let (_, _, code) = request_code(email, &ctx).await?;
+        let (_, _, code) = request_code(email, ctx).await?;
 
         let token = EmailVerification::find_token(conn, email, &code).await?;
 
@@ -176,7 +176,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_get_server_did() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         let (status, response) = RouteBuilder::<DefaultFact>::new(
             ctx.app(),
