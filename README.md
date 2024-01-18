@@ -66,6 +66,6 @@ $ cargo watch -c -s "cargo run -p fission-server -- -c ./fission-server/config/s
 
 In production, you may want to enable the `--no-colors` flag on the executable.
 
-All CLI flags are also available as environment-variables, so `FISSION_SERVER_NO_COLORS=true` and `FISSION_SERVER_CONFIG_PATH="./prod-settings.toml"` or even values from the `settings.toml` file itself.
+All CLI flags are also available as environment-variables, so `FISSION_SERVER__NO_COLORS=true` and `FISSION_SERVER__CONFIG_PATH="./prod-settings.toml"` or even values from the `settings.toml` file itself. Double underscores are used as a separator between settings keys, because these can contain underscores themselves.
 
-You'll also want to set `server.environment = "prod"` in `settings.toml`, and with that you'll need to provide a valid `mailgun.api_key` (can also be set as the environment variable `FISSION_SERVER_MAILGUN_API_KEY=...`).
+You'll also want to set `server.environment = "prod"` in `settings.toml`, and with that you'll need to provide a valid `mailgun.api_key` (can also be set as the environment variable `FISSION_SERVER__MAILGUN__API_KEY=...`).

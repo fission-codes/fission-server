@@ -91,16 +91,23 @@ async fn main() -> Result<()> {
         .add_source(SerdeValueSource::from(Cli::parse()))
         .add_source(
             Environment::with_prefix("FISSION_SERVER")
-                .separator("_")
+                .separator("__")
                 .try_parsing(true),
         )
         .build()?
         .try_deserialize()?;
 
-    let settings = Settings::load(cli.config_path)?;
+    let settings = Settings::load(cli.config_path.clone())?;
 
     let (stdout_writer, _stdout_guard) = tracing_appender::non_blocking(io::stdout());
     setup_tracing(stdout_writer, &settings.otel, !cli.no_colors)?;
+
+    info!(
+        subject = "cli_settings",
+        category = "init",
+        ?cli,
+        "loaded CLI settings"
+    );
 
     info!(
         subject = "app_settings",

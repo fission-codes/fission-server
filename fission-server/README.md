@@ -104,10 +104,12 @@ Once executed, just run `tokio-console --retain-for <*>min` to use it and explor
 
 `fission-server` contains a file for [configuration settings](./config/settings.toml),
 loaded by the application when it starts. Configuration can be overridden using
-environment variables that begin with an *FISSION_SERVER* prefix, for example:
+environment variables that begin with an *FISSION_SERVER* prefix. To allow for underscores
+in variable names, use separators with two underscores between *APP* and the name
+of the setting, for example:
 
 ```bash
-export FISSION_SERVER_SERVER_ENVIRONMENT="dev"
+export FISSION_SERVER__SERVER__ENVIRONMENT="dev"
 ```
 
 This export would override this setting in the [default config](./config/settings.toml):
