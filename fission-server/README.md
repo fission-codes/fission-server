@@ -29,7 +29,7 @@
 
 <div align="center"><sub>:warning: Work in progress :warning:</sub></div>
 
-##
+## Fission Server
 
 ## Outline
 
@@ -63,12 +63,15 @@ documentation is available as a [swagger-ui][swagger]
 at `http://localhost:3000/swagger-ui/`. Read more in
 [Docs and OpenAPI](#docs-and-openapi).
 
-For local development with logs displayed using ANSI terminal colors, we
+For production with logs displayed without ANSI terminal colors, we
 recommend running:
 
 ```console
-cargo run --features ansi-logs
+cargo run -- --no-colors
 ```
+
+You can customize the logs you want to receive via the `RUST_LOG`
+environment variable.
 
 ### Database
 
@@ -83,7 +86,7 @@ More info in the [Diesel guide](https://diesel.rs/guides/getting-started#install
 To better help diagnose and debug your server application, you can run:
 
 ``` console
-RUSTFLAGS="--cfg tokio_unstable" cargo run --features "console ansi-logs"
+RUSTFLAGS="--cfg tokio_unstable" cargo run --features console
 ```
 
 This command uses a compile-time feature-flag, `console`, to give us local
@@ -101,12 +104,12 @@ Once executed, just run `tokio-console --retain-for <*>min` to use it and explor
 
 `fission-server` contains a file for [configuration settings](./config/settings.toml),
 loaded by the application when it starts. Configuration can be overridden using
-environment variables that begin with an *APP* prefix. To allow for underscores
+environment variables that begin with an *FISSION_SERVER* prefix. To allow for underscores
 in variable names, use separators with two underscores between *APP* and the name
 of the setting, for example:
 
 ```bash
-export APP__SERVER__ENVIRONMENT="dev"
+export FISSION_SERVER__SERVER__ENVIRONMENT="dev"
 ```
 
 This export would override this setting in the [default config](./config/settings.toml):

@@ -16,14 +16,14 @@ authors = [
     "Steven Vandevelde <icid.asset@gmail.com>",
     "Blaine Cook <blaine@fission.codes>",
 ]
-default-run = "fission-server-app"
+default-run = "fission-server"
 
 [lib]
 path = "src/lib.rs"
 doctest = true
 
 [[bin]]
-name = "fission-server-app"
+name = "fission-server"
 path = "src/main.rs"
 doc = false
 
@@ -35,7 +35,7 @@ doc = false
 bench = false
 
 [dependencies]
-ansi_term = { version = "0.12", optional = true, default-features = false }
+ansi_term = { version = "0.12", default-features = false }
 anyhow = { workspace = true }
 async-trait = "0.1.72"
 axum = { workspace = true, features = ["headers", "ws"] }
@@ -127,7 +127,6 @@ uuid = "1.4.1"
 wiremock = "0.5"
 
 [features]
-ansi-logs = ["ansi_term"]
 console = ["console-subscriber"]
 default = []
 
