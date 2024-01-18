@@ -1,10 +1,4 @@
 <div align="center">
-  <a href="https://github.com/fission-codes/fission-server" target="_blank">
-    <img src="https://raw.githubusercontent.com/fission-codes/fission-server/main/assets/a_logo.png" alt="fission-server Logo" width="100"></img>
-  </a>
-
-  <h1 align="center">fission-server</h1>
-
   <p>
     <a href="https://crates.io/crates/fission-server">
       <img src="https://img.shields.io/crates/v/fission-server?label=crates" alt="Crate">
