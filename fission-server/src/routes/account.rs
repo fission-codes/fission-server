@@ -26,7 +26,9 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility},
-    common::{Account, AccountCreationRequest, AccountLinkRequest, SuccessResponse},
+    common::{
+        Account, AccountCreationRequest, AccountLinkRequest, MemberNumberResponse, SuccessResponse,
+    },
     ed_did_key::EdDidKey,
     revocation::Revocation,
     username::{Handle, Username},
@@ -191,6 +193,45 @@ pub async fn get_account<S: ServerSetup>(
     let account = account.to_account(&state.dns_settings)?;
 
     Ok((StatusCode::OK, Json(account)))
+}
+
+/// GET handler for an account's member number. Mostly for fun.
+#[utoipa::path(
+    get,
+    path = "/api/v0/account/member-number",
+    security(
+        ("ucan_bearer" = []),
+    ),
+    responses(
+        (status = 200, description = "Found account", body = MemberNumberResponse),
+        (status = 400, description = "Invalid request", body = AppError),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Not found"),
+    )
+)]
+pub async fn get_member_number<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    authority: Authority,
+) -> AppResult<(StatusCode, Json<MemberNumberResponse>)> {
+    let Did(did) = authority
+        .get_capability(&state, FissionAbility::AccountInfo)
+        .await?;
+
+    let conn = &mut db::connect(&state.db_pool).await?;
+
+    let account_id: i32 = accounts::dsl::accounts
+        .filter(accounts::did.eq(did))
+        .select(accounts::id)
+        .first(conn)
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MemberNumberResponse {
+            member_number: account_id,
+        }),
+    ))
 }
 
 /// PATCH Handler for changing the username
@@ -434,7 +475,7 @@ mod tests {
     use assert_matches::assert_matches;
     use fission_core::{
         capabilities::{did::Did, fission::FissionAbility},
-        common::{Account, SuccessResponse},
+        common::{Account, MemberNumberResponse, SuccessResponse},
         ed_did_key::EdDidKey,
         username::Handle,
     };
@@ -801,6 +842,55 @@ mod tests {
         Ok(())
     }
 
+    #[test_log::test(tokio::test)]
+    async fn test_get_member_number_starts_at_one() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        let (status, response) =
+            get_member_number::<MemberNumberResponse>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response.member_number, 1);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_member_number_increases() -> TestResult {
+        let ctx = TestContext::new().await;
+
+        let username = "oedipa";
+        let email = "oedipa@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        let (status, response_one) =
+            get_member_number::<MemberNumberResponse>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+
+        let username = "oedipa2";
+        let email = "oedipa2@trystero.com";
+        let issuer = &EdDidKey::generate();
+
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, &ctx).await?;
+
+        let (status, response_two) =
+            get_member_number::<MemberNumberResponse>(&auth, issuer, &ctx).await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response_two.member_number, response_one.member_number + 1);
+
+        Ok(())
+    }
+
     mod helpers {
         use super::*;
 
@@ -1036,6 +1126,24 @@ mod tests {
                 .with_ucan_proofs(auth.ucans.clone())
                 .into_json_response()
                 .await
+        }
+
+        pub(super) async fn get_member_number<T: DeserializeOwned>(
+            auth: &AccountAndAuth,
+            issuer: &EdDidKey,
+            ctx: &TestContext,
+        ) -> Result<(StatusCode, T)> {
+            let invocation = build_acc_invocation(FissionAbility::AccountInfo, auth, issuer, ctx)?;
+
+            RouteBuilder::<DefaultFact>::new(
+                ctx.app(),
+                Method::GET,
+                "/api/v0/account/member-number",
+            )
+            .with_ucan(invocation)
+            .with_ucan_proofs(auth.ucans.clone())
+            .into_json_response()
+            .await
         }
     }
 }

@@ -46,6 +46,14 @@ pub struct SuccessResponse {
     pub success: bool,
 }
 
+/// Response for the member number
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberNumberResponse {
+    /// The account's member number
+    pub member_number: i32,
+}
+
 /// Response type containing UCANs
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct UcansResponse {

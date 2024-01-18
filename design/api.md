@@ -15,7 +15,8 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 |--------|------|---------|
 | POST | [`/api/v0/auth/email/verify`](#post-apiv0authemailverify) | Trigger email verification |
 | POST | [`/api/v0/account`](#post-apiv0account) | Create a full account |
-| GET | [`/api/v0/account/:did`](#get-apiv0accountdid) | Get account information by DID |
+| GET | [`/api/v0/account`](#get-apiv0account) | Get latest account information |
+| GET | [`/api/v0/account/member-number`](#get-apiv0accountmembernumber) | Get the account's member number |
 | POST | [`/api/v0/account/:did/link`](#post-apiv0accountdidlink) | Login from another device via email code |
 | PATCH | [`/api/v0/account/username/:username`](#patch-apiv0accountusernameusername) | Change an account's username |
 | PATCH | [`/api/v0/account/handle/:handle`](#patch-apiv0accounthandlehandle) | Change the handle that's associated with an account |
@@ -67,24 +68,25 @@ Registers a full account given an email verification code and delegates the acco
 
 **Request**:
 
-| Field | Type | Comment |
-|-------|------|---------|
-| `code` | `string` | The code from the verification email |
-| `email` | `string` | |
-| `username` | `string` | |
+| Field          | Type     | Comment |
+|----------------|----------|---------|
+| `code`         | `string` | The code from the verification email |
+| `email`        | `string` | |
+| `username`     | `string` | |
 | `credentialID` | `string` | Optional. If present, this may be useful for better passkey UX. |
 
 **Response**:
 
-| Field | Type | Comment |
-|-------|------|---------|
-| `ucans` | `Array<string>` | A set of UCAN delegations that delegate the account's unique DID to the resource DID from the request authorization. |
+| Field     | Type            | Comment |
+|-----------|-----------------|---------|
+| `ucans`   | `Array<string>` | A set of UCAN delegations that delegate the account's unique DID to the resource DID from the request authorization. |
+| `account` | `Account`       | Account information in the same format as the `GET /api/v0/account` response record |
 
 ---
 
-### GET `/api/v0/account/:did`
+### GET `/api/v0/account`
 
-Fetches the latest account information.
+Fetches the latest account information. The account is identified by the DID in the given UCAN's resource.
 
 **Authorization**: UCAN giving access to the ability `account/info` with the account's DID as resource.
 
@@ -92,11 +94,27 @@ Fetches the latest account information.
 
 **Response**:
 
-| Field      | Type     |
-|------------|----------|
-| `email`    | `string` |
-| `did`      | `string` |
-| `username` | `string` |
+| Field      | Type      |
+|------------|-----------|
+| `email`    | `string?` |
+| `did`      | `string`  |
+| `username` | `string?` |
+
+---
+
+### GET `/api/v0/account/member-number`
+
+Fetches the account's member number. The account is identified by the DID in the given UCAN's resource.
+
+**Authorization**: UCAN giving access to the ability `account/info` with the account's DID as resource.
+
+**Request**: *Empty*
+
+**Response**:
+
+| Field          | Type     |
+|----------------|----------|
+| `memberNumber` | `number` |
 
 ---
 
