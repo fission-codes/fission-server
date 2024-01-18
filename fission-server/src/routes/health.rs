@@ -87,26 +87,24 @@ fn latest_embedded_migration_version() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use diesel::ExpressionMethods;
-    use diesel_async::RunQueryDsl;
-    use http::{Method, StatusCode};
-    use rs_ucan::DefaultFact;
-    use testresult::TestResult;
-
     use crate::{
         db::__diesel_schema_migrations,
         routes::health::HealthcheckResponse,
         test_utils::{route_builder::RouteBuilder, test_context::TestContext},
     };
+    use diesel::ExpressionMethods;
+    use diesel_async::RunQueryDsl;
+    use http::{Method, StatusCode};
+    use testresult::TestResult;
 
     #[test_log::test(tokio::test)]
     async fn test_healthcheck_healthy() -> TestResult {
         let ctx = &TestContext::new().await?;
 
-        let (status, body) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/healthcheck")
-                .into_json_response::<HealthcheckResponse>()
-                .await?;
+        let (status, body) = ctx
+            .request(Method::GET, "/healthcheck")
+            .into_json_response::<HealthcheckResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::OK);
         assert!(body.database_connected);
@@ -123,9 +121,10 @@ mod tests {
         // Drop the database
         drop(ctx);
 
-        let (status, body) = RouteBuilder::<DefaultFact>::new(app, Method::GET, "/healthcheck")
-            .into_json_response::<HealthcheckResponse>()
-            .await?;
+        let (status, body) =
+            RouteBuilder::<rs_ucan::DefaultFact>::new(app, Method::GET, "/healthcheck")
+                .into_json_response::<HealthcheckResponse>()
+                .await?;
 
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert!(!body.database_connected);
@@ -145,10 +144,10 @@ mod tests {
             .execute(conn)
             .await?;
 
-        let (status, body) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/healthcheck")
-                .into_json_response::<HealthcheckResponse>()
-                .await?;
+        let (status, body) = ctx
+            .request(Method::GET, "/healthcheck")
+            .into_json_response::<HealthcheckResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert!(body.database_connected);

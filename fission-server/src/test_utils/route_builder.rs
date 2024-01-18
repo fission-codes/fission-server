@@ -9,7 +9,8 @@ use rs_ucan::{ucan::Ucan, DefaultFact};
 use serde::{de::DeserializeOwned, Serialize};
 use tower::ServiceExt;
 
-pub(crate) struct RouteBuilder<F = DefaultFact> {
+#[derive(Debug)]
+pub struct RouteBuilder<F = DefaultFact> {
     app: Router,
     method: Method,
     path: Uri,
@@ -20,7 +21,7 @@ pub(crate) struct RouteBuilder<F = DefaultFact> {
 }
 
 impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
-    pub(crate) fn new<U>(app: Router, method: Method, path: U) -> Self
+    pub fn new<U>(app: Router, method: Method, path: U) -> Self
     where
         Uri: TryFrom<U>,
         <Uri as TryFrom<U>>::Error: Into<http::Error>,
@@ -36,29 +37,29 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
         }
     }
 
-    pub(crate) fn with_ucan(mut self, ucan: Ucan<F>) -> Self {
+    pub fn with_ucan(mut self, ucan: Ucan<F>) -> Self {
         self.ucan = Some(ucan);
         self
     }
 
-    pub(crate) fn with_ucan_proof(mut self, ucan: Ucan) -> Self {
+    pub fn with_ucan_proof(mut self, ucan: Ucan) -> Self {
         self.ucan_proofs.extend(Some(ucan));
         self
     }
 
-    pub(crate) fn with_ucan_proofs(mut self, proofs: impl IntoIterator<Item = Ucan>) -> Self {
+    pub fn with_ucan_proofs(mut self, proofs: impl IntoIterator<Item = Ucan>) -> Self {
         for proof in proofs.into_iter() {
             self = self.with_ucan_proof(proof);
         }
         self
     }
 
-    pub(crate) fn with_accept_mime(mut self, accept_mime: Mime) -> Self {
+    pub fn with_accept_mime(mut self, accept_mime: Mime) -> Self {
         self.accept_mime = Some(accept_mime);
         self
     }
 
-    pub(crate) fn with_json_body<T>(mut self, body: T) -> Result<Self>
+    pub fn with_json_body<T>(mut self, body: T) -> Result<Self>
     where
         T: Serialize,
     {
@@ -69,7 +70,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
         Ok(self)
     }
 
-    pub(crate) async fn into_raw_response(mut self) -> Result<(StatusCode, Bytes)> {
+    pub async fn into_raw_response(mut self) -> Result<(StatusCode, Bytes)> {
         let request = self.build_request()?;
         let response = self.app.oneshot(request).await?;
         let status = response.status();
@@ -78,7 +79,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
         Ok((status, body))
     }
 
-    pub(crate) async fn into_json_response<T>(mut self) -> Result<(StatusCode, T)>
+    pub async fn into_json_response<T>(mut self) -> Result<(StatusCode, T)>
     where
         T: DeserializeOwned,
     {

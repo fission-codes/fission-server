@@ -37,7 +37,7 @@ pub async fn post_revocation<S: ServerSetup>(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::{route_builder::RouteBuilder, test_context::TestContext};
+    use crate::test_utils::test_context::TestContext;
     use fission_core::{
         capabilities::{did::Did, fission::FissionAbility},
         common::SuccessResponse,
@@ -47,7 +47,6 @@ mod tests {
     use http::{Method, StatusCode};
     use rs_ucan::{
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
-        DefaultFact,
     };
     use serde_json::Value;
     use testresult::TestResult;
@@ -69,12 +68,12 @@ mod tests {
 
         let revocation = Revocation::new(issuer, &ucan)?;
 
-        let (status, response) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/revocations")
-                .with_json_body(&revocation)?
-                .with_ucan(ucan)
-                .into_json_response::<SuccessResponse>()
-                .await?;
+        let (status, response) = ctx
+            .request(Method::POST, "/api/v0/revocations")
+            .with_json_body(&revocation)?
+            .with_ucan(ucan)
+            .into_json_response::<SuccessResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::CREATED);
         assert!(response.success);
@@ -100,12 +99,12 @@ mod tests {
 
         let revocation = Revocation::new(issuer, &ucan)?;
 
-        let (status, _response) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/revocations")
-                .with_json_body(&revocation)?
-                .with_ucan(ucan)
-                .into_json_response::<Value>()
-                .await?;
+        let (status, _response) = ctx
+            .request(Method::POST, "/api/v0/revocations")
+            .with_json_body(&revocation)?
+            .with_ucan(ucan)
+            .into_json_response::<Value>()
+            .await?;
 
         assert_eq!(status, StatusCode::FORBIDDEN);
 

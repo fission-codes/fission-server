@@ -70,16 +70,12 @@ pub async fn post<S: ServerSetup>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        db::schema::accounts,
-        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
-    };
+    use crate::{db::schema::accounts, test_utils::test_context::TestContext};
     use diesel::ExpressionMethods;
     use diesel_async::RunQueryDsl;
     use http::{Method, StatusCode};
     use mime::Mime;
     use pretty_assertions::assert_eq;
-    use rs_ucan::DefaultFact;
     use serde_json::json;
     use std::str::FromStr;
     use testresult::TestResult;
@@ -88,14 +84,14 @@ mod tests {
     async fn test_dns_json_soa() -> TestResult {
         let ctx = &TestContext::new().await?;
 
-        let (status, body) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!("/dns-query?name={}&type={}", "localhost", "soa"),
-        )
-        .with_accept_mime(Mime::from_str("application/dns-json")?)
-        .into_json_response::<serde_json::Value>()
-        .await?;
+        let (status, body) = ctx
+            .request(
+                Method::GET,
+                format!("/dns-query?name={}&type={}", "localhost", "soa"),
+            )
+            .with_accept_mime(Mime::from_str("application/dns-json")?)
+            .into_json_response::<serde_json::Value>()
+            .await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
@@ -149,18 +145,18 @@ mod tests {
             .execute(conn)
             .await?;
 
-        let (status, body) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!(
-                "/dns-query?name={}&type={}",
-                format_args!("_did.{}.localhost", username),
-                "txt"
-            ),
-        )
-        .with_accept_mime(Mime::from_str("application/dns-json")?)
-        .into_json_response::<serde_json::Value>()
-        .await?;
+        let (status, body) = ctx
+            .request(
+                Method::GET,
+                format!(
+                    "/dns-query?name={}&type={}",
+                    format_args!("_did.{}.localhost", username),
+                    "txt"
+                ),
+            )
+            .with_accept_mime(Mime::from_str("application/dns-json")?)
+            .into_json_response::<serde_json::Value>()
+            .await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
@@ -201,18 +197,18 @@ mod tests {
         let ctx = &TestContext::new().await?;
         let username = "donnie";
 
-        let (status, body) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            format!(
-                "/dns-query?name={}&type={}",
-                format_args!("_did.{}.localhost", username),
-                "txt"
-            ),
-        )
-        .with_accept_mime(Mime::from_str("application/dns-json")?)
-        .into_json_response::<serde_json::Value>()
-        .await?;
+        let (status, body) = ctx
+            .request(
+                Method::GET,
+                format!(
+                    "/dns-query?name={}&type={}",
+                    format_args!("_did.{}.localhost", username),
+                    "txt"
+                ),
+            )
+            .with_accept_mime(Mime::from_str("application/dns-json")?)
+            .into_json_response::<serde_json::Value>()
+            .await?;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(

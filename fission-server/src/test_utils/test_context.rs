@@ -13,8 +13,11 @@ use axum_server::service::SendService;
 use diesel::{Connection, PgConnection, RunQueryDsl};
 use diesel_migrations::MigrationHarness;
 use fission_core::{ed_did_key::EdDidKey, username::Handle};
+use http::{Method, Uri};
 use std::net::SocketAddr;
 use uuid::Uuid;
+
+use super::route_builder::RouteBuilder;
 
 /// A reference to a running fission server in an isolated test environment
 #[derive(Debug)]
@@ -120,6 +123,14 @@ impl TestContext {
 
     pub fn user_handle(&self, username: &str) -> Result<Handle> {
         Handle::new(username, &self.app_state.dns_settings.users_origin)
+    }
+
+    pub fn request<U>(&self, method: Method, path: U) -> RouteBuilder
+    where
+        Uri: TryFrom<U>,
+        <Uri as TryFrom<U>>::Error: Into<http::Error>,
+    {
+        RouteBuilder::new(self.app(), method, path)
     }
 }
 

@@ -52,10 +52,8 @@ pub async fn request_token<S: ServerSetup>(
 #[cfg(test)]
 mod tests {
     use crate::{
-        db::schema::email_verifications,
-        models::email_verification::EmailVerification,
-        routes::auth::SuccessResponse,
-        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
+        db::schema::email_verifications, models::email_verification::EmailVerification,
+        routes::auth::SuccessResponse, test_utils::test_context::TestContext,
     };
     use anyhow::{anyhow, Result};
     use assert_matches::assert_matches;
@@ -63,16 +61,15 @@ mod tests {
     use diesel_async::RunQueryDsl;
     use fission_core::dns;
     use http::{Method, StatusCode};
-    use rs_ucan::DefaultFact;
     use serde_json::json;
     use testresult::TestResult;
 
     async fn request_code(email: &str, ctx: &TestContext) -> Result<(StatusCode, String, String)> {
-        let (status, _) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<SuccessResponse>()
-                .await?;
+        let (status, _) = ctx
+            .request(Method::POST, "/api/v0/auth/email/verify")
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<SuccessResponse>()
+            .await?;
 
         let (email_address, email_code) = ctx
             .verification_code_sender()
@@ -178,14 +175,11 @@ mod tests {
     async fn test_get_server_did() -> TestResult {
         let ctx = &TestContext::new().await?;
 
-        let (status, response) = RouteBuilder::<DefaultFact>::new(
-            ctx.app(),
-            Method::GET,
-            "/dns-query?name=_did.localhost&type=TXT",
-        )
-        .with_accept_mime("application/dns-json".parse()?)
-        .into_json_response::<dns::Response>()
-        .await?;
+        let (status, response) = ctx
+            .request(Method::GET, "/dns-query?name=_did.localhost&type=TXT")
+            .with_accept_mime("application/dns-json".parse()?)
+            .into_json_response::<dns::Response>()
+            .await?;
 
         assert_eq!(status, StatusCode::OK);
 

@@ -469,7 +469,7 @@ mod tests {
         dns::user_dids::did_record_set,
         error::{AppError, ErrorResponse},
         models::account::AccountAndAuth,
-        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
+        test_utils::test_context::TestContext,
     };
     use anyhow::{bail, Result};
     use assert_matches::assert_matches;
@@ -483,7 +483,6 @@ mod tests {
     use http::{Method, StatusCode};
     use rs_ucan::{
         builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
-        DefaultFact,
     };
     use serde::de::DeserializeOwned;
     use serde_json::{json, Value};
@@ -540,11 +539,11 @@ mod tests {
         let email = "oedipa@trystero.com";
         let issuer = &EdDidKey::generate();
 
-        let (status, _) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::POST, "/api/v0/auth/email/verify")
-                .with_json_body(json!({ "email": email }))?
-                .into_json_response::<SuccessResponse>()
-                .await?;
+        let (status, _) = ctx
+            .request(Method::POST, "/api/v0/auth/email/verify")
+            .with_json_body(json!({ "email": email }))?
+            .into_json_response::<SuccessResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::OK);
 
@@ -563,7 +562,8 @@ mod tests {
             ))
             .sign(issuer)?;
 
-        let (status, body) = RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
+        let (status, body) = ctx
+            .request(Method::POST, "/api/v0/account")
             .with_ucan(ucan)
             .with_json_body(json!({
                 "username": username,
@@ -899,14 +899,11 @@ mod tests {
             issuer: &EdDidKey,
             ctx: &TestContext,
         ) -> Result<(StatusCode, T)> {
-            let (status, response) = RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
-                Method::POST,
-                "/api/v0/auth/email/verify",
-            )
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<SuccessResponse>()
-            .await?;
+            let (status, response) = ctx
+                .request(Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<SuccessResponse>()
+                .await?;
 
             assert_eq!(status, StatusCode::OK);
             assert!(response.success);
@@ -927,16 +924,16 @@ mod tests {
                 ))
                 .sign(issuer)?;
 
-            let (status, root_account) =
-                RouteBuilder::new(ctx.app(), Method::POST, "/api/v0/account")
-                    .with_ucan(ucan)
-                    .with_json_body(json!({
-                        "username": username,
-                        "email": email,
-                        "code": code,
-                    }))?
-                    .into_json_response::<T>()
-                    .await?;
+            let (status, root_account) = ctx
+                .request(Method::POST, "/api/v0/account")
+                .with_ucan(ucan)
+                .with_json_body(json!({
+                    "username": username,
+                    "email": email,
+                    "code": code,
+                }))?
+                .into_json_response::<T>()
+                .await?;
 
             Ok((status, root_account))
         }
@@ -947,14 +944,11 @@ mod tests {
             issuer: &EdDidKey,
             ctx: &TestContext,
         ) -> Result<(StatusCode, T)> {
-            let (status, response) = RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
-                Method::POST,
-                "/api/v0/auth/email/verify",
-            )
-            .with_json_body(json!({ "email": email }))?
-            .into_json_response::<SuccessResponse>()
-            .await?;
+            let (status, response) = ctx
+                .request(Method::POST, "/api/v0/auth/email/verify")
+                .with_json_body(json!({ "email": email }))?
+                .into_json_response::<SuccessResponse>()
+                .await?;
 
             assert_eq!(status, StatusCode::OK);
             assert!(response.success);
@@ -975,15 +969,12 @@ mod tests {
                 ))
                 .sign(issuer)?;
 
-            let (status, root_account) = RouteBuilder::new(
-                ctx.app(),
-                Method::POST,
-                &format!("/api/v0/account/{account_did}/link"),
-            )
-            .with_ucan(ucan)
-            .with_json_body(json!({ "code": code }))?
-            .into_json_response::<T>()
-            .await?;
+            let (status, root_account) = ctx
+                .request(Method::POST, &format!("/api/v0/account/{account_did}/link"))
+                .with_ucan(ucan)
+                .with_json_body(json!({ "code": code }))?
+                .into_json_response::<T>()
+                .await?;
 
             Ok((status, root_account))
         }
@@ -1029,8 +1020,7 @@ mod tests {
             let invocation =
                 build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
 
-            RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
+            ctx.request(
                 Method::PATCH,
                 format!("/api/v0/account/username/{new_username}"),
             )
@@ -1049,8 +1039,7 @@ mod tests {
             let invocation =
                 build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
 
-            RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
+            ctx.request(
                 Method::PATCH,
                 format!("/api/v0/account/handle/{new_handle}"),
             )
@@ -1088,15 +1077,11 @@ mod tests {
             let invocation =
                 build_acc_invocation(FissionAbility::AccountManage, &account, issuer, ctx)?;
 
-            RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
-                Method::DELETE,
-                format!("/api/v0/account/handle"),
-            )
-            .with_ucan(invocation)
-            .with_ucan_proofs(account.ucans.clone())
-            .into_json_response()
-            .await
+            ctx.request(Method::DELETE, format!("/api/v0/account/handle"))
+                .with_ucan(invocation)
+                .with_ucan_proofs(account.ucans.clone())
+                .into_json_response()
+                .await
         }
 
         pub(super) async fn delete_account<T: DeserializeOwned>(
@@ -1106,7 +1091,7 @@ mod tests {
         ) -> Result<(StatusCode, T)> {
             let invocation =
                 build_acc_invocation(FissionAbility::AccountDelete, account, issuer, ctx)?;
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::DELETE, format!("/api/v0/account"))
+            ctx.request(Method::DELETE, format!("/api/v0/account"))
                 .with_ucan(invocation)
                 .with_ucan_proofs(account.ucans.clone())
                 .into_json_response()
@@ -1120,7 +1105,7 @@ mod tests {
         ) -> Result<(StatusCode, T)> {
             let invocation = build_acc_invocation(FissionAbility::AccountInfo, auth, issuer, ctx)?;
 
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/account")
+            ctx.request(Method::GET, "/api/v0/account")
                 .with_ucan(invocation)
                 .with_ucan_proofs(auth.ucans.clone())
                 .into_json_response()
@@ -1134,15 +1119,11 @@ mod tests {
         ) -> Result<(StatusCode, T)> {
             let invocation = build_acc_invocation(FissionAbility::AccountInfo, auth, issuer, ctx)?;
 
-            RouteBuilder::<DefaultFact>::new(
-                ctx.app(),
-                Method::GET,
-                "/api/v0/account/member-number",
-            )
-            .with_ucan(invocation)
-            .with_ucan_proofs(auth.ucans.clone())
-            .into_json_response()
-            .await
+            ctx.request(Method::GET, "/api/v0/account/member-number")
+                .with_ucan(invocation)
+                .with_ucan_proofs(auth.ucans.clone())
+                .into_json_response()
+                .await
         }
     }
 }

@@ -50,10 +50,8 @@ pub async fn get_capabilities<S: ServerSetup>(
 mod tests {
     use super::*;
     use crate::{
-        db::Conn,
-        error::ErrorResponse,
-        models::capability_indexing::index_ucan,
-        test_utils::{route_builder::RouteBuilder, test_context::TestContext},
+        db::Conn, error::ErrorResponse, models::capability_indexing::index_ucan,
+        test_utils::test_context::TestContext,
     };
     use anyhow::Result;
     use assert_matches::assert_matches;
@@ -64,7 +62,6 @@ mod tests {
         capability::Capability,
         semantics::{ability::TopAbility, caveat::EmptyCaveat},
         ucan::Ucan,
-        DefaultFact,
     };
     use testresult::TestResult;
 
@@ -97,11 +94,11 @@ mod tests {
             ))
             .sign(requestor)?;
 
-        let (status, response) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/capabilities")
-                .with_ucan(auth)
-                .into_json_response::<UcansResponse>()
-                .await?;
+        let (status, response) = ctx
+            .request(Method::GET, "/api/v0/capabilities")
+            .with_ucan(auth)
+            .into_json_response::<UcansResponse>()
+            .await?;
 
         Ok((status, response))
     }
@@ -140,10 +137,10 @@ mod tests {
 
         index_ucan(&ucan, conn).await?;
 
-        let (status, _) =
-            RouteBuilder::<DefaultFact>::new(ctx.app(), Method::GET, "/api/v0/capabilities")
-                .into_json_response::<ErrorResponse>()
-                .await?;
+        let (status, _) = ctx
+            .request(Method::GET, "/api/v0/capabilities")
+            .into_json_response::<ErrorResponse>()
+            .await?;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
 
