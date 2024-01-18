@@ -163,13 +163,12 @@ impl Settings {
             .unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/settings.toml"));
         // inject environment variables naming them properly on the settings
         // e.g. [database] url="foo"
-        // would be injected with environment variable APP__DATABASE__URL="foo"
-        // use two underscores as defined by the separator below
+        // would be injected with environment variable FISSION_SERVER_DATABASE_URL="foo"
         let s = Config::builder()
             .add_source(File::with_name(&path.as_path().display().to_string()))
             .add_source(
-                Environment::with_prefix("APP")
-                    .separator("__")
+                Environment::with_prefix("FISSION_SERVER")
+                    .separator("_")
                     .try_parsing(true)
                     .list_separator(",")
                     .with_list_parse_key("ipfs.peers"),

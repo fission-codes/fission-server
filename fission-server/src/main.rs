@@ -90,8 +90,8 @@ async fn main() -> Result<()> {
     let cli: Cli = Config::builder()
         .add_source(SerdeValueSource::from(Cli::parse()))
         .add_source(
-            Environment::with_prefix("APP")
-                .separator("__")
+            Environment::with_prefix("FISSION_SERVER")
+                .separator("_")
                 .try_parsing(true),
         )
         .build()?

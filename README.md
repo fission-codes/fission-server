@@ -32,8 +32,40 @@
 
 ## Running the Webserver
 
-To start-up the fission server, run:
+### Using nix
 
-```console
-APP__MAILGUN__API_KEY=<your key> cargo watch -c -s "cargo run --features ansi-logs"
+```sh
+nix run . -- --config-path ./fission-server/config/settings.toml
 ```
+
+### Using pre-installed cargo & postgres
+
+```sh
+$ pg_ctl -o '-k /tmp' -D "./.pg" start
+$ cargo run -p fission-server -- --config-path ./fission-server/config/settings.toml
+```
+
+## Development
+
+You can drop into a development shell, if you have nix installed via
+
+```sh
+$ nix develop
+```
+
+from the project root.
+
+
+You can re-build and re-run the webserver on every file change via `cargo watch`:
+
+```sh
+$ cargo watch -c -s "cargo run -p fission-server -- -c ./fission-server/config/settings.toml"
+```
+
+## Production
+
+In production, you may want to enable the `--no-colors` flag on the executable.
+
+All CLI flags are also available as environment-variables, so `FISSION_SERVER_NO_COLORS=true` and `FISSION_SERVER_CONFIG_PATH="./prod-settings.toml"` or even values from the `settings.toml` file itself.
+
+You'll also want to set `server.environment = "prod"` in `settings.toml`, and with that you'll need to provide a valid `mailgun.api_key` (can also be set as the environment variable `FISSION_SERVER_MAILGUN_API_KEY=...`).
