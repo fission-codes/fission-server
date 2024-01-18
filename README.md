@@ -29,6 +29,12 @@ This repository contains an implementation of the fission webserver, an implemen
 
 ## Overview
 
+- [Server design documentation](./design/README.md)
+- [Server API documentation](./design/api.md)
+- [`fission-server`](./fission-server/README.md): Contains the webserver implementation and two binaries, one for running the webserver, one for generating an openAPI document.
+- [`fission-cli`](./fission-cli/README.md): Contains the CLI implementation, its binary is the CLI.
+- [`fission-core`](./fission-core/README.md): Contains code that can be shared between CLI and server, such as request/response types.
+
 The dependencies between the crates in this workspace look like this:
 
 ```mermaid
@@ -36,12 +42,6 @@ flowchart TD
   fission-server --> fission-core
   fission-cli --> fission-core
 ```
-
-- [Server design documentation](./design/README.md)
-- [Server API documentation](./design/api.md)
-- [`fission-server`](./fission-server/README.md): Contains the webserver implementation and two binaries, one for running the webserver, one for generating an openAPI document.
-- [`fission-cli`](./fission-cli/README.md): Contains the CLI implementation, its binary is the CLI.
-- [`fission-core`](./fission-core/README.md): Contains code that can be shared between CLI and server, such as request/response types.
 
 ## Running the Webserver
 
