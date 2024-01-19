@@ -23,6 +23,7 @@ use fission_server::{
         prod::{EmailVerificationCodeSender, IpfsHttpApiDatabase, ProdSetup},
         ServerSetup,
     },
+    test_utils::ephermeral_db::{create_ephermeral_db, destroy_ephermeral_db},
     tracer::init_tracer,
     tracing_layers::{
         format_layer::LogFmtLayer,
@@ -42,6 +43,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     path::PathBuf,
     process::exit,
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -66,6 +68,7 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
+use url::Url;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -88,6 +91,11 @@ struct Cli {
         help = "Enable shutdown via closed stdin pipe. This is useful for shutting down if spawned from a parent binary, if that binary closes and pipes stdin."
     )]
     close_on_stdin_close: bool,
+    #[arg(
+        long,
+        help = "Use an ephemeral DB that is destroyed before existing the process. Useful for integration tests."
+    )]
+    ephemeral_db: bool,
 }
 
 #[tokio::main]
@@ -122,26 +130,41 @@ async fn main() -> Result<()> {
         "starting server",
     );
 
-    let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
+    let (db_pool, ephemeral_db) = if cli.ephemeral_db {
+        let mut url = Url::from_str(&settings.database.url)?;
+        url.set_path("");
+        let eph_db = create_ephermeral_db(url.as_str(), "cli_ephemeral")?;
+        url.set_path(&eph_db);
+        (
+            db::pool(url.as_str(), settings.database.connect_timeout).await?,
+            Some(eph_db),
+        )
+    } else {
+        (
+            db::pool(&settings.database.url, settings.database.connect_timeout).await?,
+            None,
+        )
+    };
 
     let server_keypair = load_keypair(&settings).await?;
 
     match settings.server.environment {
         AppEnvironment::Staging | AppEnvironment::Prod => {
             let app_state = setup_prod_app_state(&settings, db_pool, server_keypair).await?;
-            run_with_app_state(settings, app_state, cli.close_on_stdin_close).await
+            run_with_app_state(cli, settings, app_state, ephemeral_db).await
         }
         AppEnvironment::Local | AppEnvironment::Dev => {
             let app_state = setup_local_app_state(&settings, db_pool, server_keypair).await?;
-            run_with_app_state(settings, app_state, cli.close_on_stdin_close).await
+            run_with_app_state(cli, settings, app_state, ephemeral_db).await
         }
     }
 }
 
 async fn run_with_app_state<S: ServerSetup + 'static>(
+    cli: Cli,
     settings: Settings,
     app_state: AppState<S>,
-    close_on_stdin_close: bool,
+    ephemeral_db: Option<String>,
 ) -> Result<()> {
     let dns_server = app_state.dns_server.clone();
     let recorder_handle = setup_metrics_recorder()?;
@@ -165,8 +188,8 @@ async fn run_with_app_state<S: ServerSetup + 'static>(
         cancellation_token.clone(),
     ));
 
-    if close_on_stdin_close {
-        // Why? https://matklad.github.io/2023/10/11/unix-structured-concurrency.html
+    if cli.close_on_stdin_close {
+        // This is why: https://matklad.github.io/2023/10/11/unix-structured-concurrency.html
 
         tracing::info!("Enabling closing on piped stdin");
 
@@ -216,6 +239,12 @@ async fn run_with_app_state<S: ServerSetup + 'static>(
 
     if let Err(e) = dns {
         log::error!("dns server crashed: {}", e);
+    }
+
+    if let Some(db_name) = ephemeral_db {
+        let mut base_url = Url::from_str(&settings.database.url)?;
+        base_url.set_path("");
+        destroy_ephermeral_db(base_url.as_str(), &db_name)?;
     }
 
     Ok(())

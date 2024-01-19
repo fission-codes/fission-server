@@ -30,6 +30,7 @@ impl FissionServer {
             .command()
             .arg("--close-on-stdin-close")
             .arg("--no-colors")
+            .arg("--ephemeral-db")
             .stdout(Stdio::piped())
             .spawn()?;
 

@@ -1,26 +1,22 @@
 //! Helpers for running isolated webserver instances
+use super::{
+    ephermeral_db::{create_ephermeral_db, destroy_ephermeral_db},
+    route_builder::RouteBuilder,
+};
 use crate::{
     app_state::{AppState, AppStateBuilder},
-    db::{self, Conn, MIGRATIONS},
+    db::{self, Conn},
     dns::server::DnsServer,
     router::setup_app_router,
     settings::Dns,
     setups::test::{TestIpfsDatabase, TestSetup, TestVerificationCodeSender},
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use axum::{extract::connect_info::MockConnectInfo, Router};
 use axum_server::service::SendService;
-use diesel::{Connection, PgConnection};
-use diesel_migrations::MigrationHarness;
 use fission_core::{ed_did_key::EdDidKey, username::Handle};
 use http::{Method, Uri};
 use std::net::SocketAddr;
-use uuid::Uuid;
-
-use super::{
-    ephermeral_db::{create_ephermeral_db, destroy_ephermeral_db},
-    route_builder::RouteBuilder,
-};
 
 /// A reference to a running fission server in an isolated test environment
 #[derive(Debug)]
@@ -42,16 +38,7 @@ impl TestContext {
         F: FnOnce(AppStateBuilder<TestSetup>) -> AppStateBuilder<TestSetup>,
     {
         let base_url = "postgres://postgres:postgres@localhost:5432";
-        let db_name = format!("fission_server_test_{}", Uuid::new_v4().simple());
-
-        create_ephermeral_db(base_url, &db_name)?;
-
-        let mut conn = PgConnection::establish(&format!("{}/{}", base_url, db_name))
-            .context("Cannot connect to postgres database.")?;
-
-        conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| anyhow!(e))
-            .context("Could not run migrations")?;
+        let db_name = create_ephermeral_db(base_url, "fission_server_test")?;
 
         let db_pool = db::pool(&format!("{}/{}", base_url, db_name), 1).await?;
 
