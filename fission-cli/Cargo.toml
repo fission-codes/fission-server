@@ -47,3 +47,16 @@ hickory-proto = "0.24.0"
 http-cache-reqwest = "0.12.0"
 http-cache = { version = "0.17.0", default-features = false }
 http-cache-semantics = "1.0.1"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+once_cell = { version = "1.18", default-features = false }
+predicates = "3.1.0"
+testresult = { workspace = true }
+test-log = { workspace = true }
+assert_fs = "1.1.1"
+escargot = "0.5.8"
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

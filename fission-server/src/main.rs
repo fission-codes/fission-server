@@ -47,6 +47,7 @@ use std::{
 };
 use tokio::{
     fs,
+    io::AsyncReadExt,
     net::{TcpListener, UdpSocket},
     signal::{
         self,
@@ -82,6 +83,11 @@ struct Cli {
         help = "Whether to turn off ansi terminal colors in log messages"
     )]
     no_colors: bool,
+    #[arg(
+        long,
+        help = "Enable shutdown via closed stdin pipe. This is useful for shutting down if spawned from a parent binary, if that binary closes and pipes stdin."
+    )]
+    close_on_stdin_close: bool,
 }
 
 #[tokio::main]
@@ -123,11 +129,11 @@ async fn main() -> Result<()> {
     match settings.server.environment {
         AppEnvironment::Staging | AppEnvironment::Prod => {
             let app_state = setup_prod_app_state(&settings, db_pool, server_keypair).await?;
-            run_with_app_state(settings, app_state).await
+            run_with_app_state(settings, app_state, cli.close_on_stdin_close).await
         }
         AppEnvironment::Local | AppEnvironment::Dev => {
             let app_state = setup_local_app_state(&settings, db_pool, server_keypair).await?;
-            run_with_app_state(settings, app_state).await
+            run_with_app_state(settings, app_state, cli.close_on_stdin_close).await
         }
     }
 }
@@ -135,6 +141,7 @@ async fn main() -> Result<()> {
 async fn run_with_app_state<S: ServerSetup + 'static>(
     settings: Settings,
     app_state: AppState<S>,
+    close_on_stdin_close: bool,
 ) -> Result<()> {
     let dns_server = app_state.dns_server.clone();
     let recorder_handle = setup_metrics_recorder()?;
@@ -157,6 +164,32 @@ async fn run_with_app_state<S: ServerSetup + 'static>(
         dns_server,
         cancellation_token.clone(),
     ));
+
+    if close_on_stdin_close {
+        // Why? https://matklad.github.io/2023/10/11/unix-structured-concurrency.html
+
+        tracing::info!("Enabling closing on piped stdin");
+
+        let cancellation_token = cancellation_token.clone();
+
+        tokio::spawn(async move {
+            let mut stdin = tokio::io::stdin();
+            let mut buffer = [0u8; 1024];
+            loop {
+                let Ok(bytes_read) = stdin.read(&mut buffer).await else {
+                    println!("stdin failed, shutting down.");
+                    cancellation_token.cancel();
+                    break;
+                };
+
+                if bytes_read == 0 {
+                    println!("stdin closed, shutting down.");
+                    cancellation_token.cancel();
+                    break;
+                }
+            }
+        });
+    }
 
     tokio::spawn(async move {
         capture_sigterm().await;

@@ -34,6 +34,7 @@ use std::{
     io::Read,
     path::PathBuf,
 };
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Debug, Parser)]
 #[command(name = "fission")]
@@ -41,6 +42,11 @@ use std::{
 pub struct Cli {
     #[arg(long, help = "Path to a .pem file with the secret key for this device")]
     key_file: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "Whether to turn off ansi terminal colors in log messages"
+    )]
+    no_colors: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -89,6 +95,9 @@ pub struct DeleteCommand {
 
 impl Cli {
     pub async fn run(&self, mut settings: Settings) -> Result<()> {
+        let ansi = !self.no_colors;
+        setup_tracing(ansi);
+
         if let Some(key_file) = &self.key_file {
             settings.key_file = key_file.clone();
         }
@@ -607,4 +616,15 @@ async fn doh_request(
         "Missing answer for {record_type} {record} DoH lookup"
     ))?;
     Ok(answer)
+}
+
+fn setup_tracing(ansi: bool) {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(ansi)
+                .with_writer(std::io::stderr),
+        )
+        .with(EnvFilter::from_default_env())
+        .init();
 }
