@@ -10,14 +10,17 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use axum::{extract::connect_info::MockConnectInfo, Router};
 use axum_server::service::SendService;
-use diesel::{Connection, PgConnection, RunQueryDsl};
+use diesel::{Connection, PgConnection};
 use diesel_migrations::MigrationHarness;
 use fission_core::{ed_did_key::EdDidKey, username::Handle};
 use http::{Method, Uri};
 use std::net::SocketAddr;
 use uuid::Uuid;
 
-use super::route_builder::RouteBuilder;
+use super::{
+    ephermeral_db::{create_ephermeral_db, destroy_ephermeral_db},
+    route_builder::RouteBuilder,
+};
 
 /// A reference to a running fission server in an isolated test environment
 #[derive(Debug)]
@@ -40,16 +43,8 @@ impl TestContext {
     {
         let base_url = "postgres://postgres:postgres@localhost:5432";
         let db_name = format!("fission_server_test_{}", Uuid::new_v4().simple());
-        let postgres_url = format!("{}/postgres", base_url);
 
-        let mut conn = PgConnection::establish(&postgres_url)?;
-
-        let query = diesel::sql_query(format!("CREATE DATABASE {}", db_name).as_str());
-
-        query
-            .execute(&mut conn)
-            .map_err(|e| anyhow!(e))
-            .context(format!("Could not create database {}", db_name))?;
+        create_ephermeral_db(base_url, &db_name)?;
 
         let mut conn = PgConnection::establish(&format!("{}/{}", base_url, db_name))
             .context("Cannot connect to postgres database.")?;
@@ -58,7 +53,7 @@ impl TestContext {
             .map_err(|e| anyhow!(e))
             .context("Could not run migrations")?;
 
-        let db_pool = db::pool(format!("{}/{}", base_url, db_name).as_str(), 1).await?;
+        let db_pool = db::pool(&format!("{}/{}", base_url, db_name), 1).await?;
 
         let dns_settings = Dns {
             server_port: 1053,
@@ -136,26 +131,6 @@ impl TestContext {
 
 impl Drop for TestContext {
     fn drop(&mut self) {
-        let postgres_url = format!("{}/postgres", self.base_url);
-
-        let mut conn =
-            PgConnection::establish(&postgres_url).expect("Cannot connect to postgres database.");
-
-        let disconnect_users = format!(
-            "SELECT pg_terminate_backend(pid)
-             FROM pg_stat_activity
-             WHERE datname = '{}';",
-            self.db_name
-        );
-
-        diesel::sql_query(disconnect_users.as_str())
-            .execute(&mut conn)
-            .unwrap();
-
-        let query = diesel::sql_query(format!("DROP DATABASE {}", self.db_name).as_str());
-
-        query
-            .execute(&mut conn)
-            .expect(&format!("Could not drop database {}", self.db_name));
+        destroy_ephermeral_db(&self.base_url, &self.db_name).unwrap();
     }
 }
