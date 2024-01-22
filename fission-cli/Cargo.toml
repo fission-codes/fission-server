@@ -59,7 +59,7 @@ test-log = { workspace = true }
 assert_fs = "1.1.1"
 escargot = "0.5.8"
 websocket = { version = "0.27.0", default-features = false, features = ["sync"] }
-rexpect = { git = "https://github.com/rust-cli/rexpect", branch = "master" }
+rexpect = { git = "https://github.com/rust-cli/rexpect", branch = "master", revision = "9eb61dd444f25307639367ac7e1a49d5a1915d55" }
 
 [[test]]
 name = "integration"
