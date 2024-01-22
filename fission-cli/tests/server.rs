@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use escargot::CargoRun;
 use once_cell::sync::Lazy;
 use std::{
@@ -41,12 +41,34 @@ impl FissionServer {
             .ok_or(anyhow!("no fission-server stdout"))?;
 
         // Wait for the server to start listening on a port
+        tracing::info!("Waiting for the fission server API to be ready for requests");
         read_until(&mut child_stdout, "Application server listening")?;
 
         // Then spawn a scoped thread to reprint everything to current system stdout:
         reprint_stdout(scope, child_stdout)?;
 
+        tracing::info!("Server ready.");
         Ok(Self { process })
+    }
+
+    pub fn listen_email<'s>(
+        &self,
+        scope: &'s Scope<'s, '_>,
+        email: &str,
+    ) -> ScopedJoinHandle<'s, Result<String>> {
+        use websocket::{sync::client::*, OwnedMessage};
+
+        let relay = format!("ws://localhost:3000/api/v0/relay/{email}");
+
+        tracing::info!("Spawning thread to listen for emails to {email}");
+        scope.spawn(move || {
+            let mut client = ClientBuilder::new(&relay)?.connect_insecure()?;
+            loop {
+                if let OwnedMessage::Text(code) = client.recv_message()? {
+                    return Ok(code);
+                }
+            }
+        })
     }
 }
 
@@ -64,7 +86,11 @@ fn read_until(read: &mut impl std::io::Read, line_contains: &str) -> Result<()> 
     let line = &mut String::new();
     loop {
         line.clear();
-        reader.read_line(line)?;
+        let read = reader.read_line(line)?;
+        if read == 0 {
+            bail!("read_util: {line_contains:?} never appeared");
+        }
+
         stdout().lock().write_all(line.as_bytes())?;
         if line.contains(line_contains) {
             return Ok(());
