@@ -2,7 +2,6 @@
 
 use crate::{
     app_state::AppState,
-    extract::authority::UcansHeader,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
     routes::{
         account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping,
@@ -14,21 +13,13 @@ use axum::{
     routing::{delete, get, patch, post},
     Router,
 };
-use headers::Header;
 use tower_http::cors::{Any, CorsLayer};
 
 /// Setup main router for application.
 pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Router {
     let cors = CorsLayer::new()
-        // allow `GET`, `POST`, and `PUT` when accessing the resource
-        .allow_methods([http::Method::GET, http::Method::POST, http::Method::PUT])
-        .allow_headers([
-            http::header::AUTHORIZATION,
-            http::header::CONTENT_TYPE,
-            http::header::ACCEPT,
-            UcansHeader::name().clone(),
-        ])
-        // allow requests from any origin
+        .allow_methods(Any)
+        .allow_headers(Any)
         .allow_origin(Any);
 
     let mut router = Router::new()
