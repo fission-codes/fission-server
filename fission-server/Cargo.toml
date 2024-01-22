@@ -39,7 +39,7 @@ ansi_term = { version = "0.12", default-features = false }
 anyhow = { workspace = true }
 async-trait = "0.1.72"
 axum = { workspace = true, features = ["headers", "ws"] }
-axum-macros = "0.3.7"
+axum-macros = "0.4.1"
 axum-server = "0.5.1"
 axum-tracing-opentelemetry = { version = "0.13" }
 base64 = "0.21"
