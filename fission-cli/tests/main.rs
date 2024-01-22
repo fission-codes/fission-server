@@ -85,7 +85,7 @@ fn test_cli_account_create() -> TestResult {
         cli.expect("Successfully requested an email verification code")?;
 
         let code = email_inbox.join().map_err(|_| "thread panicked")??;
-        cli.send_line(&code)?;
+        cli.send_line(code)?;
         cli.expect("Choose a username")?;
         cli.send_line("example")?;
         cli.expect("Successfully created your account")?;

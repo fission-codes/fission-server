@@ -32,13 +32,15 @@ impl Cli {
         Ok(Self { session })
     }
 
-    pub fn expect(&mut self, output: &str) -> Result<()> {
+    pub fn expect(&mut self, output: impl AsRef<str>) -> Result<()> {
+        let output = output.as_ref();
         tracing::info!(output, "Expecting to see output");
         self.session.exp_string(output)?;
         Ok(())
     }
 
-    pub fn send_line(&mut self, input: &str) -> Result<()> {
+    pub fn send_line(&mut self, input: impl AsRef<str>) -> Result<()> {
+        let input = input.as_ref();
         tracing::info!(input, "Entering input");
         self.session.send(input)?;
         self.session.send("\r")?;
