@@ -2,6 +2,7 @@
 
 use crate::{
     app_state::AppState,
+    extract::authority::UcansHeader,
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
     routes::{
         account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping,
@@ -13,6 +14,7 @@ use axum::{
     routing::{delete, get, patch, post},
     Router,
 };
+use headers::Header;
 use tower_http::cors::{Any, CorsLayer};
 
 /// Setup main router for application.
@@ -24,6 +26,7 @@ pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Rou
             http::header::AUTHORIZATION,
             http::header::CONTENT_TYPE,
             http::header::ACCEPT,
+            UcansHeader::name().clone(),
         ])
         // allow requests from any origin
         .allow_origin(Any);

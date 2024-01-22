@@ -139,7 +139,7 @@ impl RequestResponseLogger for Logger {
                         .map(|h| h.to_str().unwrap_or(NULL)),
                 ucan = parts
                     .headers
-                    .get("ucan")
+                    .get("ucans")
                     .map(|h| h.to_str().unwrap_or(NULL))
                     .unwrap_or(NULL)),
             _ => {
@@ -164,7 +164,7 @@ impl RequestResponseLogger for Logger {
                     }),
                 ucan = parts
                     .headers
-                    .get("ucan")
+                    .get("ucans")
                     .map(|h| h.to_str().unwrap_or(NULL))
                 )
             }
