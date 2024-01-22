@@ -259,7 +259,7 @@ impl<'s> CliState<'s> {
         let request = self
             .server_request(Method::GET, "/api/v0/capabilities")?
             .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(&proofs)?);
+            .header("ucans", encode_ucan_header(&proofs)?);
 
         let ucans_response: UcansResponse = request.send().await?.json().await?;
 
@@ -298,7 +298,7 @@ impl<'s> CliState<'s> {
         let response: AccountAndAuth = self
             .server_request(Method::POST, "/api/v0/account")?
             .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(&proofs)?)
+            .header("ucans", encode_ucan_header(&proofs)?)
             .header(CONTENT_TYPE, "application/json")
             .json(&AccountCreationRequest {
                 email,
@@ -335,7 +335,7 @@ impl<'s> CliState<'s> {
         let response: AccountAndAuth = self
             .server_request(Method::POST, &format!("/api/v0/account/{account_did}/link"))?
             .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(&proofs)?)
+            .header("ucans", encode_ucan_header(&proofs)?)
             .header(CONTENT_TYPE, "application/json")
             .json(&AccountLinkRequest {
                 code: code.trim().to_string(),
@@ -405,7 +405,7 @@ impl<'s> CliState<'s> {
                 let account: Account = self
                     .server_request(Method::GET, "/api/v0/account")?
                     .bearer_auth(ucan.encode()?)
-                    .header("ucan", encode_ucan_header(&chain)?)
+                    .header("ucans", encode_ucan_header(&chain)?)
                     .send()
                     .await?
                     .json()
@@ -481,7 +481,7 @@ impl<'s> CliState<'s> {
             &format!("/api/v0/account/username/{new_username}"),
         )?
         .bearer_auth(ucan.encode()?)
-        .header("ucan", encode_ucan_header(chain)?)
+        .header("ucans", encode_ucan_header(chain)?)
         .send()
         .await?;
 
@@ -493,7 +493,7 @@ impl<'s> CliState<'s> {
 
         self.server_request(Method::PATCH, &format!("/api/v0/account/handle/{handle}"))?
             .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(chain)?)
+            .header("ucans", encode_ucan_header(chain)?)
             .send()
             .await?;
 
@@ -505,7 +505,7 @@ impl<'s> CliState<'s> {
 
         self.server_request(Method::DELETE, "/api/v0/account")?
             .bearer_auth(ucan.encode()?)
-            .header("ucan", encode_ucan_header(chain)?)
+            .header("ucans", encode_ucan_header(chain)?)
             .send()
             .await?;
 

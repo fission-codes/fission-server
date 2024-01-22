@@ -118,7 +118,7 @@ impl<F: Clone + DeserializeOwned> RouteBuilder<F> {
             .collect::<Result<Vec<String>, _>>()?
             .join(", ");
         if !proofs_header.is_empty() {
-            builder = builder.header("ucan", proofs_header);
+            builder = builder.header("ucans", proofs_header);
         }
 
         if let Some((mime, body)) = self.body.take() {

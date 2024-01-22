@@ -30,16 +30,18 @@ use fission_core::{
 // UCAN header //
 /////////////////
 
-struct UcanHeader(Vec<Ucan>);
+/// The `ucans` header
+#[derive(Debug)]
+pub struct UcansHeader(Vec<Ucan>);
 
-impl Header for UcanHeader {
+impl Header for UcansHeader {
     fn name() -> &'static HeaderName {
-        static UCAN_HEADER: HeaderName = HeaderName::from_static("ucan");
+        static UCAN_HEADER: HeaderName = HeaderName::from_static("ucans");
         static UCAN_HEADER_NAME: &HeaderName = &UCAN_HEADER;
         UCAN_HEADER_NAME
     }
 
-    fn decode<'i, I>(header_values: &mut I) -> Result<UcanHeader, headers::Error>
+    fn decode<'i, I>(header_values: &mut I) -> Result<UcansHeader, headers::Error>
     where
         I: Iterator<Item = &'i http::HeaderValue>,
     {
@@ -55,7 +57,7 @@ impl Header for UcanHeader {
                 let ucan_str = ucan_str.trim();
                 if ucan_str.is_empty() {
                     // This can be the case, since `"".split(",").collect() == vec![""]`.
-                    // Also catches cases where someone sets `ucan=,,<token>` or uses trailing commas.
+                    // Also catches cases where someone sets `ucans=,,<token>` or uses trailing commas.
                     // Per Postel's principle we're lenient in what we accept.
                     continue;
                 }
@@ -67,7 +69,7 @@ impl Header for UcanHeader {
             }
         }
 
-        Ok(UcanHeader(ucans))
+        Ok(UcansHeader(ucans))
     }
 
     fn encode<E>(&self, values: &mut E)
@@ -132,8 +134,8 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
             MissingCredentials
         })?;
 
-    let TypedHeader(UcanHeader(proofs)) = parts
-        .extract::<TypedHeader<UcanHeader>>()
+    let TypedHeader(UcansHeader(proofs)) = parts
+        .extract::<TypedHeader<UcansHeader>>()
         .await
         .map_err(|e| {
             tracing::error!(?e, "Error while looking up ucans header value");

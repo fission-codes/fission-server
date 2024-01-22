@@ -18,14 +18,8 @@ use tower_http::cors::{Any, CorsLayer};
 /// Setup main router for application.
 pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Router {
     let cors = CorsLayer::new()
-        // allow `GET`, `POST`, and `PUT` when accessing the resource
-        .allow_methods([http::Method::GET, http::Method::POST, http::Method::PUT])
-        .allow_headers([
-            http::header::AUTHORIZATION,
-            http::header::CONTENT_TYPE,
-            http::header::ACCEPT,
-        ])
-        // allow requests from any origin
+        .allow_methods(Any)
+        .allow_headers(Any)
         .allow_origin(Any);
 
     let mut router = Router::new()
