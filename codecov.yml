@@ -1,6 +1,5 @@
 ignore:
   - "*/tests/*"
-  - "fission-cli/*"
 
 comment:
   layout: "reach, diff, flags, files"
