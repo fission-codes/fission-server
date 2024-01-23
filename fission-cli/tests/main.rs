@@ -168,6 +168,8 @@ fn test_cli_account_delete() -> TestResult {
         cli.expect("Successfully deleted your account")?;
         cli.expect_success()?;
 
+        Err(anyhow!("Lol"))?;
+
         Ok(())
     })
 }
