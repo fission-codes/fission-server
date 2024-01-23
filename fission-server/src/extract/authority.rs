@@ -176,7 +176,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
         let issuer = &EdDidKey::generate();
 
         // Test if request requires a valid UCAN
@@ -215,7 +215,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn extract_authority_no_auth_header() -> TestResult {
-        let ctx = TestContext::new().await;
+        let ctx = &TestContext::new().await?;
 
         // Test if request requires a valid UCAN
         async fn authorized_get(

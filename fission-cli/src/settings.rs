@@ -30,15 +30,22 @@ impl Settings {
     pub fn load() -> Result<Self> {
         let path = config_file();
 
-        let s = Config::builder()
-            .add_source(SerdeValueSource::from(Settings::default()))
-            .add_source(File::with_name(&path.as_path().display().to_string()))
-            .add_source(
-                Environment::with_prefix("FISSION")
-                    .separator("_")
-                    .try_parsing(true),
-            )
-            .build()?;
+        let mut builder = Config::builder().add_source(SerdeValueSource::from(Settings::default()));
+
+        if path.exists() {
+            builder = builder.add_source(File::with_name(&path.as_path().display().to_string()));
+        } else {
+            tracing::warn!(?path, "Couldn't find config file to load");
+        }
+
+        builder = builder.add_source(
+            Environment::with_prefix("FISSION")
+                .separator("_")
+                .try_parsing(true),
+        );
+
+        let s = builder.build()?;
+
         Ok(s.try_deserialize()?)
     }
 }

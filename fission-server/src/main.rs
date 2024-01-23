@@ -6,7 +6,7 @@ use axum_server::Handle;
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use clap::Parser;
 use config::{Config, Environment};
-use ed25519::pkcs8::DecodePrivateKey;
+use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use fission_core::{ed_did_key::EdDidKey, serde_value_source::SerdeValueSource};
 use fission_server::{
     app_state::{AppState, AppStateBuilder},
@@ -23,6 +23,7 @@ use fission_server::{
         prod::{EmailVerificationCodeSender, IpfsHttpApiDatabase, ProdSetup},
         ServerSetup,
     },
+    test_utils::ephermeral_db::{create_ephermeral_db, destroy_ephermeral_db},
     tracer::init_tracer,
     tracing_layers::{
         format_layer::LogFmtLayer,
@@ -42,11 +43,13 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     path::PathBuf,
     process::exit,
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 use tokio::{
     fs,
+    io::AsyncReadExt,
     net::{TcpListener, UdpSocket},
     signal::{
         self,
@@ -65,6 +68,7 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
+use url::Url;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -82,6 +86,21 @@ struct Cli {
         help = "Whether to turn off ansi terminal colors in log messages"
     )]
     no_colors: bool,
+    #[arg(
+        long,
+        help = "Enable shutdown via closed stdin pipe. This is useful for shutting down if spawned from a parent binary, if that binary closes and pipes stdin."
+    )]
+    close_on_stdin_close: bool,
+    #[arg(
+        long,
+        help = "Use an ephemeral DB that is destroyed before existing the process. Useful for integration tests."
+    )]
+    ephemeral_db: bool,
+    #[arg(
+        long,
+        help = "Generate a private key at the keypair path defined in the settings, if necessary."
+    )]
+    gen_key_if_needed: bool,
 }
 
 #[tokio::main]
@@ -116,25 +135,41 @@ async fn main() -> Result<()> {
         "starting server",
     );
 
-    let db_pool = db::pool(&settings.database.url, settings.database.connect_timeout).await?;
+    let (db_pool, ephemeral_db) = if cli.ephemeral_db {
+        let mut url = Url::from_str(&settings.database.url)?;
+        url.set_path("");
+        let eph_db = create_ephermeral_db(url.as_str(), "cli_ephemeral")?;
+        url.set_path(&eph_db);
+        (
+            db::pool(url.as_str(), settings.database.connect_timeout).await?,
+            Some(eph_db),
+        )
+    } else {
+        (
+            db::pool(&settings.database.url, settings.database.connect_timeout).await?,
+            None,
+        )
+    };
 
-    let server_keypair = load_keypair(&settings).await?;
+    let server_keypair = load_keypair(&settings, cli.gen_key_if_needed).await?;
 
     match settings.server.environment {
         AppEnvironment::Staging | AppEnvironment::Prod => {
             let app_state = setup_prod_app_state(&settings, db_pool, server_keypair).await?;
-            run_with_app_state(settings, app_state).await
+            run_with_app_state(cli, settings, app_state, ephemeral_db).await
         }
         AppEnvironment::Local | AppEnvironment::Dev => {
             let app_state = setup_local_app_state(&settings, db_pool, server_keypair).await?;
-            run_with_app_state(settings, app_state).await
+            run_with_app_state(cli, settings, app_state, ephemeral_db).await
         }
     }
 }
 
 async fn run_with_app_state<S: ServerSetup + 'static>(
+    cli: Cli,
     settings: Settings,
     app_state: AppState<S>,
+    ephemeral_db: Option<String>,
 ) -> Result<()> {
     let dns_server = app_state.dns_server.clone();
     let recorder_handle = setup_metrics_recorder()?;
@@ -157,6 +192,32 @@ async fn run_with_app_state<S: ServerSetup + 'static>(
         dns_server,
         cancellation_token.clone(),
     ));
+
+    if cli.close_on_stdin_close {
+        // This is why: https://matklad.github.io/2023/10/11/unix-structured-concurrency.html
+
+        tracing::info!("Enabling closing on piped stdin");
+
+        let cancellation_token = cancellation_token.clone();
+
+        tokio::spawn(async move {
+            let mut stdin = tokio::io::stdin();
+            let mut buffer = [0u8; 1024];
+            loop {
+                let Ok(bytes_read) = stdin.read(&mut buffer).await else {
+                    println!("stdin failed, shutting down.");
+                    cancellation_token.cancel();
+                    break;
+                };
+
+                if bytes_read == 0 {
+                    println!("stdin closed, shutting down.");
+                    cancellation_token.cancel();
+                    break;
+                }
+            }
+        });
+    }
 
     tokio::spawn(async move {
         capture_sigterm().await;
@@ -183,6 +244,12 @@ async fn run_with_app_state<S: ServerSetup + 'static>(
 
     if let Err(e) = dns {
         log::error!("dns server crashed: {}", e);
+    }
+
+    if let Some(db_name) = ephemeral_db {
+        let mut base_url = Url::from_str(&settings.database.url)?;
+        base_url.set_path("");
+        destroy_ephermeral_db(base_url.as_str(), &db_name)?;
     }
 
     Ok(())
@@ -472,8 +539,16 @@ fn setup_tracing(
     Ok(())
 }
 
-async fn load_keypair(settings: &Settings) -> Result<EdDidKey> {
+async fn load_keypair(settings: &Settings, gen_key_if_needed: bool) -> Result<EdDidKey> {
     let pem_path = settings.relative_keypair_path();
+
+    if !pem_path.exists() && gen_key_if_needed {
+        let server_keypair = EdDidKey::generate();
+        let pem = server_keypair.to_pkcs8_pem(LineEnding::default())?;
+        fs::write(&pem_path, pem).await?;
+        tracing::info!(%server_keypair, ?pem_path, "Missing sever keypair, generated a new one and stored");
+        return Ok(server_keypair);
+    }
 
     let server_keypair = fs::read_to_string(&pem_path)
         .await

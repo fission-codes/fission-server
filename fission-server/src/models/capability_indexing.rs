@@ -350,8 +350,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_find_ucan_by_audience_single() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let issuer = EdDidKey::generate();
         let audience = EdDidKey::generate();
@@ -380,8 +380,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_find_ucan_by_audience_transitive() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let alice = EdDidKey::generate();
         let bob = EdDidKey::generate();
@@ -423,8 +423,8 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_find_ucan_by_audience_only_matching_resource() -> TestResult {
-        let ctx = TestContext::new().await;
-        let conn = &mut ctx.get_db_conn().await;
+        let ctx = &TestContext::new().await?;
+        let conn = &mut ctx.get_db_conn().await?;
 
         let alice = EdDidKey::generate();
         let bob = EdDidKey::generate();

@@ -9,6 +9,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
+use ed25519_dalek::SigningKey;
 use fission_core::{
     capabilities::{did::Did, fission::FissionAbility, indexing::IndexingAbility},
     common::{
@@ -20,6 +21,9 @@ use fission_core::{
 };
 use hickory_proto::rr::RecordType;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
+use inquire::ui::RenderConfig;
+use rand::SeedableRng;
+use rand_chacha::ChaCha12Rng;
 use reqwest::{header::CONTENT_TYPE, Client, Method};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
@@ -34,6 +38,7 @@ use std::{
     io::Read,
     path::PathBuf,
 };
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Debug, Parser)]
 #[command(name = "fission")]
@@ -41,6 +46,14 @@ use std::{
 pub struct Cli {
     #[arg(long, help = "Path to a .pem file with the secret key for this device")]
     key_file: Option<PathBuf>,
+    #[arg(
+        long,
+        hide = true,
+        help = "Provide a seed for an in-memory DID. Used for testing."
+    )]
+    key_seed: Option<String>,
+    #[arg(long, help = "Whether to turn off ansi terminal colors")]
+    no_colors: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -89,13 +102,16 @@ pub struct DeleteCommand {
 
 impl Cli {
     pub async fn run(&self, mut settings: Settings) -> Result<()> {
+        let ansi = !self.no_colors;
+        setup_tracing(ansi);
+
         if let Some(key_file) = &self.key_file {
             settings.key_file = key_file.clone();
         }
 
         match &self.command {
             Commands::Account(account) => {
-                let mut state = CliState::load(&settings).await?;
+                let mut state = CliState::load(&settings, self.key_seed.clone(), ansi).await?;
                 state.fetch_ucans().await?;
 
                 match &account.command {
@@ -144,7 +160,9 @@ impl Cli {
                         )?;
                         let did = Did(auth.account.did.to_string());
 
-                        let new_username = inquire::Text::new("Pick a new username:").prompt()?;
+                        let new_username = inquire::Text::new("Pick a new username:")
+                            .with_render_config(state.render_config)
+                            .prompt()?;
 
                         if new_username.contains('.') {
                             println!(
@@ -157,6 +175,7 @@ impl Cli {
                             let new_handle = Handle::from_unicode(&new_username)?;
 
                             inquire::Confirm::new("Have you verified that the DNS record is set?")
+                                .with_render_config(state.render_config)
                                 .prompt()?;
 
                             state
@@ -205,6 +224,7 @@ impl Cli {
 #[derive(Debug)]
 pub(crate) struct CliState<'s> {
     pub(crate) settings: &'s Settings,
+    pub(crate) render_config: RenderConfig,
     pub(crate) key: EdDidKey,
     pub(crate) client: ClientWithMiddleware,
     pub(crate) server_did: String,
@@ -212,8 +232,19 @@ pub(crate) struct CliState<'s> {
 }
 
 impl<'s> CliState<'s> {
-    async fn load(settings: &'s Settings) -> Result<CliState<'s>> {
-        let key = load_key(settings)?;
+    async fn load(
+        settings: &'s Settings,
+        key_seed: Option<String>,
+        colors: bool,
+    ) -> Result<CliState<'s>> {
+        let key = load_key(settings, key_seed)?;
+        tracing::info!(%key, "Generated or loaded DID");
+
+        let render_config = if colors {
+            RenderConfig::default_colored()
+        } else {
+            RenderConfig::empty()
+        };
 
         let client = ClientBuilder::new(Client::new())
             .with(LogAndHandleErrorMiddleware)
@@ -242,6 +273,7 @@ impl<'s> CliState<'s> {
 
         Ok(Self {
             settings,
+            render_config,
             key,
             client,
             server_did,
@@ -269,7 +301,10 @@ impl<'s> CliState<'s> {
     }
 
     async fn request_email_verification(&self) -> Result<(String, String)> {
-        let email = inquire::Text::new("What's your email address?").prompt()?;
+        let email = inquire::Text::new("What's your email address?")
+            .with_render_config(self.render_config)
+            .prompt()?;
+        tracing::info!(email, "Email entered");
 
         self.server_request(Method::POST, "/api/v0/auth/email/verify")?
             .json(&EmailVerifyRequest {
@@ -281,7 +316,9 @@ impl<'s> CliState<'s> {
         println!("Successfully requested an email verification code.");
 
         // TODO verify it's a 6 digit number. Allow retries.
-        let code = inquire::Text::new("Please enter the verification code:").prompt()?;
+        let code = inquire::Text::new("Please enter the verification code:")
+            .with_render_config(self.render_config)
+            .prompt()?;
 
         Ok((email, code))
     }
@@ -292,7 +329,9 @@ impl<'s> CliState<'s> {
         let (ucan, proofs) = self.issue_ucan(self.device_did(), FissionAbility::AccountCreate)?;
 
         // TODO Check for availablility. Allow retries.
-        let username = inquire::Text::new("Choose a username:").prompt()?;
+        let username = inquire::Text::new("Choose a username:")
+            .with_render_config(self.render_config)
+            .prompt()?;
         let username = Username::from_unicode(&username)?;
 
         let response: AccountAndAuth = self
@@ -316,7 +355,9 @@ impl<'s> CliState<'s> {
     }
 
     async fn link_account(&mut self) -> Result<Account> {
-        let username = inquire::Text::new("What's your username?").prompt()?;
+        let username = inquire::Text::new("What's your username?")
+            .with_render_config(self.render_config)
+            .prompt()?;
 
         let account_did = doh_request(
             &self.client,
@@ -452,7 +493,9 @@ impl<'s> CliState<'s> {
                         })
                         .collect();
 
-                    let account_name = inquire::Select::new(prompt, account_names).prompt()?;
+                    let account_name = inquire::Select::new(prompt, account_names)
+                        .with_render_config(self.render_config)
+                        .prompt()?;
 
                     accounts
                         .into_iter()
@@ -465,9 +508,10 @@ impl<'s> CliState<'s> {
                         })
                         .ok_or_else(|| anyhow!("Something went wrong. Couldn't select account."))?
                 } else {
-                    accounts.into_iter().next().ok_or_else(|| {
-                        anyhow!("Please provide the username in the command argument.")
-                    })?
+                    accounts
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| anyhow!("You don't seem to have access to an account yet. Try runing fission-cli account create."))?
                 }
             }
         })
@@ -553,7 +597,14 @@ impl<'s> CliState<'s> {
     }
 }
 
-fn load_key(settings: &Settings) -> Result<EdDidKey> {
+fn load_key(settings: &Settings, key_seed: Option<String>) -> Result<EdDidKey> {
+    if let Some(key_seed) = key_seed {
+        tracing::info!(?key_seed, "Generating key from seed");
+        return Ok(EdDidKey::new(SigningKey::generate(
+            &mut ChaCha12Rng::from_seed(blake3::hash(key_seed.as_bytes()).into()),
+        )));
+    }
+
     let key_path = &settings.key_file;
 
     if let Some(dir) = key_path.parent() {
@@ -580,7 +631,6 @@ fn load_key(settings: &Settings) -> Result<EdDidKey> {
         file.read_to_string(&mut string)?;
         EdDidKey::from_pkcs8_pem(&string)?
     };
-    tracing::info!(%key, "Generated or loaded DID");
     Ok(key)
 }
 
@@ -607,4 +657,15 @@ async fn doh_request(
         "Missing answer for {record_type} {record} DoH lookup"
     ))?;
     Ok(answer)
+}
+
+fn setup_tracing(ansi: bool) {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(ansi)
+                .with_writer(std::io::stderr),
+        )
+        .with(EnvFilter::from_default_env())
+        .init();
 }

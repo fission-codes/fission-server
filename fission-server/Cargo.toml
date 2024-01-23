@@ -115,6 +115,7 @@ ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 libipld = "0.16.0"
 blake3 = "1.4.1"
+uuid = "1.4.1"
 erased-serde = "0.3.31"
 
 [dev-dependencies]
@@ -123,10 +124,10 @@ assert_matches = "1.5.0"
 blake3 = "1.4.1"
 test-log = { workspace = true }
 testresult = { workspace = true }
-uuid = "1.4.1"
 wiremock = "0.5"
 
 [features]
+test_utils = []
 console = ["console-subscriber"]
 default = []
 

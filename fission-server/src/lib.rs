@@ -25,5 +25,4 @@ pub mod setups;
 pub mod tracer;
 pub mod tracing_layers;
 
-#[cfg(test)]
-mod test_utils;
+pub mod test_utils;

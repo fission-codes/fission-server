@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 pub mod local;
 pub mod prod;
-#[cfg(test)]
+#[cfg(any(feature = "test_utils", test))]
 pub mod test;
 
 /// This trait groups type parameters to the server's `AppState` struct.
