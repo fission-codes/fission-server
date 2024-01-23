@@ -508,9 +508,10 @@ impl<'s> CliState<'s> {
                         })
                         .ok_or_else(|| anyhow!("Something went wrong. Couldn't select account."))?
                 } else {
-                    accounts.into_iter().next().ok_or_else(|| {
-                        anyhow!("Please provide the username in the command argument.")
-                    })?
+                    accounts
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| anyhow!("You don't seem to have access to an account yet. Try runing fission-cli account create."))?
                 }
             }
         })

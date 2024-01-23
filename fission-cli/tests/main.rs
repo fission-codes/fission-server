@@ -53,7 +53,7 @@ fn test_cli_account_helptext() -> TestResult {
 }
 
 #[test_log::test]
-fn test_cli_account_list() -> TestResult {
+fn test_cli_account_list_err() -> TestResult {
     scope(|s| {
         let _server = FissionServer::spawn(s)?;
 
@@ -85,25 +85,6 @@ fn test_cli_account_create() -> TestResult {
     })
 }
 
-#[test_log::test]
-fn test_cli_account_list_after_creation() -> TestResult {
-    scope(|s| {
-        let _server = FissionServer::spawn(s)?;
-
-        let email = "main@example.test";
-        let username = "example";
-
-        account_create(s, username, email)?;
-
-        let mut cli = Cli::run(|cmd| cmd.arg("account").arg("list"))?;
-
-        cli.expect("Here's a list of accounts you have access to")?;
-        cli.expect("example.localhost")?;
-
-        Ok(())
-    })
-}
-
 fn account_create<'s>(scope: &'s Scope<'s, '_>, username: &str, email: &str) -> Result<()> {
     let email_inbox = listen_email(scope, email);
 
@@ -123,4 +104,70 @@ fn account_create<'s>(scope: &'s Scope<'s, '_>, username: &str, email: &str) -> 
     cli.expect_success()?;
 
     Ok(())
+}
+
+#[test_log::test]
+fn test_cli_account_list_after_creation() -> TestResult {
+    scope(|s| {
+        let _server = FissionServer::spawn(s)?;
+
+        let email = "main@example.test";
+        let username = "example";
+
+        account_create(s, username, email)?;
+
+        let mut cli = Cli::run(|cmd| cmd.arg("account").arg("list"))?;
+
+        cli.expect("Here's a list of accounts you have access to")?;
+        cli.expect("example.localhost")?;
+        cli.expect_success()?;
+
+        Ok(())
+    })
+}
+
+#[test_log::test]
+fn test_cli_account_rename() -> TestResult {
+    scope(|s| {
+        let _server = FissionServer::spawn(s)?;
+
+        let email = "main@example.test";
+        let username = "example";
+
+        account_create(s, username, email)?;
+
+        let mut cli = Cli::run(|cmd| cmd.arg("account").arg("rename"))?;
+
+        cli.expect("Pick a new username")?;
+        cli.send_line("totoro")?;
+        cli.expect("Successfully changed your username.")?;
+        cli.expect_success()?;
+
+        let mut cli = Cli::run(|cmd| cmd.arg("account").arg("list"))?;
+
+        cli.expect("Here's a list of accounts you have access to")?;
+        cli.expect("totoro")?;
+        cli.expect_success()?;
+
+        Ok(())
+    })
+}
+
+#[test_log::test]
+fn test_cli_account_delete() -> TestResult {
+    scope(|s| {
+        let _server = FissionServer::spawn(s)?;
+
+        let email = "main@example.test";
+        let username = "example";
+
+        account_create(s, username, email)?;
+
+        let mut cli = Cli::run(|cmd| cmd.arg("account").arg("delete"))?;
+
+        cli.expect("Successfully deleted your account")?;
+        cli.expect_success()?;
+
+        Ok(())
+    })
 }
