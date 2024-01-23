@@ -34,6 +34,8 @@ impl Settings {
 
         if path.exists() {
             builder = builder.add_source(File::with_name(&path.as_path().display().to_string()));
+        } else {
+            tracing::warn!(?path, "Couldn't find config file to load");
         }
 
         builder = builder.add_source(
