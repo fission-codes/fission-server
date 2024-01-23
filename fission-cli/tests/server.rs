@@ -45,7 +45,6 @@ impl FissionServer<'_> {
 
         let mut process = SERVER_BIN
             .command()
-            .arg("--close-on-stdin-close")
             .arg("--no-colors")
             .arg("--ephemeral-db")
             .arg("--gen-key-if-needed")
