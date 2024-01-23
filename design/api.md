@@ -44,7 +44,7 @@ These conditions won't be repeated in the route-specific authorization sections.
 - The code expires after 24 hours
 - Codes will be deleted when used
 
-**Authorization**: Unauthorized
+**Authorization**: *Unprotected*
 
 **Request**:
 
@@ -122,7 +122,7 @@ Fetches the account's member number. The account is identified by the DID in the
 
 Get a UCAN for a DID that hasn't been associated with this account yet, given an email verification code.
 
-**Authorization**: *Unauthencitaced*
+**Authorization**: *Unprotected*
 
 **Request**:
 
@@ -205,7 +205,7 @@ Examples:
 - `GET /dns-query?name=_did.matheus23.com&type=TXT`
 - `POST /dns-query?dns=<base64url encoded dns query message>`
 
-**Authorization**: *Unauthorized*
+**Authorization**: *Unprotected*
 
 **Response**:
 
