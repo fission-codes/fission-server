@@ -6,7 +6,7 @@ use axum_server::Handle;
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use clap::Parser;
 use config::{Config, Environment};
-use ed25519::pkcs8::DecodePrivateKey;
+use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use fission_core::{ed_did_key::EdDidKey, serde_value_source::SerdeValueSource};
 use fission_server::{
     app_state::{AppState, AppStateBuilder},
@@ -96,6 +96,11 @@ struct Cli {
         help = "Use an ephemeral DB that is destroyed before existing the process. Useful for integration tests."
     )]
     ephemeral_db: bool,
+    #[arg(
+        long,
+        help = "Generate a private key at the keypair path defined in the settings, if necessary."
+    )]
+    gen_key_if_needed: bool,
 }
 
 #[tokio::main]
@@ -146,7 +151,7 @@ async fn main() -> Result<()> {
         )
     };
 
-    let server_keypair = load_keypair(&settings).await?;
+    let server_keypair = load_keypair(&settings, cli.gen_key_if_needed).await?;
 
     match settings.server.environment {
         AppEnvironment::Staging | AppEnvironment::Prod => {
@@ -534,8 +539,16 @@ fn setup_tracing(
     Ok(())
 }
 
-async fn load_keypair(settings: &Settings) -> Result<EdDidKey> {
+async fn load_keypair(settings: &Settings, gen_key_if_needed: bool) -> Result<EdDidKey> {
     let pem_path = settings.relative_keypair_path();
+
+    if !pem_path.exists() && gen_key_if_needed {
+        let server_keypair = EdDidKey::generate();
+        let pem = server_keypair.to_pkcs8_pem(LineEnding::default())?;
+        fs::write(&pem_path, pem).await?;
+        tracing::info!(%server_keypair, ?pem_path, "Missing sever keypair, generated a new one and stored");
+        return Ok(server_keypair);
+    }
 
     let server_keypair = fs::read_to_string(&pem_path)
         .await
