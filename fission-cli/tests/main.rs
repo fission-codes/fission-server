@@ -3,9 +3,14 @@ use crate::{
     cli::{Cli, CLI_BIN},
     server::FissionServer,
 };
+use anyhow::{anyhow, Result};
 use assert_cmd::assert::OutputAssertExt as _;
 use predicates::{boolean::PredicateBooleanExt as _, str::contains};
-use std::{process::Command, thread::scope};
+use server::listen_email;
+use std::{
+    process::Command,
+    thread::{scope, Scope},
+};
 use testresult::TestResult;
 
 mod cli;
@@ -69,28 +74,53 @@ fn test_cli_account_list() -> TestResult {
 #[test_log::test]
 fn test_cli_account_create() -> TestResult {
     scope(|s| {
-        let server = FissionServer::spawn(s)?;
+        let _server = FissionServer::spawn(s)?;
 
         let email = "mail@example.test";
-        let email_inbox = server.listen_email(s, email);
+        let username = "example";
 
-        let mut cli = Cli::run(|cmd| {
-            cmd.arg("--key-seed=test_cli_account_create")
-                .arg("account")
-                .arg("create")
-        })?;
-
-        cli.expect("What's your email address?")?;
-        cli.send_line(email)?;
-        cli.expect("Successfully requested an email verification code")?;
-
-        let code = email_inbox.join().map_err(|_| "thread panicked")??;
-        cli.send_line(code)?;
-        cli.expect("Choose a username")?;
-        cli.send_line("example")?;
-        cli.expect("Successfully created your account")?;
-        cli.expect_success()?;
+        account_create(s, username, email)?;
 
         Ok(())
     })
+}
+
+#[test_log::test]
+fn test_cli_account_list_after_creation() -> TestResult {
+    scope(|s| {
+        let _server = FissionServer::spawn(s)?;
+
+        let email = "main@example.test";
+        let username = "example";
+
+        account_create(s, username, email)?;
+
+        let mut cli = Cli::run(|cmd| cmd.arg("account").arg("list"))?;
+
+        cli.expect("Here's a list of accounts you have access to")?;
+        cli.expect("example.localhost")?;
+
+        Ok(())
+    })
+}
+
+fn account_create<'s>(scope: &'s Scope<'s, '_>, username: &str, email: &str) -> Result<()> {
+    let email_inbox = listen_email(scope, email);
+
+    let mut cli = Cli::run(|cmd| cmd.arg("account").arg("create"))?;
+
+    cli.expect("What's your email address?")?;
+    cli.send_line(email)?;
+    cli.expect("Successfully requested an email verification code")?;
+
+    let code = email_inbox
+        .join()
+        .map_err(|_| anyhow!("thread panicked"))??;
+    cli.send_line(code)?;
+    cli.expect("Choose a username")?;
+    cli.send_line(username)?;
+    cli.expect("Successfully created your account")?;
+    cli.expect_success()?;
+
+    Ok(())
 }

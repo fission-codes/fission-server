@@ -23,6 +23,7 @@ impl Cli {
     pub fn run(cmd_fn: impl FnOnce(&mut Command) -> &mut Command) -> Result<Self> {
         let mut cmd = Command::new(CLI_BIN.as_os_str());
         cmd.arg("--no-colors");
+        cmd.arg("--key-seed=cli-tests");
         cmd_fn(&mut cmd);
 
         tracing::info!("Running a fission-cli process");

@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use std::{
     io::{stdout, BufRead, BufReader, Read, Write},
     process::{Child, ChildStdout, Stdio},
+    sync::{Mutex, MutexGuard},
     thread::{Scope, ScopedJoinHandle},
 };
 
@@ -20,12 +21,20 @@ static SERVER_BIN: Lazy<CargoRun> = Lazy::new(|| {
     cargo_run
 });
 
-pub struct FissionServer {
+static LOCK: Mutex<()> = Mutex::new(());
+
+#[must_use]
+pub struct FissionServer<'a> {
     process: Child,
+    _guard: MutexGuard<'a, ()>,
 }
 
-impl FissionServer {
+impl FissionServer<'_> {
     pub fn spawn<'s>(scope: &'s Scope<'s, '_>) -> Result<Self> {
+        tracing::info!("Waiting for server lock");
+        let _guard = LOCK.lock().map_err(|_| anyhow!("Failed locking"))?;
+        tracing::info!("Aquired server lock");
+
         let mut process = SERVER_BIN
             .command()
             .arg("--close-on-stdin-close")
@@ -48,37 +57,36 @@ impl FissionServer {
         reprint_stdout(scope, child_stdout)?;
 
         tracing::info!("Server ready.");
-        Ok(Self { process })
-    }
-
-    pub fn listen_email<'s>(
-        &self,
-        scope: &'s Scope<'s, '_>,
-        email: &str,
-    ) -> ScopedJoinHandle<'s, Result<String>> {
-        use websocket::{sync::client::*, OwnedMessage};
-
-        let relay = format!("ws://localhost:3000/api/v0/relay/{email}");
-
-        tracing::info!("Spawning thread to listen for emails to {email}");
-        scope.spawn(move || {
-            let mut client = ClientBuilder::new(&relay)?.connect_insecure()?;
-            loop {
-                if let OwnedMessage::Text(code) = client.recv_message()? {
-                    return Ok(code);
-                }
-            }
-        })
+        Ok(Self { process, _guard })
     }
 }
 
-impl Drop for FissionServer {
+impl Drop for FissionServer<'_> {
     fn drop(&mut self) {
         tracing::info!("Killing the fission server process");
         if let Err(e) = self.process.kill() {
             eprintln!("Error trying to kill the fission server process: {e:?}");
         }
     }
+}
+
+pub fn listen_email<'s>(
+    scope: &'s Scope<'s, '_>,
+    email: &str,
+) -> ScopedJoinHandle<'s, Result<String>> {
+    use websocket::{sync::client::*, OwnedMessage};
+
+    let relay = format!("ws://localhost:3000/api/v0/relay/{email}");
+
+    tracing::info!("Spawning thread to listen for emails to {email}");
+    scope.spawn(move || {
+        let mut client = ClientBuilder::new(&relay)?.connect_insecure()?;
+        loop {
+            if let OwnedMessage::Text(code) = client.recv_message()? {
+                return Ok(code);
+            }
+        }
+    })
 }
 
 fn read_until(read: &mut impl std::io::Read, line_contains: &str) -> Result<()> {
