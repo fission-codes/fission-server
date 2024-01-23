@@ -23,7 +23,7 @@ rs-ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "matheus
 url = { version = "2.3", features = ["serde"] }
 utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
 validator = { version = "0.16.0", features = ["derive"] }
-tokio = { version = "1.26", features = ["full", "parking_lot"] }
+tokio = { version = "1.35", features = ["full", "parking_lot"] }
 tokio-util = "0.7.8"
 
 # Speedup build on macOS
