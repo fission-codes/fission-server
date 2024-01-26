@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
 use hickory_server::{
     authority::{
         AuthLookup, Authority, LookupError, LookupOptions, LookupRecords, MessageRequest,
@@ -23,19 +24,19 @@ use hickory_server::{
 };
 use std::{borrow::Borrow, sync::Arc};
 
-/// DNS Request Handler for user DIDs of the form `_did.<username>.<server origin>`
+/// DNS Request Handler for user DIDs of the form `{_did,_dnslink}.<username>.<server origin>`
 #[derive(Debug)]
-pub struct UserDidsAuthority {
+pub struct UserRecordsAuthority {
     db_pool: Pool,
     origin: LowerName,
     default_soa: SOA,
     default_ttl: u32,
 }
 
-impl UserDidsAuthority {
+impl UserRecordsAuthority {
     /// Create a new database backed authority
     pub fn new(db_pool: Pool, origin: LowerName, default_soa: SOA, default_ttl: u32) -> Self {
-        UserDidsAuthority {
+        UserRecordsAuthority {
             db_pool,
             origin,
             default_soa,
@@ -48,10 +49,25 @@ impl UserDidsAuthority {
         let account = AccountRecord::find_by_username(conn, username).await?;
         Ok(account.did)
     }
+
+    async fn db_lookup_user_dnslink(&self, username: String) -> Result<Option<String>> {
+        let conn = &mut db::connect(&self.db_pool).await?;
+        conn.transaction(|conn| {
+            async move {
+                let account = AccountRecord::find_by_username(conn, username).await?;
+                Ok(account
+                    .get_volume(conn)
+                    .await?
+                    .map(|volume_record| format!("dnslink=/ipfs/{}", volume_record.cid)))
+            }
+            .scope_boxed()
+        })
+        .await
+    }
 }
 
 #[async_trait]
-impl Authority for UserDidsAuthority {
+impl Authority for UserRecordsAuthority {
     type Lookup = AuthLookup;
 
     fn zone_type(&self) -> ZoneType {
@@ -88,28 +104,29 @@ impl Authority for UserDidsAuthority {
 
         let name: &Name = name.borrow();
         let mut name_parts = name.iter();
+        let first = name_parts.next();
 
-        match name_parts.next() {
-            // Serve requests for e.g. _did.alice.fission.name
+        let Some(user_bytes) = name_parts.next() else {
+            return Ok(AuthLookup::Empty);
+        };
+
+        let base = Name::from_labels(name_parts)
+            .map_err(|e| LookupError::ResolveError(ResolveError::from(e)))?;
+
+        // base needs to be computer.name, if the request was _did.alice.computer.name
+        if base != self.origin().clone().into() {
+            return Ok(AuthLookup::Empty);
+        }
+
+        let username = String::from_utf8(user_bytes.to_vec()).map_err(|e| {
+            LookupError::ResolveError(
+                format!("Failed decoding non-utf8 subdomain segment: {e}").into(),
+            )
+        })?;
+
+        match first {
+            // Serve requests for e.g. _did.alice.computer.name
             Some(b"_did") => {
-                let Some(user_bytes) = name_parts.next() else {
-                    return Ok(AuthLookup::Empty);
-                };
-
-                let base = Name::from_labels(name_parts)
-                    .map_err(|e| LookupError::ResolveError(ResolveError::from(e)))?;
-
-                // base needs to be fission.name, if the request was _did.alice.fission.name
-                if base != self.origin().clone().into() {
-                    return Ok(AuthLookup::Empty);
-                }
-
-                let username = String::from_utf8(user_bytes.to_vec()).map_err(|e| {
-                    LookupError::ResolveError(
-                        format!("Failed decoding non-utf8 subdomain segment: {e}").into(),
-                    )
-                })?;
-
                 tracing::info!(%name, %username, "Looking up DID record");
 
                 let account_did = match self.db_lookup_user_did(username).await {
@@ -134,9 +151,33 @@ impl Authority for UserDidsAuthority {
                 ))
             }
             Some(b"_dnslink") => {
-                tracing::warn!(?name, "DNSLink lookup not yet implemented. Ignoring");
+                let account_dnslink = match self.db_lookup_user_dnslink(username).await {
+                    Ok(Some(account_dnslink)) => account_dnslink,
+                    Ok(None) => {
+                        // This is perfectly normal. The user just doesn't have an associated volume.
+                        return Ok(AuthLookup::Empty);
+                    }
+                    Err(err) => {
+                        tracing::debug!(
+                            ?err,
+                            "Account lookup failed during _dnslink DNS entry lookup"
+                        );
+                        return Ok(AuthLookup::Empty);
+                    }
+                };
 
-                Ok(AuthLookup::Empty)
+                Ok(AuthLookup::answers(
+                    LookupRecords::new(
+                        lookup_options,
+                        Arc::new(did_record_set(
+                            name,
+                            account_dnslink,
+                            self.default_ttl,
+                            self.default_soa.serial(),
+                        )),
+                    ),
+                    None,
+                ))
             }
             _ => Ok(AuthLookup::Empty),
         }
