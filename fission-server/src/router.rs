@@ -16,7 +16,7 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 
 /// Setup main router for application.
-pub fn setup_app_router<S: ServerSetup + 'static>(app_state: AppState<S>) -> Router {
+pub fn setup_app_router<S: ServerSetup>(app_state: AppState<S>) -> Router {
     let cors = CorsLayer::new()
         .allow_methods(Any)
         .allow_headers(Any)

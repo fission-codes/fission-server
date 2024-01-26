@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn run_with_app_state<S: ServerSetup + 'static>(
+async fn run_with_app_state<S: ServerSetup>(
     cli: Cli,
     settings: Settings,
     app_state: AppState<S>,
@@ -322,7 +322,7 @@ async fn setup_local_app_state(
     Ok(app_state)
 }
 
-async fn serve_app<S: ServerSetup + 'static>(
+async fn serve_app<S: ServerSetup>(
     app_state: AppState<S>,
     settings: Settings,
     token: CancellationToken,

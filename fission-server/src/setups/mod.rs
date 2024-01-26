@@ -14,7 +14,7 @@ pub mod test;
 ///
 /// It captures the setup of the server, distinguishing between e.g.
 /// unit testing & production setups.
-pub trait ServerSetup: Clone + Send + Sync {
+pub trait ServerSetup: Clone + Send + Sync + 'static {
     /// Which implementation for an IPFS database to choose
     type IpfsDatabase: IpfsDatabase;
     /// Which implementation to use to send verification codes
