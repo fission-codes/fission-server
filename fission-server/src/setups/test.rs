@@ -1,13 +1,17 @@
 //! Test server setup code
 
 use crate::setups::{IpfsDatabase, ServerSetup, VerificationCodeSender};
-use anyhow::Result;
+use anyhow::{anyhow, bail, Context as _, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
-use cid::{multihash::MultihashGeneric as Multihash, Cid};
-use dashmap::{DashMap, DashSet};
+use cid::{
+    multihash::{Code, MultihashDigest},
+    Cid,
+};
+use dashmap::DashMap;
+use parking_lot::RwLock;
 use std::{
-    io::Read,
+    collections::BTreeSet,
     sync::{Arc, Mutex},
 };
 
@@ -26,33 +30,59 @@ pub struct TestIpfsDatabase {
 
 #[derive(Debug, Default)]
 struct State {
-    pinned_cids: DashSet<Cid>,
-    #[allow(unused)]
+    pinned_cids: RwLock<BTreeSet<Cid>>,
     blocks: DashMap<Cid, Bytes>,
-}
-
-impl TestIpfsDatabase {
-    #[allow(unused)]
-    pub(crate) fn add(&self, mut data: impl Read) -> Result<Cid> {
-        let mut bytes = Vec::new();
-        data.read_to_end(&mut bytes)?;
-
-        let hash = blake3::hash(&bytes);
-        let cid = Cid::new_v1(0x55, Multihash::wrap(0x1e, hash.as_bytes())?);
-
-        let bytes = Bytes::from(bytes);
-
-        self.inner.blocks.insert(cid, bytes);
-        Ok(cid)
-    }
 }
 
 #[async_trait]
 impl IpfsDatabase for TestIpfsDatabase {
     async fn pin_add(&self, cid: &str, _recursive: bool) -> Result<()> {
         let cid: Cid = cid.try_into()?;
-        self.inner.pinned_cids.insert(cid);
+        self.inner.pinned_cids.write().insert(cid);
         Ok(())
+    }
+
+    async fn pin_update(&self, cid_before: &str, cid_after: &str, unpin: bool) -> Result<()> {
+        let cid_before: Cid = cid_before.try_into()?;
+        let cid_after: Cid = cid_after.try_into()?;
+
+        let mut pins = self.inner.pinned_cids.write();
+
+        if !pins.contains(&cid_before) {
+            bail!("Expected to update pin from {cid_before} to {cid_after}, but {cid_before} isn't pinned.");
+        }
+
+        if unpin {
+            pins.remove(&cid_before);
+        }
+
+        pins.insert(cid_after);
+
+        Ok(())
+    }
+
+    async fn block_put(&self, cid_codec: u64, mhtype: u64, data: Vec<u8>) -> Result<Cid> {
+        let hash = Code::try_from(mhtype)
+            .context("Unsupported multihash type")?
+            .digest(&data);
+
+        let cid = Cid::new_v1(cid_codec, hash);
+
+        self.inner.blocks.insert(cid, Bytes::from(data));
+
+        Ok(cid)
+    }
+
+    async fn block_get(&self, cid: &str) -> Result<Bytes> {
+        let cid = Cid::try_from(cid).context("Parsing CID for block/get")?;
+
+        let block = self
+            .inner
+            .blocks
+            .get(&cid)
+            .ok_or_else(|| anyhow!("Couldn't find block for cid {cid}"))?;
+
+        Ok(block.clone()) // cheap clone
     }
 }
 

@@ -4,6 +4,8 @@
 //! collections of implementations.
 use anyhow::Result;
 use async_trait::async_trait;
+use bytes::Bytes;
+use cid::Cid;
 
 pub mod local;
 pub mod prod;
@@ -28,6 +30,18 @@ pub trait ServerSetup: Clone + Send + Sync + 'static {
 pub trait IpfsDatabase: Clone + Send + Sync {
     /// Pin a DAG by CID.
     async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()>;
+
+    /// Update a recursive pin by CIDs
+    /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-pin-update>
+    async fn pin_update(&self, cid_before: &str, cid_after: &str, unpin: bool) -> Result<()>;
+
+    /// Add a block to the database
+    /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-put>
+    async fn block_put(&self, cid_codec: u64, mhtype: u64, data: Vec<u8>) -> Result<Cid>;
+
+    /// Get a block from the database
+    /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-get>
+    async fn block_get(&self, cid: &str) -> Result<Bytes>;
 }
 
 /// The service that sends account verification codes

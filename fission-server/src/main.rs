@@ -291,7 +291,7 @@ async fn setup_prod_app_state(
         .with_db_pool(db_pool)
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_verification_code_sender(EmailVerificationCodeSender::new(settings.mailgun.clone()))
-        .with_ipfs_db(IpfsHttpApiDatabase::default())
+        .with_ipfs_db(IpfsHttpApiDatabase::new().await?)
         .with_server_keypair(server_keypair)
         .with_dns_server(dns_server)
         .finalize()?;
@@ -314,7 +314,7 @@ async fn setup_local_app_state(
         .with_ipfs_peers(settings.ipfs.peers.clone())
         .with_ws_peer_map(Arc::clone(&ws_peer_map))
         .with_verification_code_sender(WebsocketCodeSender::new(ws_peer_map))
-        .with_ipfs_db(IpfsHttpApiDatabase::default())
+        .with_ipfs_db(IpfsHttpApiDatabase::new().await?)
         .with_server_keypair(server_keypair)
         .with_dns_server(dns_server)
         .finalize()?;

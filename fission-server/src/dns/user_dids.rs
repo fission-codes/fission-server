@@ -150,6 +150,7 @@ impl Authority for UserRecordsAuthority {
                     None,
                 ))
             }
+            // Serve requests for volumes e.g. _dnslink.alice.computer.name
             Some(b"_dnslink") => {
                 let account_dnslink = match self.db_lookup_user_dnslink(username).await {
                     Ok(Some(account_dnslink)) => account_dnslink,
