@@ -9,4 +9,5 @@ pub mod health;
 pub mod ipfs;
 pub mod ping;
 pub mod revocations;
+pub mod volume;
 pub mod ws;

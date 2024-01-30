@@ -5,12 +5,12 @@ use crate::{
     middleware::logging::{log_request_response, DebugOnlyLogger, Logger},
     routes::{
         account, auth, capability_indexing, doh, fallback::notfound_404, health, ipfs, ping,
-        revocations, ws,
+        revocations, volume, ws,
     },
     setups::ServerSetup,
 };
 use axum::{
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -43,6 +43,7 @@ pub fn setup_app_router<S: ServerSetup>(app_state: AppState<S>) -> Router {
         )
         .route("/account/handle/:handle", patch(account::patch_handle))
         .route("/account/handle", delete(account::delete_handle))
+        .route("/volume/cid/:cid", put(volume::put_volume_cid))
         .route("/capabilities", get(capability_indexing::get_capabilities))
         .route("/revocations", post(revocations::post_revocation))
         .with_state(app_state.clone())

@@ -115,6 +115,18 @@ impl AccountRecord {
             .await
     }
 
+    /// Fetch an account by DID
+    pub async fn find_by_did(
+        conn: &mut Conn<'_>,
+        did: impl AsRef<str>,
+    ) -> Result<Self, diesel::result::Error> {
+        let did = did.as_ref();
+        accounts::dsl::accounts
+            .filter(accounts::did.eq(did))
+            .first::<AccountRecord>(conn)
+            .await
+    }
+
     /// Get the volume associated with the user's account.
     //
     // Note: this doesn't use a join, but rather a separate query to the volumes table.
@@ -133,10 +145,8 @@ impl AccountRecord {
         &self,
         conn: &mut Conn<'_>,
         cid: &str,
-        ipfs_db: &impl IpfsDatabase,
+        _ipfs_db: &impl IpfsDatabase,
     ) -> Result<NewVolumeRecord> {
-        ipfs_db.pin_add(cid, true).await?;
-
         let volume = Volume::new(conn, cid).await?;
 
         diesel::update(accounts::dsl::accounts)
