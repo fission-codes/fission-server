@@ -120,6 +120,16 @@ impl From<anyhow::Error> for AppError {
             Err(e) => e,
         };
 
+        let err = match err.downcast::<car_mirror::error::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        let err = match err.downcast::<cid::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
@@ -178,6 +188,18 @@ impl From<QueryRejection> for AppError {
 impl From<ExtensionRejection> for AppError {
     fn from(value: ExtensionRejection) -> Self {
         Self::new(StatusCode::BAD_REQUEST, Some(value))
+    }
+}
+
+impl From<car_mirror::error::Error> for AppError {
+    fn from(value: car_mirror::error::Error) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    }
+}
+
+impl From<cid::Error> for AppError {
+    fn from(err: cid::Error) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, Some(err))
     }
 }
 

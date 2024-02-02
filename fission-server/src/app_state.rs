@@ -1,15 +1,21 @@
 //! The Axum Application State
 
 use crate::{
+    cache_missing::CacheMissing,
     db::Pool,
     dns::server::DnsServer,
     routes::ws::WsPeerMap,
     settings::{self},
-    setups::ServerSetup,
+    setups::{DbBlockStore, IpfsDatabase, ServerSetup},
 };
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use bytes::Bytes;
+use car_mirror::traits::{Cache, InMemoryCache};
+use cid::Cid;
 use fission_core::ed_did_key::EdDidKey;
 use std::sync::Arc;
+use wnfs::common::{utils::CondSend, BlockStore};
 
 #[derive(Clone)]
 /// Global application route state.
@@ -20,8 +26,8 @@ pub struct AppState<S: ServerSetup> {
     pub db_pool: Pool,
     /// The ipfs peers to be rendered in the ipfs/peers endpoint
     pub ipfs_peers: Vec<String>,
-    /// Connection to what stores the IPFS blocks
-    pub ipfs_db: S::IpfsDatabase,
+    /// Anything related to storing, retrieving and caching information about blocks
+    pub blocks: Blocks<S::IpfsDatabase>,
     /// The service that sends account verification codes
     pub verification_code_sender: S::VerificationCodeSender,
     /// The currently connected websocket peers
@@ -30,6 +36,65 @@ pub struct AppState<S: ServerSetup> {
     pub server_keypair: Arc<EdDidKey>,
     /// The DNS server state. Used for answering DoH queries
     pub dns_server: DnsServer,
+}
+
+/// Anything related to block storage (connection to kubo/something mocking kubo, caches, metadata)
+#[derive(Clone, Debug)] // Clone is cheap, it's mostly structs-of-Arcs
+pub struct Blocks<D: IpfsDatabase> {
+    /// Connection to what stores the IPFS blocks
+    pub ipfs_db: D,
+    /// Cache for information about blocks for car mirror
+    pub car_mirror_cache: InMemoryCache,
+    /// Cache for optimizing blockstore responses for missing blocks
+    pub missing_cids_cache: Arc<quick_cache::sync::Cache<Cid, ()>>,
+}
+
+/// Cache capacity settings
+#[derive(Debug)]
+pub struct CacheCapacities {
+    /// How many CIDs we remember in-memory to be missing
+    pub missing_block_cids: usize,
+    /// How many CIDs we remember in-memory that we already have
+    pub having_block_cids: usize,
+    /// How many CID -> CIDs cache entires we remember for references
+    pub block_references: usize,
+}
+
+impl<D: IpfsDatabase> Blocks<D> {
+    /// Initialize the blocks subsystem
+    pub fn new(ipfs_db: D, approx_capacities: CacheCapacities) -> Self {
+        Self {
+            ipfs_db,
+            car_mirror_cache: InMemoryCache::new(
+                approx_capacities.block_references,
+                approx_capacities.having_block_cids,
+            ),
+            missing_cids_cache: Arc::new(quick_cache::sync::Cache::new(
+                approx_capacities.missing_block_cids,
+            )),
+        }
+    }
+}
+
+#[async_trait]
+impl<D: IpfsDatabase> BlockStore for Blocks<D> {
+    async fn get_block(&self, cid: &Cid) -> Result<Bytes> {
+        let store = CacheMissing {
+            missing_cids_cache: Arc::clone(&self.missing_cids_cache),
+            inner: DbBlockStore::from(self.ipfs_db.clone()),
+        };
+        store.get_block(cid).await
+    }
+
+    async fn put_block(&self, bytes: impl Into<Bytes> + CondSend, codec: u64) -> Result<Cid> {
+        let store = CacheMissing {
+            missing_cids_cache: Arc::clone(&self.missing_cids_cache),
+            inner: DbBlockStore::from(self.ipfs_db.clone()),
+        };
+        let cid = store.put_block(bytes, codec).await?;
+        self.car_mirror_cache.put_has_block_cache(cid).await?;
+        Ok(cid)
+    }
 }
 
 /// Builder for [`AppState`]
@@ -92,11 +157,19 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             dns_settings,
             db_pool,
             ipfs_peers,
-            ipfs_db,
             verification_code_sender,
             ws_peer_map,
             server_keypair: Arc::new(did),
             dns_server,
+            blocks: Blocks::new(
+                ipfs_db,
+                // TODO(matheus23): make these numbers configurable
+                CacheCapacities {
+                    block_references: 10_000,
+                    having_block_cids: 150_000,
+                    missing_block_cids: 150_000,
+                },
+            ),
         })
     }
 
@@ -162,7 +235,7 @@ where
         f.debug_struct("AppState")
             .field("db_pool", &self.db_pool)
             .field("ipfs_peers", &self.ipfs_peers)
-            .field("ipfs_db", &self.ipfs_db)
+            .field("blocks", &self.blocks)
             .field("ws_peer_map", &self.ws_peer_map)
             .field("verification_code_sender", &self.verification_code_sender)
             .finish()
