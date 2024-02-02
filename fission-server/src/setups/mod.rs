@@ -5,7 +5,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
-use cid::Cid;
+use cid::{multihash::Code, Cid};
+use wnfs::common::{utils::CondSend, BlockStore};
 
 pub mod local;
 pub mod prod;
@@ -49,4 +50,48 @@ pub trait IpfsDatabase: Clone + Send + Sync {
 pub trait VerificationCodeSender: Clone + Send + Sync {
     /// Send the code associated with the email
     async fn send_code(&self, email: &str, code: &str) -> Result<()>;
+}
+
+#[async_trait]
+impl<T: IpfsDatabase> IpfsDatabase for &T {
+    async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()> {
+        (**self).pin_add(cid, recursive).await
+    }
+
+    async fn pin_update(&self, cid_before: &str, cid_after: &str, unpin: bool) -> Result<()> {
+        (**self).pin_update(cid_before, cid_after, unpin).await
+    }
+
+    async fn block_put(&self, cid_codec: u64, mhtype: u64, data: Vec<u8>) -> Result<Cid> {
+        (**self).block_put(cid_codec, mhtype, data).await
+    }
+
+    async fn block_get(&self, cid: &str) -> Result<Bytes> {
+        (**self).block_get(cid).await
+    }
+}
+
+/// A newtype wrapper for turning an `IpfsDatabase` into something that implements `BlockStore`
+#[derive(Debug)]
+pub struct DbBlockStore<T> {
+    inner: T,
+}
+
+impl<T> From<T> for DbBlockStore<T> {
+    fn from(inner: T) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait]
+impl<T: IpfsDatabase> BlockStore for DbBlockStore<T> {
+    async fn get_block(&self, cid: &Cid) -> Result<Bytes> {
+        self.inner.block_get(&cid.to_string()).await
+    }
+
+    async fn put_block(&self, bytes: impl Into<Bytes> + CondSend, codec: u64) -> Result<Cid> {
+        self.inner
+            .block_put(codec, Code::Blake3_256.into(), bytes.into().to_vec())
+            .await
+    }
 }

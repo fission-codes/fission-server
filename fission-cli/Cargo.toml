@@ -15,6 +15,7 @@ authors = ["Philipp Krüger <philipp@fission.codes>"]
 
 [lib]
 path = "src/lib.rs"
+doctest = false # Disable doctest compilation due to https://github.com/rust-lang/rust/issues/95825
 
 [dependencies]
 anyhow = { workspace = true }
@@ -25,6 +26,9 @@ rs-ucan = { workspace = true }
 url = { workspace = true }
 ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
+wnfs = { workspace = true }
+car-mirror = { workspace = true }
+chrono = { workspace = true }
 fission-core = { path = "../fission-core", version = "0.1.0" }
 clap = { version = "4.4.6", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = [
@@ -60,6 +64,10 @@ assert_fs = "1.1.1"
 escargot = "0.5.8"
 websocket = { version = "0.27.0", default-features = false, features = ["sync"] }
 rexpect = { git = "https://github.com/rust-cli/rexpect", branch = "master" }
+
+# # enable the "rug" feature (using GMP) for rs-wnfs, speeding up nameaccumulator operations
+# [target.'cfg(unix)'.dependencies]
+# wnfs-nameaccumulator = { git = "https://github.com/wnfs-wg/rs-wnfs.git", branch = "matheus23/root-tree", default-features = false, features = ["rug"] }
 
 [[test]]
 name = "integration"

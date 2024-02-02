@@ -1,11 +1,11 @@
 //! Production server setup code
 
 use crate::{
-    middleware::{client::metrics::Metrics, logging::Logger},
+    // middleware::{client::metrics::Metrics, logging::Logger},
     settings,
     setups::{IpfsDatabase, ServerSetup, VerificationCodeSender},
 };
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{anyhow, bail, Context as _, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::Cid;
@@ -19,6 +19,7 @@ use std::{
 };
 use tracing::log;
 use url::Url;
+use wnfs::common::BlockStoreError;
 
 /// Production implementatoin of `ServerSetup`.
 /// Actually calls out to other HTTP services configured in `settings.toml`.
@@ -39,6 +40,16 @@ pub struct IpfsHttpApiDatabase {
     mhtypes: BTreeMap<u64, String>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct KuboRpcError {
+    #[allow(dead_code)] // false positive, we're using it through the debug print implementation
+    message: String,
+    code: u64,
+    #[allow(dead_code)]
+    r#type: String,
+}
+
 impl IpfsHttpApiDatabase {
     /// Connect to a local kubo RPC instance over localhost:5001.
     /// Configures a bunch of standard middelwares for tracing, metrics and more
@@ -47,10 +58,10 @@ impl IpfsHttpApiDatabase {
     pub async fn new() -> Result<Self> {
         Self::new_with(
             ClientBuilder::new(Default::default())
-                .with(Logger)
-                .with(Metrics {
-                    name: "Local Kubo RPC".to_string(),
-                })
+                // .with(Logger)
+                // .with(Metrics {
+                //     name: "Local Kubo RPC".to_string(),
+                // })
                 .build(),
         )
         .await
@@ -101,6 +112,7 @@ impl IpfsHttpApiDatabase {
         function: &str,
         query: Option<&str>,
     ) -> RequestBuilder {
+        tracing::info!(function, ?query, "Calling kubo RPC");
         let mut url =
             Url::parse("http://localhost:5001").expect("should be able to parse hardcoded URL");
         url.set_path(function);
@@ -158,9 +170,8 @@ impl IpfsDatabase for IpfsHttpApiDatabase {
             )
             .multipart(form)
             .send()
-            .await?
-            .json::<Response>()
             .await?;
+        let response = response.json::<Response>().await?;
 
         let cid = Cid::from_str(&response.key).context("Trying to parse block/put response CID")?;
 
@@ -168,12 +179,24 @@ impl IpfsDatabase for IpfsHttpApiDatabase {
     }
 
     async fn block_get(&self, cid: &str) -> Result<Bytes> {
-        Ok(self
-            .rpc("/api/v0/block/get", Some(&format!("cid={cid}")))
+        let response = self
+            .rpc(
+                "/api/v0/block/get",
+                Some(&format!("arg={cid}&offline=true")),
+            )
             .send()
-            .await?
-            .bytes()
-            .await?)
+            .await?;
+
+        if response.status().is_server_error() {
+            let err = response.json::<KuboRpcError>().await?;
+            if err.code == 0 {
+                bail!(BlockStoreError::CIDNotFound(Cid::from_str(cid)?));
+            } else {
+                bail!("Kubo RPC failed: {err:?}");
+            }
+        }
+
+        Ok(response.bytes().await?)
     }
 }
 

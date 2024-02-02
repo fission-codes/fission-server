@@ -12,7 +12,9 @@ axum = { version = "0.6", features = ["headers"] }
 config = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # car-mirror = { git = "https://github.com/fission-codes/rs-car-mirror", branch = "main" }
-car-mirror = { path = "../rs-car-mirror" }
+car-mirror = { path = "../rs-car-mirror/car-mirror", features = ["quick_cache"] }
+# wnfs = { version = "0.1.27", git = "https://github.com/wnfs-wg/rs-wnfs.git", branch = "matheus23/root-tree" }
+wnfs = { version = "0.1.27" }
 ed25519 = "2.2.2"
 ed25519-dalek = { version = "2.0.0", features = ["rand_core", "zeroize", "pem"] }
 rand = "0.8"

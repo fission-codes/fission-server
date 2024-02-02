@@ -7,6 +7,8 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
+use car_mirror::{messages::PushResponse, traits::InMemoryCache};
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use ed25519_dalek::SigningKey;
@@ -28,7 +30,7 @@ use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheO
 use inquire::ui::RenderConfig;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
-use reqwest::{header::CONTENT_TYPE, Client, Method};
+use reqwest::{header::CONTENT_TYPE, Client, Method, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
     builder::UcanBuilder,
@@ -44,6 +46,10 @@ use std::{
     path::PathBuf,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use wnfs::{
+    common::{MemoryBlockStore, Storable},
+    public::PublicDirectory,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "fission")]
@@ -69,6 +75,8 @@ pub enum Commands {
     Account(AccountCmds),
     /// Print file paths used by the application (e.g. the path to config)
     Paths,
+    /// Commands related to managing the account-associated storage
+    Volume(VolumeCmds),
 }
 
 #[derive(Debug, Parser)]
@@ -115,6 +123,28 @@ pub struct IssueAbility {
     /// use "forever" in case it shouldn't have a time limit
     #[arg(long)]
     lifetime: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct VolumeCmds {
+    #[command(subcommand)]
+    command: VolumeCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum VolumeCommands {
+    /// Publish a directory as a volume
+    Publish(PublishCommand),
+}
+
+#[derive(Debug, Parser)]
+pub struct PublishCommand {
+    /// Path to the directory to publish
+    path: PathBuf,
+    /// Username of the account to use for uploading.
+    /// If not provided, it's assumed you only have access to one account.
+    #[arg(long, short = 'u')]
+    username: Option<String>,
 }
 
 impl Cli {
@@ -260,6 +290,98 @@ impl Cli {
                                 .collect::<Result<Vec<_>>>()?
                                 .join(",")
                         );
+                    }
+                }
+            }
+            Commands::Volume(volume) => {
+                let mut state = CliState::load(&settings, self.key_seed.clone(), ansi).await?;
+                state.fetch_ucans().await?;
+
+                match &volume.command {
+                    VolumeCommands::Publish(publish) => {
+                        let accounts = state.find_accounts(state.find_capabilities()?).await;
+
+                        let auth = state.pick_account(
+                            accounts,
+                            &publish.username,
+                            "Which account do you want to use?",
+                        )?;
+                        let did = Did(auth.account.did.to_string());
+
+                        let store = &MemoryBlockStore::new();
+                        let cache = &InMemoryCache::new(10_000, 150_000);
+                        let source = &publish.path;
+                        if !source.exists() {
+                            bail!("Can't publish path, it doesn't exist: {}", source.display());
+                        }
+                        if source.is_file() {
+                            let filename = source
+                                .file_name()
+                                .expect("If the source is a file, it should have a filename")
+                                .to_string_lossy()
+                                .to_string();
+                            let mut directory = PublicDirectory::new_rc(Utc::now());
+                            directory
+                                .write(&[filename], std::fs::read(source)?, Utc::now(), store)
+                                .await?;
+                            let cid = directory.store(store).await?;
+
+                            let mut push_state = None;
+
+                            loop {
+                                let body = car_mirror::push::request(
+                                    cid,
+                                    push_state,
+                                    &Default::default(),
+                                    store,
+                                    cache,
+                                )
+                                .await?;
+
+                                let ucan = state.issue_ucan_with(
+                                    did.clone(),
+                                    FissionAbility::AccountManage,
+                                    None,
+                                    &auth.ucans,
+                                )?;
+
+                                let answer = state
+                                    .server_request(
+                                        Method::PUT,
+                                        &format!("/api/v0/volume/cid/{cid}"),
+                                    )?
+                                    .bearer_auth(ucan.encode()?)
+                                    .header("ucans", encode_ucan_header(&auth.ucans)?)
+                                    .try_clone()
+                                    .ok_or_else(|| {
+                                        anyhow!("Should be able to clone request builder")
+                                    })?
+                                    .body(body.bytes)
+                                    .send()
+                                    .await?;
+
+                                match answer.status() {
+                                    StatusCode::OK => {
+                                        println!("Successfully updated");
+                                        break;
+                                    }
+                                    StatusCode::ACCEPTED => {
+                                        // We need to continue.
+                                    }
+                                    other => {
+                                        bail!(
+                                            "Unexpected status code: {other}, err: {}",
+                                            answer.text().await?
+                                        );
+                                    }
+                                }
+
+                                let response: PushResponse = answer.json().await?;
+                                push_state = Some(response);
+                            }
+                        } else {
+                            bail!("Uploading directories is not yet implemented.");
+                        }
                     }
                 }
             }

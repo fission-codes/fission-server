@@ -86,9 +86,8 @@ impl TestContext {
         Ok(self.app_state.db_pool.get().await?)
     }
 
-    #[allow(unused)]
     pub fn ipfs_db(&self) -> &TestIpfsDatabase {
-        &self.app_state.ipfs_db
+        &self.app_state.blocks.ipfs_db
     }
 
     pub fn verification_code_sender(&self) -> &TestVerificationCodeSender {
