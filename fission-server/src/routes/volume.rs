@@ -4,14 +4,15 @@ use crate::{
     app_state::AppState, authority::Authority, db, error::AppResult, extract::json::Json,
     models::account::AccountRecord, setups::ServerSetup,
 };
-use axum::extract::{Path, State};
-use bytes::Bytes;
-use car_mirror::{common::CarFile, messages::PushResponse};
+use axum::extract::{BodyStream, Path, State};
+use car_mirror::messages::PushResponse;
 use cid::Cid;
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
 use fission_core::capabilities::{did::Did, fission::FissionAbility};
+use futures_util::TryStreamExt;
 use http::StatusCode;
 use std::str::FromStr;
+use tokio_util::io::StreamReader;
 
 /// PUT uploading a new volume CID
 #[utoipa::path(
@@ -31,7 +32,7 @@ pub async fn put_volume_cid<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
     Path(cid_string): Path<String>,
-    body: Bytes,
+    body: BodyStream,
 ) -> AppResult<(StatusCode, Json<PushResponse>)> {
     let cid = Cid::from_str(&cid_string)?;
 
@@ -44,14 +45,19 @@ pub async fn put_volume_cid<S: ServerSetup>(
         async move {
             let account = AccountRecord::find_by_did(conn, did).await?;
 
-            let response = car_mirror::push::response(
+            let reader = StreamReader::new(
+                body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+            );
+
+            let response: PushResponse = car_mirror::common::block_receive_car_stream(
                 cid,
-                CarFile { bytes: body },
+                reader,
                 &Default::default(),
                 &state.blocks.clone(),
                 &state.blocks.car_mirror_cache,
             )
-            .await?;
+            .await?
+            .into();
 
             if response.indicates_finished() {
                 account

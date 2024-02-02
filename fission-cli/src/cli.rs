@@ -7,7 +7,7 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
-use car_mirror::{messages::PushResponse, traits::InMemoryCache};
+use car_mirror::{common::Config, messages::PushResponse, traits::InMemoryCache};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
@@ -332,7 +332,10 @@ impl Cli {
                                 let body = car_mirror::push::request(
                                     cid,
                                     push_state,
-                                    &Default::default(),
+                                    &Config {
+                                        receive_maximum: 5_000_000,
+                                        ..Default::default()
+                                    },
                                     store,
                                     cache,
                                 )
