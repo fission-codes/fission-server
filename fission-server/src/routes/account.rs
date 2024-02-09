@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn test_patch_account_ok() -> TestResult {
+    async fn test_patch_username_ok() -> TestResult {
         let ctx = &TestContext::new().await?;
 
         let username = "oedipa";
@@ -618,6 +618,27 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         assert!(resp.success);
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_patch_username_conflict() -> TestResult {
+        let ctx = &TestContext::new().await?;
+
+        let username = "oedipa";
+        let username2 = "oedipa2";
+        let email = "oedipa@trystero.com";
+        let email2 = "oedipa2@trystero.com";
+        let issuer = &EdDidKey::generate();
+        let issuer2 = &EdDidKey::generate();
+
+        let (_, auth) = create_account::<AccountAndAuth>(username, email, issuer, ctx).await?;
+        let (_, _) = create_account::<AccountAndAuth>(username2, email2, issuer2, ctx).await?;
+
+        let (status, _) = patch_username::<ErrorResponse>(username2, &auth, issuer, ctx).await?;
+
+        assert_eq!(status, StatusCode::CONFLICT);
 
         Ok(())
     }

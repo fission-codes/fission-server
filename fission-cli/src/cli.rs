@@ -802,6 +802,7 @@ fn load_key(settings: &Settings, key_seed: Option<String>) -> Result<EdDidKey> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(key_path)?;
 
     let file_meta = file.metadata()?;

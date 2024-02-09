@@ -1,5 +1,3 @@
-use axum::{extract::TypedHeader, headers::Header};
-
 /// Generate String-focused, generic, custom typed [`Header`]'s.
 #[allow(unused)]
 macro_rules! header {
@@ -50,30 +48,6 @@ macro_rules! header {
             }
         }
     };
-}
-
-/// Trait for returning header value directly for passing
-/// along to client calls.
-pub(crate) trait HeaderValue {
-    fn header_value(&self) -> String;
-}
-
-impl<T> HeaderValue for TypedHeader<T>
-where
-    T: Header + std::fmt::Display,
-{
-    fn header_value(&self) -> String {
-        self.0.to_string()
-    }
-}
-
-impl<T> HeaderValue for &TypedHeader<T>
-where
-    T: Header + std::fmt::Display,
-{
-    fn header_value(&self) -> String {
-        self.0.to_string()
-    }
 }
 
 #[cfg(test)]

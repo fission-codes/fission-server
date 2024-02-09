@@ -9,7 +9,7 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = { version = "1.0", features = ["backtrace"] }
 axum = { version = "0.6", features = ["headers"] }
-config = "0.13"
+config = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # car-mirror = { git = "https://github.com/fission-codes/rs-car-mirror", branch = "main" }
 car-mirror = { path = "../rs-car-mirror/car-mirror", features = ["quick_cache"] }
