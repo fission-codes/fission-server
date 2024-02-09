@@ -185,7 +185,7 @@ Status 200 OK and `{ success: true }`, if successful.
 
 Delete an account.
 
-**Authorization**: UCAN with ability `account/manage`.
+**Authorization**: UCAN with ability `account/delete`.
 
 **Response**:
 
