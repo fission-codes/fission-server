@@ -122,7 +122,7 @@ Fetches the account's member number. The account is identified by the DID in the
 
 Get a UCAN for a DID that hasn't been associated with this account yet, given an email verification code.
 
-**Authorization**: *Unprotected*
+**Authorization**: UCAN with ability `account/link`. The resource DID will be the audience for returned UCANs.
 
 **Request**:
 
@@ -137,6 +137,7 @@ Get a UCAN for a DID that hasn't been associated with this account yet, given an
 | Field | Type | Comment |
 |-------|------|---------|
 | `ucans` | `Array<string>` | A set of UCAN delegations that delegate the account's unique DID to the resource DID from the request authorization. |
+| `account` | `Account`       | Account information in the same format as the `GET /api/v0/account` response record |
 
 ---
 
