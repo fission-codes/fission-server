@@ -7,7 +7,7 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
-use car_mirror::{common::Config, messages::PushResponse, traits::InMemoryCache};
+use car_mirror::{common::stream_car_frames, messages::PushResponse, traits::InMemoryCache};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
@@ -30,7 +30,7 @@ use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheO
 use inquire::ui::RenderConfig;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
-use reqwest::{header::CONTENT_TYPE, Client, Method, StatusCode};
+use reqwest::{header::CONTENT_TYPE, Body, Client, Method, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
     builder::UcanBuilder,
@@ -47,7 +47,7 @@ use std::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use wnfs::{
-    common::{MemoryBlockStore, Storable},
+    common::{libipld::Cid, MemoryBlockStore, Storable},
     public::PublicDirectory,
 };
 
@@ -73,10 +73,10 @@ pub struct Cli {
 pub enum Commands {
     /// Account and login management commands
     Account(AccountCmds),
-    /// Print file paths used by the application (e.g. the path to config)
-    Paths,
     /// Commands related to managing the account-associated storage
     Volume(VolumeCmds),
+    /// Print file paths used by the application (e.g. the path to config)
+    Paths,
 }
 
 #[derive(Debug, Parser)]
@@ -308,13 +308,27 @@ impl Cli {
                         )?;
                         let did = Did(auth.account.did.to_string());
 
-                        let store = &MemoryBlockStore::new();
-                        let cache = &InMemoryCache::new(10_000, 150_000);
+                        // About `Box::leak`:
+                        // Why we need this:
+                        // We need a reference to `store` that is `'static`, because
+                        // the stream of blocks/car frames we get from `car-mirror` is dependent on the reference lifetime
+                        // and needs to be `'static`, because reqwest bodies are required to be `: 'static`, because it
+                        // apparently puts the stream into on another spawned tokio task, which generally requires tasks to be
+                        // `: 'static` itself.
+                        // Why this is somewhat acceptable:
+                        // During the lifetime of the program, only a constant number of `Box::leak`s are going to created (two)
+                        // and had the type system allowed us to do this with normal, non-leaked, non-static lifetimes, the memory
+                        // would be freed at approximately the same time.
+                        // We also don't rely on anything in the `Drop` implementation from running.
+                        let store = Box::leak(Box::new(MemoryBlockStore::new()));
+                        let cache = Box::leak(Box::new(InMemoryCache::new(10_000, 150_000)));
+
                         let source = &publish.path;
                         if !source.exists() {
                             bail!("Can't publish path, it doesn't exist: {}", source.display());
                         }
-                        if source.is_file() {
+
+                        let cid = if source.is_file() {
                             let filename = source
                                 .file_name()
                                 .expect("If the source is a file, it should have a filename")
@@ -324,67 +338,14 @@ impl Cli {
                             directory
                                 .write(&[filename], std::fs::read(source)?, Utc::now(), store)
                                 .await?;
-                            let cid = directory.store(store).await?;
-
-                            let mut push_state = None;
-
-                            loop {
-                                let body = car_mirror::push::request(
-                                    cid,
-                                    push_state,
-                                    &Config {
-                                        receive_maximum: 5_000_000,
-                                        ..Default::default()
-                                    },
-                                    store,
-                                    cache,
-                                )
-                                .await?;
-
-                                let ucan = state.issue_ucan_with(
-                                    did.clone(),
-                                    FissionAbility::AccountManage,
-                                    None,
-                                    &auth.ucans,
-                                )?;
-
-                                let answer = state
-                                    .server_request(
-                                        Method::PUT,
-                                        &format!("/api/v0/volume/cid/{cid}"),
-                                    )?
-                                    .bearer_auth(ucan.encode()?)
-                                    .header("ucans", encode_ucan_header(&auth.ucans)?)
-                                    .try_clone()
-                                    .ok_or_else(|| {
-                                        anyhow!("Should be able to clone request builder")
-                                    })?
-                                    .body(body.bytes)
-                                    .send()
-                                    .await?;
-
-                                match answer.status() {
-                                    StatusCode::OK => {
-                                        println!("Successfully updated");
-                                        break;
-                                    }
-                                    StatusCode::ACCEPTED => {
-                                        // We need to continue.
-                                    }
-                                    other => {
-                                        bail!(
-                                            "Unexpected status code: {other}, err: {}",
-                                            answer.text().await?
-                                        );
-                                    }
-                                }
-
-                                let response: PushResponse = answer.json().await?;
-                                push_state = Some(response);
-                            }
+                            directory.store(store).await?
                         } else {
                             bail!("Uploading directories is not yet implemented.");
-                        }
+                        };
+
+                        state
+                            .volume_put(did, &auth.ucans, cid, store, cache)
+                            .await?;
                     }
                 }
             }
@@ -737,6 +698,63 @@ impl<'s> CliState<'s> {
             .await?;
 
         Ok(())
+    }
+
+    async fn volume_put(
+        &self,
+        did: Did,
+        chain: &[Ucan],
+        cid: Cid,
+        store: &'static mut MemoryBlockStore,
+        cache: &'static mut InMemoryCache,
+    ) -> Result<()> {
+        // We use a custom client, because we need to skip caching requests,
+        // as our caching middleware from http-cache will fail on reqwest body streams.
+        let client = ClientBuilder::new(Client::new())
+            .with(LogAndHandleErrorMiddleware)
+            .build();
+
+        let mut upload_url = self.settings.api_endpoint.clone();
+        upload_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
+
+        let mut push_state = None;
+
+        loop {
+            let block_stream =
+                car_mirror::common::block_send_block_stream(cid, push_state, store, cache).await?;
+            let car_stream = stream_car_frames(block_stream).await?;
+            let reqwest_stream = Body::wrap_stream(car_stream);
+
+            let ucan =
+                self.issue_ucan_with(did.clone(), FissionAbility::AccountManage, None, chain)?;
+
+            let answer = client
+                .put(upload_url.clone())
+                .bearer_auth(ucan.encode()?)
+                .header("ucans", encode_ucan_header(chain)?)
+                .body(reqwest_stream)
+                .send()
+                .await?;
+
+            match answer.status() {
+                StatusCode::OK => {
+                    println!("Successfully updated");
+                    return Ok(());
+                }
+                StatusCode::ACCEPTED => {
+                    // We need to continue.
+                }
+                other => {
+                    bail!(
+                        "Unexpected status code: {other}, err: {}",
+                        answer.text().await?
+                    );
+                }
+            }
+
+            let response: PushResponse = answer.json().await?;
+            push_state = Some(response.into());
+        }
     }
 
     fn server_request(&self, method: Method, path: &str) -> Result<RequestBuilder> {
