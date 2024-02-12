@@ -667,6 +667,7 @@ dependencies = [
 [[package]]
 name = "car-mirror"
 version = "0.1.0"
+source = "git+https://github.com/fission-codes/rs-car-mirror?branch=matheus23/streaming-car-frames#cab13778a66573285f5228bc724c97cf4c174871"
 dependencies = [
  "anyhow",
  "async-trait",
