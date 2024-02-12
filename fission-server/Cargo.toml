@@ -54,7 +54,7 @@ console-subscriber = { version = "0.1", default-features = false, features = [ "
 const_format = "0.2"
 dashmap = "5.5.0"
 diesel = { version = "2.0.4", features = ["postgres", "chrono", "serde_json"] }
-diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
+diesel-async = { version = "0.4", features = ["bb8", "postgres"] }
 diesel_migrations = "2.1"
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
