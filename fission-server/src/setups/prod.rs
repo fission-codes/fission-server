@@ -121,7 +121,6 @@ impl IpfsHttpApiDatabase {
     }
 }
 
-#[async_trait]
 impl IpfsDatabase for IpfsHttpApiDatabase {
     async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()> {
         self.rpc(

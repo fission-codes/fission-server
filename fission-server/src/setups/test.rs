@@ -34,7 +34,6 @@ struct State {
     blocks: DashMap<Cid, Bytes>,
 }
 
-#[async_trait]
 impl IpfsDatabase for TestIpfsDatabase {
     async fn pin_add(&self, cid: &str, _recursive: bool) -> Result<()> {
         let cid: Cid = cid.try_into()?;

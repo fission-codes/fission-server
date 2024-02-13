@@ -667,10 +667,10 @@ dependencies = [
 [[package]]
 name = "car-mirror"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-car-mirror?branch=matheus23/streaming-car-frames#cab13778a66573285f5228bc724c97cf4c174871"
+source = "git+https://github.com/fission-codes/rs-car-mirror?branch=matheus23/traits-refactor#65dff8e97d9fd407337315cb7d4d56d978051e4c"
 dependencies = [
  "anyhow",
- "async-trait",
+ "async-stream",
  "bytes",
  "deterministic-bloom",
  "futures",
@@ -6659,8 +6659,7 @@ dependencies = [
 [[package]]
 name = "wnfs"
 version = "0.1.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e103bb9f65de7078c6ddf78089af76e2d125284fdea6b30fe97660e7725146f5"
+source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
 dependencies = [
  "aes-kw",
  "anyhow",
@@ -6698,8 +6697,7 @@ dependencies = [
 [[package]]
 name = "wnfs-common"
 version = "0.1.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1395a47e38402df060d3448fe153c5af1eae6f27aeca9c2e79e5a39bb355efab"
+source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -6721,8 +6719,7 @@ dependencies = [
 [[package]]
 name = "wnfs-hamt"
 version = "0.1.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da51e0a92121097fc1c44091e10bf0812b9f9adbeba5aa79e5a3b0f2f0a43d4"
+source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -6751,8 +6748,7 @@ dependencies = [
 [[package]]
 name = "wnfs-nameaccumulator"
 version = "0.1.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d51c38f15dc2fc4e539787148c15bb9300756456be02303f8019c2c424d94593"
+source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6773,8 +6769,7 @@ dependencies = [
 [[package]]
 name = "wnfs-unixfs-file"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "446ca1a5be3d8ab20c959d53d755710aeaa4fb9e444a82052166a48ed7915762"
+source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
 dependencies = [
  "anyhow",
  "async-stream",

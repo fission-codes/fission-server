@@ -114,7 +114,7 @@ validator = { workspace = true }
 ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 libipld = "0.16.0"
-wnfs = "0.1.27"
+wnfs = { workspace = true }
 blake3 = "1.4.1"
 uuid = "1.4.1"
 erased-serde = "0.3.31"

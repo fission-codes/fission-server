@@ -308,20 +308,8 @@ impl Cli {
                         )?;
                         let did = Did(auth.account.did.to_string());
 
-                        // About `Box::leak`:
-                        // Why we need this:
-                        // We need a reference to `store` that is `'static`, because
-                        // the stream of blocks/car frames we get from `car-mirror` is dependent on the reference lifetime
-                        // and needs to be `'static`, because reqwest bodies are required to be `: 'static`, because it
-                        // apparently puts the stream into on another spawned tokio task, which generally requires tasks to be
-                        // `: 'static` itself.
-                        // Why this is somewhat acceptable:
-                        // During the lifetime of the program, only a constant number of `Box::leak`s are going to created (two)
-                        // and had the type system allowed us to do this with normal, non-leaked, non-static lifetimes, the memory
-                        // would be freed at approximately the same time.
-                        // We also don't rely on anything in the `Drop` implementation from running.
-                        let store = Box::leak(Box::new(MemoryBlockStore::new()));
-                        let cache = Box::leak(Box::new(InMemoryCache::new(10_000, 150_000)));
+                        let store = &MemoryBlockStore::new();
+                        let cache = &InMemoryCache::new(10_000, 150_000);
 
                         let source = &publish.path;
                         if !source.exists() {
@@ -705,8 +693,8 @@ impl<'s> CliState<'s> {
         did: Did,
         chain: &[Ucan],
         cid: Cid,
-        store: &'static mut MemoryBlockStore,
-        cache: &'static mut InMemoryCache,
+        store: &MemoryBlockStore,
+        cache: &InMemoryCache,
     ) -> Result<()> {
         // We use a custom client, because we need to skip caching requests,
         // as our caching middleware from http-cache will fail on reqwest body streams.
@@ -720,8 +708,13 @@ impl<'s> CliState<'s> {
         let mut push_state = None;
 
         loop {
-            let block_stream =
-                car_mirror::common::block_send_block_stream(cid, push_state, store, cache).await?;
+            let block_stream = car_mirror::common::block_send_block_stream(
+                cid,
+                push_state,
+                store.clone(),
+                cache.clone(),
+            )
+            .await?;
             let car_stream = stream_car_frames(block_stream).await?;
             let reqwest_stream = Body::wrap_stream(car_stream);
 

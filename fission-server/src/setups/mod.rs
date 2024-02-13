@@ -6,6 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::{multihash::Code, Cid};
+use futures_util::Future;
 use wnfs::common::{utils::CondSend, BlockStore};
 
 pub mod local;
@@ -27,22 +28,31 @@ pub trait ServerSetup: Clone + Send + Sync + 'static {
 /// Provides functionality for storing IPFS data.
 /// Abstracted away, so you can plug in a real kubo node
 /// or an in-memory test database.
-#[async_trait]
 pub trait IpfsDatabase: Clone + Send + Sync {
     /// Pin a DAG by CID.
-    async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()>;
+    fn pin_add(&self, cid: &str, recursive: bool) -> impl Future<Output = Result<()>> + Send;
 
     /// Update a recursive pin by CIDs
     /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-pin-update>
-    async fn pin_update(&self, cid_before: &str, cid_after: &str, unpin: bool) -> Result<()>;
+    fn pin_update(
+        &self,
+        cid_before: &str,
+        cid_after: &str,
+        unpin: bool,
+    ) -> impl Future<Output = Result<()>> + Send;
 
     /// Add a block to the database
     /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-put>
-    async fn block_put(&self, cid_codec: u64, mhtype: u64, data: Vec<u8>) -> Result<Cid>;
+    fn block_put(
+        &self,
+        cid_codec: u64,
+        mhtype: u64,
+        data: Vec<u8>,
+    ) -> impl Future<Output = Result<Cid>> + Send;
 
     /// Get a block from the database
     /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-get>
-    async fn block_get(&self, cid: &str) -> Result<Bytes>;
+    fn block_get(&self, cid: &str) -> impl Future<Output = Result<Bytes>> + Send;
 }
 
 /// The service that sends account verification codes
@@ -52,7 +62,6 @@ pub trait VerificationCodeSender: Clone + Send + Sync {
     async fn send_code(&self, email: &str, code: &str) -> Result<()>;
 }
 
-#[async_trait]
 impl<T: IpfsDatabase> IpfsDatabase for &T {
     async fn pin_add(&self, cid: &str, recursive: bool) -> Result<()> {
         (**self).pin_add(cid, recursive).await
@@ -83,7 +92,6 @@ impl<T> From<T> for DbBlockStore<T> {
     }
 }
 
-#[async_trait]
 impl<T: IpfsDatabase> BlockStore for DbBlockStore<T> {
     async fn get_block(&self, cid: &Cid) -> Result<Bytes> {
         self.inner.block_get(&cid.to_string()).await
