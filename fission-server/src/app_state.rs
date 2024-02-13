@@ -9,7 +9,6 @@ use crate::{
     setups::{DbBlockStore, IpfsDatabase, ServerSetup},
 };
 use anyhow::{anyhow, Result};
-use async_trait::async_trait;
 use bytes::Bytes;
 use car_mirror::traits::{Cache, InMemoryCache};
 use cid::Cid;
@@ -76,7 +75,6 @@ impl<D: IpfsDatabase> Blocks<D> {
     }
 }
 
-#[async_trait]
 impl<D: IpfsDatabase> BlockStore for Blocks<D> {
     async fn get_block(&self, cid: &Cid) -> Result<Bytes> {
         let store = CacheMissing {

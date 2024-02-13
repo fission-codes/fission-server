@@ -25,7 +25,6 @@ impl<B: BlockStore> CacheMissing<B> {
     }
 }
 
-#[async_trait::async_trait]
 impl<B: BlockStore> BlockStore for CacheMissing<B> {
     async fn get_block(&self, cid: &Cid) -> Result<Bytes> {
         match self.missing_cids_cache.get_value_or_guard(cid, None) {
