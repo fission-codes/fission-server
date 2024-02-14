@@ -17,17 +17,12 @@
     nixpkgs,
     flake-utils,
     rust-overlay,
-  } @ inputs:
+  }:
     flake-utils.lib.eachDefaultSystem (system: let
       overlays = [(import rust-overlay)];
       pkgs = import nixpkgs {inherit system overlays;};
 
-      rust-toolchain =
-        (pkgs.rust-bin.fromRustupToolchainFile
-          ./rust-toolchain.toml)
-        .override {
-          extensions = ["cargo" "clippy" "rustfmt" "rust-src" "rust-std"];
-        };
+      rust-toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
       rustPlatform = pkgs.makeRustPlatform {
         cargo = rust-toolchain;
@@ -47,7 +42,7 @@
         cargo-watch
         diesel-cli
       ];
-    in rec {
+    in {
       devShells.default = pkgs.mkShell {
         name = "fission-server";
         nativeBuildInputs = with pkgs;
@@ -123,7 +118,9 @@
         '';
       };
 
-      packages.irust = pkgs.rustPlatform.buildRustPackage rec {
+      formatter = pkgs.alejandra;
+
+      packages.irust = rustPlatform.buildRustPackage rec {
         pname = "irust";
         version = "1.65.1";
         src = pkgs.fetchFromGitHub {
@@ -143,6 +140,7 @@
         cargoLock = {
           lockFile = ./Cargo.lock;
           outputHashes = {
+            "rexpect-0.5.0" = "sha256-njjXt4pbLV3Z/ZkBzmBxcwDSqpbOttIpdg+kHND1vSo=";
             "rs-ucan-0.1.0" = "sha256-HSxIzqPECJ9KbPYU0aitjxpCf0CSDAv7su1PGxZlpHc=";
           };
         };
