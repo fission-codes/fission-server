@@ -15,7 +15,8 @@ passthrough = [
 # `cross build --bin fission-server --release --target aarch64-unknown-linux-musl`
 
 [target.x86_64-unknown-linux-musl]
-image = "burntsushi/cross:x86_64-unknown-linux-musl"
+# image = "burntsushi/cross:x86_64-unknown-linux-musl"
+dockerfile = "./musl.Dockerfile"
 
 [target.aarch64-unknown-linux-gnu]
 image = "burntsushi/cross:aarch64-unknown-linux-gnu"

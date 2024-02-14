@@ -117,6 +117,7 @@ libipld = "0.16.0"
 blake3 = "1.4.1"
 uuid = "1.4.1"
 erased-serde = "0.3.31"
+pq-sys = "0.4"
 
 [dev-dependencies]
 assert-json-diff = "2.0"
