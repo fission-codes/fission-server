@@ -1,7 +1,7 @@
 //! Test server setup code
 
 use crate::setups::{IpfsDatabase, ServerSetup, VerificationCodeSender};
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::{
@@ -72,16 +72,9 @@ impl IpfsDatabase for TestIpfsDatabase {
         Ok(cid)
     }
 
-    async fn block_get(&self, cid: &str) -> Result<Bytes> {
+    async fn block_get(&self, cid: &str) -> Result<Option<Bytes>> {
         let cid = Cid::try_from(cid).context("Parsing CID for block/get")?;
-
-        let block = self
-            .inner
-            .blocks
-            .get(&cid)
-            .ok_or_else(|| anyhow!("Couldn't find block for cid {cid}"))?;
-
-        Ok(block.clone()) // cheap clone
+        Ok(self.inner.blocks.get(&cid).map(|rf| rf.clone())) // cheap clone
     }
 }
 

@@ -667,7 +667,7 @@ dependencies = [
 [[package]]
 name = "car-mirror"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-car-mirror?branch=matheus23/traits-refactor#65dff8e97d9fd407337315cb7d4d56d978051e4c"
+source = "git+https://github.com/fission-codes/rs-car-mirror?branch=matheus23/expose-cache-missing-inner#d0634cfe62080cdb6057369107e8af70b182aa8d"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -6658,15 +6658,15 @@ dependencies = [
 
 [[package]]
 name = "wnfs"
-version = "0.1.27"
-source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "644353eb5e37ea235be141b49e33637133949183b2b996cf7e47ff9cb3264d0f"
 dependencies = [
  "aes-kw",
  "anyhow",
  "async-once-cell",
  "async-recursion",
  "async-stream",
- "async-trait",
  "blake3",
  "bytes",
  "chacha20poly1305",
@@ -6696,14 +6696,15 @@ dependencies = [
 
 [[package]]
 name = "wnfs-common"
-version = "0.1.26"
-source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b281a9ecccc4d450fae5e5d1b3f31d28dbdcae1e9e8c9b6233a75d7374ef4f3"
 dependencies = [
  "anyhow",
  "async-once-cell",
- "async-trait",
  "bytes",
  "chrono",
+ "cid",
  "dashmap",
  "futures",
  "libipld",
@@ -6718,13 +6719,13 @@ dependencies = [
 
 [[package]]
 name = "wnfs-hamt"
-version = "0.1.26"
-source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61f1ffa785a5045454544e7d5071e60198965e7c6eb002a06718c1b05eebdc6e"
 dependencies = [
  "anyhow",
  "async-once-cell",
  "async-recursion",
- "async-trait",
  "bitvec",
  "blake3",
  "chrono",
@@ -6747,11 +6748,11 @@ dependencies = [
 
 [[package]]
 name = "wnfs-nameaccumulator"
-version = "0.1.26"
-source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f57a35241d74ce8db87c3cb17869ec1798ca813d85521b461b8e2418ea139d2d"
 dependencies = [
  "anyhow",
- "async-trait",
  "blake3",
  "libipld",
  "num-bigint-dig",
@@ -6768,12 +6769,12 @@ dependencies = [
 
 [[package]]
 name = "wnfs-unixfs-file"
-version = "0.1.1"
-source = "git+https://github.com/wnfs-wg/rs-wnfs.git?branch=matheus23/evolve-trait#e8184827a9e7d59d85eea6730e5015c689c305c2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf5f1e8e6537a38c0e662a5cb4524bf6bec7d2c0d5e37f8a3849e7eedb212312"
 dependencies = [
  "anyhow",
  "async-stream",
- "async-trait",
  "bytes",
  "futures",
  "libipld",

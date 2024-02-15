@@ -19,7 +19,6 @@ use std::{
 };
 use tracing::log;
 use url::Url;
-use wnfs::common::BlockStoreError;
 
 /// Production implementatoin of `ServerSetup`.
 /// Actually calls out to other HTTP services configured in `settings.toml`.
@@ -177,7 +176,7 @@ impl IpfsDatabase for IpfsHttpApiDatabase {
         Ok(cid)
     }
 
-    async fn block_get(&self, cid: &str) -> Result<Bytes> {
+    async fn block_get(&self, cid: &str) -> Result<Option<Bytes>> {
         let response = self
             .rpc(
                 "/api/v0/block/get",
@@ -189,13 +188,13 @@ impl IpfsDatabase for IpfsHttpApiDatabase {
         if response.status().is_server_error() {
             let err = response.json::<KuboRpcError>().await?;
             if err.code == 0 {
-                bail!(BlockStoreError::CIDNotFound(Cid::from_str(cid)?));
+                return Ok(None);
             } else {
                 bail!("Kubo RPC failed: {err:?}");
             }
         }
 
-        Ok(response.bytes().await?)
+        Ok(Some(response.bytes().await?))
     }
 }
 

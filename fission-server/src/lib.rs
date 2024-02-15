@@ -9,7 +9,6 @@ extern crate diesel_migrations;
 
 pub mod app_state;
 pub mod authority;
-pub mod cache_missing;
 pub mod db;
 pub mod dns;
 pub mod docs;

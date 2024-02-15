@@ -53,7 +53,7 @@ pub async fn put_volume_cid<S: ServerSetup>(
                 cid,
                 reader,
                 &Default::default(),
-                &state.blocks.clone(),
+                &state.blocks.store,
                 &state.blocks.car_mirror_cache,
             )
             .await?
@@ -61,7 +61,7 @@ pub async fn put_volume_cid<S: ServerSetup>(
 
             if response.indicates_finished() {
                 account
-                    .set_volume_cid(conn, &cid_string, &state.blocks.ipfs_db)
+                    .set_volume_cid(conn, &cid_string, &state.blocks.ipfs_db())
                     .await?;
 
                 Ok((StatusCode::OK, Json(response)))
