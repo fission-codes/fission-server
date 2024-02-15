@@ -7,7 +7,7 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
-use car_mirror::{common::stream_car_frames, messages::PushResponse, traits::InMemoryCache};
+use car_mirror::{cache::InMemoryCache, common::stream_car_frames, messages::PushResponse};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
@@ -309,7 +309,7 @@ impl Cli {
                         let did = Did(auth.account.did.to_string());
 
                         let store = &MemoryBlockStore::new();
-                        let cache = &InMemoryCache::new(10_000, 150_000);
+                        let cache = &InMemoryCache::new(100_000);
 
                         let source = &publish.path;
                         if !source.exists() {

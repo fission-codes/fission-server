@@ -2,12 +2,12 @@
 //!
 //! This module defines the trait, submodules define test & production
 //! collections of implementations.
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cid::{multihash::Code, Cid};
 use futures_util::Future;
-use wnfs::common::{utils::CondSend, BlockStore};
+use wnfs::common::{utils::CondSend, BlockStore, BlockStoreError};
 
 pub mod local;
 pub mod prod;
@@ -52,7 +52,7 @@ pub trait IpfsDatabase: Clone + Send + Sync {
 
     /// Get a block from the database
     /// <https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-get>
-    fn block_get(&self, cid: &str) -> impl Future<Output = Result<Bytes>> + Send;
+    fn block_get(&self, cid: &str) -> impl Future<Output = Result<Option<Bytes>>> + Send;
 }
 
 /// The service that sends account verification codes
@@ -75,15 +75,16 @@ impl<T: IpfsDatabase> IpfsDatabase for &T {
         (**self).block_put(cid_codec, mhtype, data).await
     }
 
-    async fn block_get(&self, cid: &str) -> Result<Bytes> {
+    async fn block_get(&self, cid: &str) -> Result<Option<Bytes>> {
         (**self).block_get(cid).await
     }
 }
 
 /// A newtype wrapper for turning an `IpfsDatabase` into something that implements `BlockStore`
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DbBlockStore<T> {
-    inner: T,
+    /// The underlying IpfsDatabase
+    pub inner: T,
 }
 
 impl<T> From<T> for DbBlockStore<T> {
@@ -93,13 +94,43 @@ impl<T> From<T> for DbBlockStore<T> {
 }
 
 impl<T: IpfsDatabase> BlockStore for DbBlockStore<T> {
-    async fn get_block(&self, cid: &Cid) -> Result<Bytes> {
-        self.inner.block_get(&cid.to_string()).await
+    async fn get_block(&self, cid: &Cid) -> Result<Bytes, BlockStoreError> {
+        let Some(block) = self.inner.block_get(&cid.to_string()).await? else {
+            return Err(BlockStoreError::CIDNotFound(*cid));
+        };
+        Ok(block)
     }
 
-    async fn put_block(&self, bytes: impl Into<Bytes> + CondSend, codec: u64) -> Result<Cid> {
-        self.inner
+    async fn put_block(
+        &self,
+        bytes: impl Into<Bytes> + CondSend,
+        codec: u64,
+    ) -> Result<Cid, BlockStoreError> {
+        let cid = self
+            .inner
             .block_put(codec, Code::Blake3_256.into(), bytes.into().to_vec())
-            .await
+            .await?;
+        Ok(cid)
+    }
+
+    async fn put_block_keyed(
+        &self,
+        cid: Cid,
+        bytes: impl Into<Bytes> + CondSend,
+    ) -> Result<(), BlockStoreError> {
+        let actual_cid = self
+            .inner
+            .block_put(cid.codec(), cid.hash().code(), bytes.into().to_vec())
+            .await?;
+        if cid != actual_cid {
+            return Err(BlockStoreError::Custom(anyhow!(
+                "CID mismatch: Expected {cid}, but the block hashed to {actual_cid}"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn has_block(&self, cid: &Cid) -> Result<bool, BlockStoreError> {
+        Ok(self.inner.block_get(&cid.to_string()).await?.is_some())
     }
 }

@@ -87,7 +87,7 @@ impl TestContext {
     }
 
     pub fn ipfs_db(&self) -> &TestIpfsDatabase {
-        &self.app_state.blocks.ipfs_db
+        &self.app_state.blocks.ipfs_db()
     }
 
     pub fn verification_code_sender(&self) -> &TestVerificationCodeSender {
