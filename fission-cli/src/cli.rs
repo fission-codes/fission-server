@@ -49,15 +49,19 @@ use std::{
     fmt::Debug,
     fs::{create_dir_all, OpenOptions},
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 use tokio::fs::{self, File};
-use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
+use tokio_util::{
+    compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt},
+    io::StreamReader,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use wnfs::{
     common::{libipld::Cid, BlockStore, MemoryBlockStore, Storable},
-    public::{PublicDirectory, PublicNode},
+    public::{PublicDirectory, PublicFile, PublicNode},
 };
 
 #[derive(Debug, Parser)]
@@ -347,9 +351,12 @@ impl Cli {
                                 .write(&[filename], std::fs::read(source)?, Utc::now(), store)
                                 .await?;
                             directory.store(store).await?
+                        } else if source.is_dir() {
+                            let mut directory = PublicDirectory::new_rc(Utc::now());
+                            import_dir_from(source, &mut directory, store).await?;
+                            directory.store(store).await?
                         } else {
-                            // TODO(matheus23)
-                            bail!("Uploading directories is not yet implemented.");
+                            bail!("Unsupported file type (not a file or directory)");
                         };
 
                         state
@@ -983,19 +990,82 @@ async fn export_dir_to(
             continue;
         }
 
+        let entry = path.join(entry_path);
+
+        tracing::info!(?entry, "Exporting volume entry");
+
         let node = directory
             .get_node(&[name.clone()], store)
             .await?
             .expect("Node must be there, we just got it from ls");
         match node {
             PublicNode::File(file) => {
-                let mut fs_file = File::create(path.join(entry_path)).await?;
+                let mut fs_file = File::create(entry).await?;
                 let mut stream = file.stream_content(0, store).await?.compat();
                 tokio::io::copy(&mut stream, &mut fs_file).await?;
             }
-            PublicNode::Dir(dir) => export_dir_to(path.join(entry_path), dir, store).await?,
+            PublicNode::Dir(dir) => export_dir_to(entry, dir, store).await?,
         }
     }
 
     Ok(())
+}
+
+async fn import_dir_from(
+    path: &PathBuf,
+    directory: &mut Arc<PublicDirectory>,
+    store: &impl BlockStore,
+) -> Result<()> {
+    for entry in walkdir::WalkDir::new(path) {
+        match entry {
+            Ok(entry) => {
+                let path = entry.path();
+                let path_segments = parse_path(path)?;
+
+                tracing::info!(?path, "Importing volume entry");
+
+                if entry.file_type().is_file() {
+                    let fs_file = File::open(path).await?;
+                    let file_imported =
+                        PublicFile::with_content_streaming_rc(Utc::now(), fs_file.compat(), store)
+                            .await?;
+
+                    let file = directory
+                        .open_file_mut(&path_segments, Utc::now(), store)
+                        .await?;
+                    file.copy_content_from(&file_imported, Utc::now());
+                } else {
+                    directory.mkdir(&path_segments, Utc::now(), store).await?;
+                }
+            }
+            Err(e) => {
+                eprintln!("Skipping directory entry due to error: {e}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// converts a canonicalized relative path to a string, returning an error if
+/// the path is not valid unicode
+///
+/// this will also fail if the path is non canonical, i.e. contains `..` or `.`,
+/// or if the path components contain any windows or unix path separators
+fn parse_path(path: impl AsRef<Path>) -> Result<Vec<String>> {
+    path.as_ref()
+        .components()
+        .map(|c| {
+            let c = if let Component::Normal(x) = c {
+                x.to_str().context("invalid character in path")?
+            } else {
+                anyhow::bail!("invalid path component {:?}", c)
+            };
+            anyhow::ensure!(
+                !c.contains('/') && !c.contains('\\'),
+                "invalid path component {:?}",
+                c
+            );
+            Ok(c.to_string())
+        })
+        .collect::<Result<Vec<_>>>()
 }
