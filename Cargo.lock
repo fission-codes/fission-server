@@ -1669,6 +1669,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url 2.5.0",
+ "walkdir",
  "websocket",
  "wnfs",
 ]
