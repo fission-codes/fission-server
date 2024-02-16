@@ -7,7 +7,12 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
-use car_mirror::{cache::InMemoryCache, common::stream_car_frames, messages::PushResponse};
+use car_mirror::{
+    cache::InMemoryCache,
+    common::stream_car_frames,
+    incremental_verification::IncrementalDagVerification,
+    messages::{PullRequest, PushResponse},
+};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
@@ -25,6 +30,7 @@ use fission_core::{
     ed_did_key::EdDidKey,
     username::{Handle, Username},
 };
+use futures::stream::TryStreamExt;
 use hickory_proto::rr::RecordType;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use inquire::ui::RenderConfig;
@@ -42,13 +48,16 @@ use rs_ucan::{
 use std::{
     fmt::Debug,
     fs::{create_dir_all, OpenOptions},
-    io::Read,
-    path::PathBuf,
+    io::{self, Read},
+    path::{Path, PathBuf},
+    str::FromStr,
 };
+use tokio::fs::{self, File};
+use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use wnfs::{
-    common::{libipld::Cid, MemoryBlockStore, Storable},
-    public::PublicDirectory,
+    common::{libipld::Cid, BlockStore, MemoryBlockStore, Storable},
+    public::{PublicDirectory, PublicNode},
 };
 
 #[derive(Debug, Parser)]
@@ -133,8 +142,10 @@ pub struct VolumeCmds {
 
 #[derive(Debug, Subcommand)]
 pub enum VolumeCommands {
-    /// Publish a directory as a volume
+    /// Publish a directory or file as a volume
     Publish(PublishCommand),
+    /// Download a volume to given directory
+    Download(DownloadCommand),
 }
 
 #[derive(Debug, Parser)]
@@ -145,6 +156,15 @@ pub struct PublishCommand {
     /// If not provided, it's assumed you only have access to one account.
     #[arg(long, short = 'u')]
     username: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct DownloadCommand {
+    /// The domain name of the volume to download. Alternatively can be a CID.
+    volume: String,
+    /// Path to the directory where to download the volume to
+    #[arg(long, short = 'o')]
+    output: PathBuf,
 }
 
 impl Cli {
@@ -328,12 +348,50 @@ impl Cli {
                                 .await?;
                             directory.store(store).await?
                         } else {
+                            // TODO(matheus23)
                             bail!("Uploading directories is not yet implemented.");
                         };
 
                         state
                             .volume_put(did, &auth.ucans, cid, store, cache)
                             .await?;
+                    }
+                    VolumeCommands::Download(download) => {
+                        let store = &MemoryBlockStore::new();
+                        let cache = &InMemoryCache::new(100_000);
+
+                        if download.output.is_file() {
+                            bail!(
+                                "Can't write to {}: Expected a directory, but got a file.",
+                                download.output.to_string_lossy()
+                            );
+                        }
+
+                        fs::create_dir_all(&download.output).await?;
+
+                        let cid = if let Ok(cid) = Cid::from_str(&download.volume) {
+                            println!("Interpreting the input as a CID");
+                            cid
+                        } else {
+                            let record = doh_request(
+                                &state.client,
+                                &settings,
+                                RecordType::TXT,
+                                &format!("_dnslink.{}", download.volume),
+                            )
+                            .await?;
+
+                            let cid = record
+                                .data
+                                .strip_prefix("dnslink=/ipfs/")
+                                .ok_or(anyhow!("Failed parsing dnslink record: {}", record.data))?;
+
+                            Cid::from_str(cid)?
+                        };
+
+                        state.volume_get(cid, store, cache).await?;
+                        let directory = PublicDirectory::load(&cid, store).await?;
+                        export_dir_to(download.output.clone(), &directory, store).await?;
                     }
                 }
             }
@@ -750,6 +808,49 @@ impl<'s> CliState<'s> {
         }
     }
 
+    async fn volume_get(
+        &self,
+        cid: Cid,
+        store: &MemoryBlockStore,
+        cache: &InMemoryCache,
+    ) -> Result<()> {
+        // We use a custom client, because we need to skip caching requests,
+        // as our caching middleware from http-cache will fail on reqwest body streams.
+        let client = ClientBuilder::new(Client::new())
+            .with(LogAndHandleErrorMiddleware)
+            .build();
+
+        let mut download_url = self.settings.api_endpoint.clone();
+        download_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
+
+        let config = &car_mirror::common::Config::default();
+
+        let mut pull_request: PullRequest = IncrementalDagVerification::new([cid], &store, &cache)
+            .await?
+            .into_receiver_state(config.bloom_fpr)
+            .into();
+
+        while !pull_request.indicates_finished() {
+            let answer = client
+                .get(download_url.clone())
+                .json(&pull_request)
+                .send()
+                .await?
+                .error_for_status()?;
+
+            let stream = StreamReader::new(answer.bytes_stream().map_err(io::Error::other));
+
+            pull_request =
+                car_mirror::common::block_receive_car_stream(cid, stream, config, store, cache)
+                    .await?
+                    .into();
+        }
+
+        println!("Finished downloading");
+
+        Ok(())
+    }
+
     fn server_request(&self, method: Method, path: &str) -> Result<RequestBuilder> {
         let mut url = self.settings.api_endpoint.clone();
         url.set_path(path);
@@ -867,4 +968,34 @@ fn setup_tracing(ansi: bool) {
         )
         .with(EnvFilter::from_default_env())
         .init();
+}
+
+#[async_recursion::async_recursion]
+async fn export_dir_to(
+    path: PathBuf,
+    directory: &PublicDirectory,
+    store: &impl BlockStore,
+) -> Result<()> {
+    for (name, _) in directory.ls(&[], store).await? {
+        let entry_path = Path::new(&name);
+        if !entry_path.is_relative() {
+            eprintln!("Skipping directory entry \"{name}\", as it can't be parsed as relative path segment");
+            continue;
+        }
+
+        let node = directory
+            .get_node(&[name.clone()], store)
+            .await?
+            .expect("Node must be there, we just got it from ls");
+        match node {
+            PublicNode::File(file) => {
+                let mut fs_file = File::create(path.join(entry_path)).await?;
+                let mut stream = file.stream_content(0, store).await?.compat();
+                tokio::io::copy(&mut stream, &mut fs_file).await?;
+            }
+            PublicNode::Dir(dir) => export_dir_to(path.join(entry_path), dir, store).await?,
+        }
+    }
+
+    Ok(())
 }

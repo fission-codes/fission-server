@@ -39,7 +39,7 @@ pub struct Blocks<D: IpfsDatabase> {
     /// The blockstore stack based on the ipfs database
     pub store: CacheMissing<DbBlockStore<D>>,
     /// Cache for information about blocks for car mirror
-    pub car_mirror_cache: InMemoryCache,
+    pub cache: InMemoryCache,
 }
 
 /// Cache capacity settings
@@ -66,7 +66,7 @@ impl<D: IpfsDatabase> Blocks<D> {
                 approx_capacities.missing_block_cids,
                 DbBlockStore::from(ipfs_db),
             ),
-            car_mirror_cache: InMemoryCache::new(approx_capacities.reference_cids),
+            cache: InMemoryCache::new(approx_capacities.reference_cids),
         }
     }
 }

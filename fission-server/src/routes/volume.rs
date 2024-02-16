@@ -1,15 +1,24 @@
-//! TODO docs
+//! Routes for volume uploads and downloads using car-mirror
 
 use crate::{
-    app_state::AppState, authority::Authority, db, error::AppResult, extract::json::Json,
-    models::account::AccountRecord, setups::ServerSetup,
+    app_state::AppState,
+    authority::Authority,
+    db,
+    error::{AppError, AppResult},
+    extract::json::Json,
+    models::account::AccountRecord,
+    setups::ServerSetup,
 };
-use axum::extract::{BodyStream, Path, State};
-use car_mirror::messages::PushResponse;
+use axum::{
+    body::StreamBody,
+    extract::{BodyStream, Path, State},
+};
+use bytes::Bytes;
+use car_mirror::messages::{PullRequest, PushResponse};
 use cid::Cid;
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
 use fission_core::capabilities::{did::Did, fission::FissionAbility};
-use futures_util::TryStreamExt;
+use futures_util::{Stream, TryStreamExt};
 use http::StatusCode;
 use std::str::FromStr;
 use tokio_util::io::StreamReader;
@@ -18,12 +27,13 @@ use tokio_util::io::StreamReader;
 #[utoipa::path(
     put,
     path = "/api/v0/volume/cid/:cid",
-    // request_body = Bytes,
+    request_body = BodyStream,
     security(
         ("ucan_bearer" = []),
     ),
     responses(
-        (status = 201, description = "Successfully uploaded data"),
+        (status = 200, description = "Successfully uploaded data"),
+        (status = 202, description = "Data partially uploaded"),
         (status = 400, description = "Bad Request"),
         (status = 403, description = "Forbidden"),
     )
@@ -54,7 +64,7 @@ pub async fn put_volume_cid<S: ServerSetup>(
                 reader,
                 &Default::default(),
                 &state.blocks.store,
-                &state.blocks.car_mirror_cache,
+                &state.blocks.cache,
             )
             .await?
             .into();
@@ -72,4 +82,35 @@ pub async fn put_volume_cid<S: ServerSetup>(
         .scope_boxed()
     })
     .await
+}
+
+/// GET some data via car-mirror
+#[utoipa::path(
+    get,
+    path = "/api/v0/volume/cid/:cid",
+    responses(
+        (status = 200, description = "Ok"),
+        (status = 400, description = "Bad Request"),
+    )
+)]
+pub async fn get_volume_cid<S: ServerSetup>(
+    State(state): State<AppState<S>>,
+    Path(cid_string): Path<String>,
+    Json(request): Json<PullRequest>,
+) -> AppResult<(StatusCode, StreamBody<impl Stream<Item = AppResult<Bytes>>>)> {
+    let cid = Cid::from_str(&cid_string)?;
+
+    let response_stream = car_mirror::common::block_send_block_stream(
+        cid,
+        Some(request.into()),
+        state.blocks.store.clone(),
+        state.blocks.cache.clone(),
+    )
+    .await?;
+
+    let car_stream = car_mirror::common::stream_car_frames(response_stream)
+        .await?
+        .map_err(AppError::from);
+
+    Ok((StatusCode::OK, StreamBody::new(car_stream)))
 }

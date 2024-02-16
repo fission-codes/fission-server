@@ -44,6 +44,7 @@ pub fn setup_app_router<S: ServerSetup>(app_state: AppState<S>) -> Router {
         .route("/account/handle/:handle", patch(account::patch_handle))
         .route("/account/handle", delete(account::delete_handle))
         .route("/volume/cid/:cid", put(volume::put_volume_cid))
+        .route("/volume/cid/:cid", get(volume::get_volume_cid))
         .route("/capabilities", get(capability_indexing::get_capabilities))
         .route("/revocations", post(revocations::post_revocation))
         .with_state(app_state.clone())
