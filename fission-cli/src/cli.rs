@@ -374,8 +374,6 @@ impl Cli {
                             );
                         }
 
-                        fs::create_dir_all(&download.output).await?;
-
                         let cid = if let Ok(cid) = Cid::from_str(&download.volume) {
                             println!("Interpreting the input as a CID");
                             cid
@@ -983,6 +981,7 @@ async fn export_dir_to(
     directory: &PublicDirectory,
     store: &impl BlockStore,
 ) -> Result<()> {
+    fs::create_dir_all(&path).await?;
     for (name, _) in directory.ls(&[], store).await? {
         let entry_path = Path::new(&name);
         if !entry_path.is_relative() {
