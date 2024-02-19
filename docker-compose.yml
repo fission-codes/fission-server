@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_PASSWORD: your_password
+    ports:
+      - "5432:5432"
+
+  ipfs-kubo:
+    image: ipfs/kubo
+    command: ["daemon", "--migrate=true", "--agent-version-suffix=docker", "--offline"] # adding --offline
+    ports:
+      # - "4001:4001" # webui
+      - "5001:5001" # RPC API

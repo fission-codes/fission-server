@@ -14,20 +14,11 @@ concurrency:
 jobs:
   coverage:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres
-        env:
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
+      - name: Start Docker Compose Services
+        run: docker-compose up -d
+
       - name: Install Protoc
         uses: arduino/setup-protoc@v2
         with:
@@ -75,3 +66,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           files: lcov.info
+
+      - name: Stop Docker Compose Services
+        run: docker-compose down
