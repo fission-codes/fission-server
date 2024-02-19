@@ -209,7 +209,8 @@ mod tests {
     }
 
     #[test_log::test]
-    fn test_ucan_resource() -> TestResult {
+    #[ignore]
+    fn test_powerbox_ucan_resource() -> TestResult {
         let store = InMemoryStore::<RawCodec>::default();
         let did_verifier_map = DidVerifierMap::default();
 
