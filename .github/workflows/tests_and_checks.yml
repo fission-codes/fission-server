@@ -87,15 +87,16 @@ jobs:
           - stable
           - nightly
     steps:
-      - name: Start Docker Compose Services
-        run: docker-compose up -d
-
       - name: Install Protoc
         uses: arduino/setup-protoc@v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Start Docker Compose Services
+        run: docker-compose up -d
 
       - name: Install Environment Packages
         run: |
