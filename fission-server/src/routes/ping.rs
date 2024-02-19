@@ -1,7 +1,7 @@
 //! Generic ping route.
 
 use crate::error::AppResult;
-use axum::{self, http::StatusCode};
+use axum::http::StatusCode;
 
 /// GET handler for internal pings and availability
 #[utoipa::path(

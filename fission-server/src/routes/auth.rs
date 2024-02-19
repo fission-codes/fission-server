@@ -8,7 +8,6 @@ use crate::{
     setups::{ServerSetup, VerificationCodeSender},
 };
 use axum::{
-    self,
     extract::{Json, State},
     http::StatusCode,
 };

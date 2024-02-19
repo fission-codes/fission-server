@@ -18,7 +18,6 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use axum::{
-    self,
     extract::{Path, State},
     http::StatusCode,
 };
