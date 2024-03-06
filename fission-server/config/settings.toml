@@ -33,6 +33,7 @@ exporter_otlp_endpoint = "http://localhost:4317"
 server_port = 1053
 default_soa = "dns1.fission.systems hostmaster.fission.codes 0 10800 3600 604800 3600"
 default_ttl = 1800
+dnslink_ttl = 10
 origin = "localhost" # used for serving the `_did.<origin>` DNS TXT entry
 users_origin = "localhost" # used for serving the `_did.<username>.<users_origin>` DNS TXT entry
 

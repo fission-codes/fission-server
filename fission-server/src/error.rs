@@ -120,7 +120,7 @@ impl From<anyhow::Error> for AppError {
             Err(e) => e,
         };
 
-        let err = match err.downcast::<car_mirror::error::Error>() {
+        let err = match err.downcast::<car_mirror::Error>() {
             Ok(err) => return Self::from(err),
             Err(e) => e,
         };
@@ -191,8 +191,8 @@ impl From<ExtensionRejection> for AppError {
     }
 }
 
-impl From<car_mirror::error::Error> for AppError {
-    fn from(value: car_mirror::error::Error) -> Self {
+impl From<car_mirror::Error> for AppError {
+    fn from(value: car_mirror::Error) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
     }
 }

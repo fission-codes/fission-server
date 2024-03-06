@@ -7,12 +7,8 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
-use car_mirror::{
-    cache::InMemoryCache,
-    common::stream_car_frames,
-    incremental_verification::IncrementalDagVerification,
-    messages::{PullRequest, PushResponse},
-};
+use car_mirror::cache::InMemoryCache;
+use car_mirror_reqwest::RequestBuilderExt as _;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
@@ -30,13 +26,15 @@ use fission_core::{
     ed_did_key::EdDidKey,
     username::{Handle, Username},
 };
-use futures::stream::TryStreamExt;
 use hickory_proto::rr::RecordType;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use inquire::ui::RenderConfig;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
-use reqwest::{header::CONTENT_TYPE, Body, Client, Method, StatusCode};
+use reqwest::{
+    header::{ACCEPT, CACHE_CONTROL, CONTENT_TYPE},
+    Client, Method,
+};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
     builder::UcanBuilder,
@@ -48,16 +46,13 @@ use rs_ucan::{
 use std::{
     fmt::Debug,
     fs::{create_dir_all, OpenOptions},
-    io::{self, Read},
+    io::Read,
     path::{Component, Path, PathBuf},
     str::FromStr,
     sync::Arc,
 };
 use tokio::fs::{self, File};
-use tokio_util::{
-    compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt},
-    io::StreamReader,
-};
+use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use wnfs::{
     common::{libipld::Cid, BlockStore, MemoryBlockStore, Storable},
@@ -362,6 +357,7 @@ impl Cli {
                         state
                             .volume_put(did, &auth.ucans, cid, store, cache)
                             .await?;
+                        println!("Successfully uploaded");
                     }
                     VolumeCommands::Download(download) => {
                         let store = &MemoryBlockStore::new();
@@ -383,6 +379,7 @@ impl Cli {
                                 &settings,
                                 RecordType::TXT,
                                 &format!("_dnslink.{}", download.volume),
+                                true,
                             )
                             .await?;
 
@@ -395,8 +392,11 @@ impl Cli {
                         };
 
                         state.volume_get(cid, store, cache).await?;
+                        println!("Finished downloading");
+
                         let directory = PublicDirectory::load(&cid, store).await?;
                         export_dir_to(download.output.clone(), &directory, store).await?;
+                        println!("Extracted to {}", download.output.to_string_lossy());
                     }
                 }
             }
@@ -462,6 +462,7 @@ impl<'s> CliState<'s> {
             settings,
             RecordType::TXT,
             &format!("_did.{server_host}"),
+            false,
         )
         .await?
         .data;
@@ -559,6 +560,7 @@ impl<'s> CliState<'s> {
             self.settings,
             RecordType::TXT,
             &format!("_did.{username}"),
+            false,
         )
         .await
         .context("Looking up user DID")?
@@ -768,49 +770,25 @@ impl<'s> CliState<'s> {
         let mut upload_url = self.settings.api_endpoint.clone();
         upload_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
 
-        let mut push_state = None;
-
-        loop {
-            let block_stream = car_mirror::common::block_send_block_stream(
-                cid,
-                push_state,
-                store.clone(),
-                cache.clone(),
-            )
-            .await?;
-            let car_stream = stream_car_frames(block_stream).await?;
-            let reqwest_stream = Body::wrap_stream(car_stream);
-
+        // we use `push_with`, instead of `send_car_mirror_push`, because this way we can
+        // re-issue a fresh UCAN token for each request and avoid having auth tokens expire.
+        car_mirror_reqwest::push_with(cid, store, cache, |body| async {
             let ucan =
                 self.issue_ucan_with(did.clone(), FissionAbility::AccountManage, None, chain)?;
 
-            let answer = client
-                .put(upload_url.clone())
-                .bearer_auth(ucan.encode()?)
-                .header("ucans", encode_ucan_header(chain)?)
-                .body(reqwest_stream)
-                .send()
-                .await?;
+            Ok::<_, anyhow::Error>(
+                client
+                    .put(upload_url.clone())
+                    .bearer_auth(ucan.encode()?)
+                    .header("ucans", encode_ucan_header(chain)?)
+                    .body(body)
+                    .send()
+                    .await?,
+            )
+        })
+        .await?;
 
-            match answer.status() {
-                StatusCode::OK => {
-                    println!("Successfully updated");
-                    return Ok(());
-                }
-                StatusCode::ACCEPTED => {
-                    // We need to continue.
-                }
-                other => {
-                    bail!(
-                        "Unexpected status code: {other}, err: {}",
-                        answer.text().await?
-                    );
-                }
-            }
-
-            let response: PushResponse = answer.json().await?;
-            push_state = Some(response.into());
-        }
+        Ok(())
     }
 
     async fn volume_get(
@@ -819,39 +797,19 @@ impl<'s> CliState<'s> {
         store: &MemoryBlockStore,
         cache: &InMemoryCache,
     ) -> Result<()> {
-        // We use a custom client, because we need to skip caching requests,
-        // as our caching middleware from http-cache will fail on reqwest body streams.
-        let client = ClientBuilder::new(Client::new())
-            .with(LogAndHandleErrorMiddleware)
-            .build();
-
         let mut download_url = self.settings.api_endpoint.clone();
         download_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
 
-        let config = &car_mirror::common::Config::default();
+        let config = &Default::default();
 
-        let mut pull_request: PullRequest = IncrementalDagVerification::new([cid], &store, &cache)
-            .await?
-            .into_receiver_state(config.bloom_fpr)
-            .into();
-
-        while !pull_request.indicates_finished() {
-            let answer = client
-                .get(download_url.clone())
-                .json(&pull_request)
-                .send()
-                .await?
-                .error_for_status()?;
-
-            let stream = StreamReader::new(answer.bytes_stream().map_err(io::Error::other));
-
-            pull_request =
-                car_mirror::common::block_receive_car_stream(cid, stream, config, store, cache)
-                    .await?
-                    .into();
-        }
-
-        println!("Finished downloading");
+        // We use a custom client, because we need to skip caching requests,
+        // as our caching middleware from http-cache will fail on reqwest body streams.
+        ClientBuilder::new(Client::new())
+            .with(LogAndHandleErrorMiddleware)
+            .build()
+            .get(download_url)
+            .run_car_mirror_pull(cid, config, store, cache)
+            .await?;
 
         Ok(())
     }
@@ -944,18 +902,19 @@ async fn doh_request(
     settings: &Settings,
     record_type: RecordType,
     record: &str,
+    no_cache: bool,
 ) -> Result<dns::DohRecordJson> {
     let mut url = settings.api_endpoint.clone();
     url.set_path("dns-query");
     url.set_query(Some(&format!("name={record}&type={record_type}")));
 
-    let response: dns::Response = client
-        .get(url)
-        .header("Accept", "application/dns-json")
-        .send()
-        .await?
-        .json()
-        .await?;
+    let mut request = client.get(url).header(ACCEPT, "application/dns-json");
+
+    if no_cache {
+        request = request.header(CACHE_CONTROL, "no-cache");
+    }
+
+    let response: dns::Response = request.send().await?.json().await?;
 
     // Must always be a single answer, since we're asking only a single question
     let answer = response.answer.into_iter().next().ok_or(anyhow!(
