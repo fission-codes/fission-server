@@ -1,5 +1,6 @@
 //! JSON Extrator / Response replacement for [axum::extract::Json].
 
+use crate::error::AppError;
 use async_trait::async_trait;
 use axum::{
     body::{Bytes, HttpBody},
@@ -14,8 +15,6 @@ use http::{
 use serde::{de::DeserializeOwned, Serialize};
 use std::ops::{Deref, DerefMut};
 use tracing::warn;
-
-use crate::error::AppError;
 
 /// JSON Extractor / Response.
 /// Built to replace axum::extract::Json, due to the manner of error response.

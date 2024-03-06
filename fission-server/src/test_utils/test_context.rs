@@ -47,6 +47,7 @@ impl TestContext {
             default_soa: "dns1.fission.systems hostmaster.fission.codes 0 10800 3600 604800 3600"
                 .to_string(),
             default_ttl: 1800,
+            dnslink_ttl: 10,
             origin: "localhost".to_string(),
             users_origin: "localhost".to_string(),
         };

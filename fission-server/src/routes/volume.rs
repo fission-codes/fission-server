@@ -59,15 +59,14 @@ pub async fn put_volume_cid<S: ServerSetup>(
                 body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
             );
 
-            let response: PushResponse = car_mirror::common::block_receive_car_stream(
+            let response = car_mirror::push::response_streaming(
                 cid,
                 reader,
                 &Default::default(),
                 &state.blocks.store,
                 &state.blocks.cache,
             )
-            .await?
-            .into();
+            .await?;
 
             if response.indicates_finished() {
                 account
@@ -100,17 +99,16 @@ pub async fn get_volume_cid<S: ServerSetup>(
 ) -> AppResult<(StatusCode, StreamBody<impl Stream<Item = AppResult<Bytes>>>)> {
     let cid = Cid::from_str(&cid_string)?;
 
-    let response_stream = car_mirror::common::block_send_block_stream(
+    let car_stream = car_mirror::pull::response_streaming(
         cid,
-        Some(request.into()),
+        request,
         state.blocks.store.clone(),
         state.blocks.cache.clone(),
     )
     .await?;
 
-    let car_stream = car_mirror::common::stream_car_frames(response_stream)
-        .await?
-        .map_err(AppError::from);
-
-    Ok((StatusCode::OK, StreamBody::new(car_stream)))
+    Ok((
+        StatusCode::OK,
+        StreamBody::new(car_stream.map_err(AppError::from)),
+    ))
 }

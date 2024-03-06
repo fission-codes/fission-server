@@ -145,6 +145,7 @@ impl DnsServer {
             origin_name.into(),
             default_soa,
             settings.default_ttl,
+            settings.dnslink_ttl,
         ))
     }
 

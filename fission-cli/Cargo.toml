@@ -28,6 +28,7 @@ ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 wnfs = { workspace = true }
 car-mirror = { workspace = true }
+car-mirror-reqwest = { workspace = true }
 chrono = { workspace = true }
 fission-core = { path = "../fission-core", version = "0.1.0" }
 clap = { version = "4.4.6", features = ["derive"] }
@@ -43,7 +44,7 @@ directories = "5.0.1"
 reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls", "stream"] }
 inquire = "0.6.2"
 tokio = { workspace = true }
-tokio-util.workspace = true
+tokio-util = { workspace = true }
 reqwest-middleware = "0.2.4"
 async-trait = "0.1.77"
 task-local-extensions = "0.1.4"

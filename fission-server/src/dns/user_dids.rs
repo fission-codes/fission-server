@@ -31,16 +31,24 @@ pub struct UserRecordsAuthority {
     origin: LowerName,
     default_soa: SOA,
     default_ttl: u32,
+    dnslink_ttl: u32,
 }
 
 impl UserRecordsAuthority {
     /// Create a new database backed authority
-    pub fn new(db_pool: Pool, origin: LowerName, default_soa: SOA, default_ttl: u32) -> Self {
+    pub fn new(
+        db_pool: Pool,
+        origin: LowerName,
+        default_soa: SOA,
+        default_ttl: u32,
+        dnslink_ttl: u32,
+    ) -> Self {
         UserRecordsAuthority {
             db_pool,
             origin,
             default_soa,
             default_ttl,
+            dnslink_ttl,
         }
     }
 
@@ -173,7 +181,7 @@ impl Authority for UserRecordsAuthority {
                         Arc::new(did_record_set(
                             name,
                             account_dnslink,
-                            self.default_ttl,
+                            self.dnslink_ttl,
                             self.default_soa.serial(),
                         )),
                     ),
