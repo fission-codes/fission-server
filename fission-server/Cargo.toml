@@ -71,9 +71,10 @@ metrics = "0.21"
 metrics-exporter-prometheus = "0.12.1"
 metrics-util = { version = "0.15", default-features = true }
 mime = "0.3"
+serde_ipld_dagcbor = { workspace = true }
 num_cpus = "1.0"
 once_cell = "1.14"
-openssl = { version = "0.10", features = ["vendored"], default-features = false }
+# openssl = { version = "0.10", features = ["vendored"], default-features = false }
 opentelemetry = { version = "0.20", features = ["trace"] }
 opentelemetry-otlp = { version = "0.13", features = ["trace", "metrics", "grpc-tonic", "tls-roots"], default-features = false }
 opentelemetry_sdk = { version = "0.20", features = ["rt-tokio"] }

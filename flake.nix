@@ -109,7 +109,6 @@
               fi
             fi
 
-            # Give instructions on how to start postgresql if it's not already running.
             if [ ! -e $PGDATA/postmaster.pid ]; then
               echo -e "\nPostgreSQL not running."
               echo
@@ -164,11 +163,6 @@
             ];
 
           doCheck = false;
-
-          nativeBuildInputs = with pkgs; [ pkg-config ];
-
-          OPENSSL_NO_VENDOR =
-            1; # see https://github.com/sfackler/rust-openssl/pull/2122
         };
       });
 }

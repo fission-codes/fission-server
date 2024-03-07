@@ -667,11 +667,13 @@ dependencies = [
 [[package]]
 name = "car-mirror"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-car-mirror?branch=main#206f6d88f9d5fe9a2774b27ca2d7e29c19824831"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de9161b92e7c1a98174e6d6fd2a83f319fdb9f4481391ef263ef019e91a6658a"
 dependencies = [
  "anyhow",
  "async-stream",
  "bytes",
+ "data-encoding",
  "deterministic-bloom",
  "futures",
  "iroh-car",
@@ -679,6 +681,7 @@ dependencies = [
  "libipld-core",
  "quick_cache",
  "serde",
+ "serde_bytes",
  "serde_ipld_dagcbor",
  "thiserror",
  "tokio",
@@ -689,7 +692,8 @@ dependencies = [
 [[package]]
 name = "car-mirror-reqwest"
 version = "0.1.0"
-source = "git+https://github.com/fission-codes/rs-car-mirror?branch=main#206f6d88f9d5fe9a2774b27ca2d7e29c19824831"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c795adf99deb713fd339b74c0117710edc32a305d7e2aa7491a67bcd15dca354"
 dependencies = [
  "anyhow",
  "bytes",
@@ -698,6 +702,7 @@ dependencies = [
  "libipld",
  "reqwest",
  "reqwest-middleware",
+ "serde_ipld_dagcbor",
  "thiserror",
  "tokio-util",
  "tracing",
@@ -1771,7 +1776,6 @@ dependencies = [
  "mime 0.3.17",
  "num_cpus",
  "once_cell",
- "openssl",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
@@ -1787,6 +1791,7 @@ dependencies = [
  "retry-policies",
  "rs-ucan",
  "serde",
+ "serde_ipld_dagcbor",
  "serde_json",
  "serde_path_to_error",
  "serde_with",
@@ -3440,15 +3445,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
-name = "openssl-src"
-version = "300.2.3+3.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cff92b6f71555b61bb9315f7c64da3ca43d87531622120fea0195fc761b4843"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "openssl-sys"
 version = "0.9.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3456,7 +3452,6 @@ checksum = "ae94056a791d0e1217d18b6cbdccb02c61e3054fc69893607f4067e3bb0b1fd1"
 dependencies = [
  "cc",
  "libc",
- "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
