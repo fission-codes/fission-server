@@ -15,7 +15,7 @@ use zeroize::ZeroizeOnDrop;
 /// An Ed25519 EdDSA `did:key:zM...` with the signing key stored in-memory and zeroized on drop
 #[derive(ZeroizeOnDrop)]
 pub struct EdDidKey {
-    signing_key: SigningKey,
+    pub(crate) signing_key: SigningKey,
     #[zeroize(skip)]
     did_key_string: String,
 }

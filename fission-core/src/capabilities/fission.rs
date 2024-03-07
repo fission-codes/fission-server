@@ -2,14 +2,17 @@
 
 use super::did::Did;
 use anyhow::Result;
-use libipld::codec_impl::IpldCodec;
+use libipld::{codec_impl::IpldCodec, Cid};
 use rand::thread_rng;
 use rs_ucan::{
     plugins::Plugin,
     semantics::{ability::Ability, caveat::EmptyCaveat},
 };
-use std::fmt::Display;
-use ucan::{crypto::signature::Envelope, Delegation};
+use std::{collections::BTreeMap, fmt::Display};
+use ucan::{
+    crypto::{signature::Envelope, Nonce},
+    Delegation,
+};
 
 /// An rs-ucan plugin for handling fission server capabilities
 #[derive(Debug)]
@@ -219,21 +222,38 @@ mod tests {
         let server_sk = ed25519_dalek::SigningKey::generate(&mut thread_rng());
         let server_signer =
             ucan::did::preset::Signer::Key(ucan::did::key::Signer::EdDsa(server_sk));
+
         let server_ed_did_key = EdDidKey::new(server_sk);
 
         let server = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
             server_sk.verifying_key(),
         ));
 
-        let device = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
-            ed25519_dalek::SigningKey::generate(&mut thread_rng()).verifying_key(),
+        let account_sk = ed25519_dalek::SigningKey::generate(&mut thread_rng());
+        let account = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
+            account_sk.verifying_key(),
         ));
+        let account_signer =
+            ucan::did::preset::Signer::Key(ucan::did::key::Signer::EdDsa(account_sk));
+
+        let dnslink_sk = ed25519_dalek::SigningKey::generate(&mut thread_rng());
+        let dnslink = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
+            dnslink_sk.verifying_key(),
+        ));
+        let dnslink_signer =
+            ucan::did::preset::Signer::Key(ucan::did::key::Signer::EdDsa(dnslink_sk));
+
+        let device_sk = ed25519_dalek::SigningKey::generate(&mut thread_rng());
+        let device = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
+            device_sk.verifying_key(),
+        ));
+        let device_signer =
+            ucan::did::preset::Signer::Key(ucan::did::key::Signer::EdDsa(device_sk));
 
         // FIXME perhaps add this back upstream as a named const
         let varsig_header = ucan::crypto::varsig::header::EdDsaHeader {
             codec: libipld::cbor::DagCborCodec,
         };
-
 
         // 1.               account -*-> server
         // 2.                            server -a-> device
@@ -242,16 +262,21 @@ mod tests {
 
         // Both of these UCANs just create ephemeral DIDs & delegate all of those
         // DID's rights to the server
-        let (account_did, _account_ucan) = server_create_resource(&server_ed_did_key)?;
-        let (dnslink_did, _dnslink_ucan) = server_create_resource(&server_ed_did_key)?;
+        // let (account_did, _account_ucan) = server_create_resource(&server_ed_did_key)?;
+        // let (dnslink_did, _dnslink_ucan) = server_create_resource(&server_ed_did_key)?;
+
         let mut seed = vec![];
 
         // 1.               account -*-> server
-        let account_pbox = ucan::delegation::Payload::powerbox(
-            account_did,
-            server,
-            "/".into(),
-            ucan::time::Timestamp::five_years_from_now(),
+        let account_pbox = ucan::Delegation::try_sign(
+            &account_signer,
+            varsig_header,
+            ucan::delegation::Payload::powerbox(
+                account,
+                server,
+                "/".into(),
+                ucan::time::Timestamp::five_years_from_now(),
+            ),
         );
 
         // This UCAN gives account access to the device
@@ -266,19 +291,23 @@ mod tests {
         //     .sign(server)?;
 
         // 2.                            server -a-> device
-        let account_device_ucan = ucan::delegation::Payload {
-            // subject: None, // Some(account_did), // FIXME
-            subject: Some(account_did), // FIXME
-            issuer: server,
-            audience: device,
+        let account_device_ucan = ucan::Delegation::try_sign(
+            &server_signer,
+            varsig_header,
+            ucan::delegation::Payload {
+                // subject: None, // Some(account_did), // FIXME
+                subject: Some(account), // FIXME
+                issuer: server,
+                audience: device,
 
-            command: "/",
-            policy: vec![],
-            metadata: BTreeMap::new(),
-            nonce: Nonce::generate_12(seed.as_mut()),
-            expiration: ucan::time::Timestamp::five_years_from_now(),
-            not_before: None
-        } // FIXME sign
+                command: "/".into(),
+                policy: vec![],
+                metadata: BTreeMap::new(),
+                nonce: Nonce::generate_12(seed.as_mut()),
+                expiration: ucan::time::Timestamp::five_years_from_now(),
+                not_before: None,
+            },
+        );
 
         // This UCAN assigns access to the DNSLink to anyone who has access to the account
         // let account_assoc_ucan: Ucan = UcanBuilder::default()
@@ -292,22 +321,38 @@ mod tests {
         //     .sign(server)?;
 
         // 3.  dnslink -d-> account
-        let dnslink_ucan = ucan::delegation::Payload {
-            subject: Some(dnslink_did),
-            issuer: dnslink_did,
-            audience: server,
+        let dnslink_ucan = ucan::Delegation::try_sign(
+            &dnslink_signer,
+            varsig_header,
+            ucan::delegation::Payload {
+                subject: Some(dnslink),
+                issuer: dnslink,
+                audience: server,
 
-            command: "/",
-            policy: vec![],
-            metadata: BTreeMap::new(),
-            nonce: Nonce::generate_12(seed.as_mut()),
-            expiration: ucan::time::Timestamp::five_years_from_now(),
-            not_before: None
-        } // FIXME sign
+                command: "/".into(),
+                policy: vec![],
+                metadata: BTreeMap::new(),
+                nonce: Nonce::generate_12(seed.as_mut()),
+                expiration: ucan::time::Timestamp::five_years_from_now(),
+                not_before: None,
+            },
+        )
+        .expect("signature to work");
 
         pub struct AccountInfo {}
+        impl From<Ipld> for AccountInfo {
+            fn from(_: Ipld) -> Self {
+                AccountInfo {}
+            }
+        }
+
         pub struct DnsLinkUpdate {
-            pub cid: Cid
+            pub cid: Cid,
+        }
+        impl From<Ipld> for DnsLinkUpdate {
+            fn from(_: Ipld) -> Self {
+                todo!()
+            }
         }
 
         // NOTE Just sketching an idea, don't mind me
@@ -333,31 +378,41 @@ mod tests {
         //     .sign(device)?;
 
         // 4. [dnslink -d-> account -*-> server -a-> device]
-        let account_invocation = ucan::invocation::Payload {
-            subject: account_did,
-            issuer: device,
-            audience: server,
+        let account_invocation = ucan::Invocation::try_sign(
+            &device_signer,
+            varsig_header,
+            ucan::invocation::Payload {
+                subject: account,
+                issuer: device,
+                audience: Some(server),
 
-            ability: AccountInfo,
-            proofs: vec![],
-            metadata: BTreeMap::new(),
-            nonce: Nonce::generate_12(seed.as_mut()),
-            issued_at: None,
-            expiration: None,
-        }
+                ability: AccountInfo {},
+                proofs: vec![],
+                metadata: BTreeMap::new(),
+                nonce: Nonce::generate_12(seed.as_mut()),
+                cause: None,
+                issued_at: None,
+                expiration: None,
+            },
+        );
 
-        let dnslink_invocation = ucan::invocation::Payload {
-            subject: dnslink_did,
-            issuer: device,
-            audience: server,
+        let dnslink_invocation = ucan::Invocation::try_sign(
+            &device,
+            varsig_header,
+            ucan::invocation::Payload {
+                subject: dnslink,
+                issuer: device,
+                audience: Some(server),
 
-            ability: DnsLinkUpdate { cid: todo!() }
-            proofs: vec![],
-            metadata: BTreeMap::new(),
-            nonce: Nonce::generate_12(seed.as_mut()),
-            issued_at: None,
-            expiration: None,
-        }
+                ability: DnsLinkUpdate { cid: todo!() },
+                proofs: vec![],
+                metadata: BTreeMap::new(),
+                nonce: Nonce::generate_12(seed.as_mut()),
+                cause: None,
+                issued_at: None,
+                expiration: None,
+            },
+        );
 
         // let pbox_delegation =
         //     Delegation::try_sign(&server_signer, varsig_header, powerbox_payload).expect("FIXME");
