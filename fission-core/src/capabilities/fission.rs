@@ -234,7 +234,7 @@ mod tests {
             codec: libipld::cbor::DagCborCodec,
         };
 
- 
+
         // 1.               account -*-> server
         // 2.                            server -a-> device
         // 3.  dnslink -d-> account
@@ -269,7 +269,7 @@ mod tests {
         let account_device_ucan = ucan::delegation::Payload {
             // subject: None, // Some(account_did), // FIXME
             subject: Some(account_did), // FIXME
-            issuer: server, 
+            issuer: server,
             audience: device,
 
             command: "/",
