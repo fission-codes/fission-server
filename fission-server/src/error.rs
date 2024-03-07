@@ -197,9 +197,43 @@ impl From<car_mirror::Error> for AppError {
     }
 }
 
+impl From<&car_mirror::Error> for AppError {
+    fn from(value: &car_mirror::Error) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    }
+}
+
+impl From<wnfs::common::BlockStoreError> for AppError {
+    fn from(value: wnfs::common::BlockStoreError) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    }
+}
+
+impl From<&wnfs::common::BlockStoreError> for AppError {
+    fn from(value: &wnfs::common::BlockStoreError) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    }
+}
+
 impl From<cid::Error> for AppError {
     fn from(err: cid::Error) -> Self {
         Self::new(StatusCode::BAD_REQUEST, Some(err))
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        if let Some(err) = err.get_ref() {
+            if let Some(err) = err.downcast_ref::<car_mirror::Error>() {
+                return Self::from(err);
+            }
+
+            if let Some(err) = err.downcast_ref::<wnfs::common::BlockStoreError>() {
+                return Self::from(err);
+            }
+        }
+
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
 
