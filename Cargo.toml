@@ -23,11 +23,13 @@ test-log = { version = "0.2", default-features = false, features = ["trace"] }
 testresult = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
 rs-ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "matheus23/skip-rsa-len-check" }
+ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "predicate" }
 url = { version = "2.3", features = ["serde"] }
 utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
 validator = { version = "0.16.0", features = ["derive"] }
 tokio = { version = "1.26", features = ["full", "parking_lot"] }
 tokio-util = "0.7.8"
+libipld = "0.16"
 
 # Speedup build on macOS
 # See https://blog.rust-lang.org/2021/03/25/Rust-1.51.0.html#splitting-debug-information

@@ -2,11 +2,14 @@
 
 use super::did::Did;
 use anyhow::Result;
+use libipld::codec_impl::IpldCodec;
+use rand::thread_rng;
 use rs_ucan::{
     plugins::Plugin,
     semantics::{ability::Ability, caveat::EmptyCaveat},
 };
 use std::fmt::Display;
+use ucan::{crypto::signature::Envelope, Delegation};
 
 /// An rs-ucan plugin for handling fission server capabilities
 #[derive(Debug)]
@@ -211,65 +214,166 @@ mod tests {
     #[test_log::test]
     #[ignore]
     fn test_powerbox_ucan_resource() -> TestResult {
-        let store = InMemoryStore::<RawCodec>::default();
-        let did_verifier_map = DidVerifierMap::default();
+        // let store:  = ucan::delegation::store::MemoryStore::default();
 
-        let server = &EdDidKey::generate();
-        let device = &EdDidKey::generate();
+        let server_sk = ed25519_dalek::SigningKey::generate(&mut thread_rng());
+        let server_signer =
+            ucan::did::preset::Signer::Key(ucan::did::key::Signer::EdDsa(server_sk));
+        let server_ed_did_key = EdDidKey::new(server_sk);
+
+        let server = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
+            server_sk.verifying_key(),
+        ));
+
+        let device = ucan::did::preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(
+            ed25519_dalek::SigningKey::generate(&mut thread_rng()).verifying_key(),
+        ));
+
+        // FIXME perhaps add this back upstream as a named const
+        let varsig_header = ucan::crypto::varsig::header::EdDsaHeader {
+            codec: libipld::cbor::DagCborCodec,
+        };
+
+ 
+        // 1.               account -*-> server
+        // 2.                            server -a-> device
+        // 3.  dnslink -d-> account
+        // 4. [dnslink -d-> account -*-> server -a-> device]
 
         // Both of these UCANs just create ephemeral DIDs & delegate all of those
         // DID's rights to the server
-        let (account_did, account_ucan) = server_create_resource(server)?;
-        let (dnslink_did, dnslink_ucan) = server_create_resource(server)?;
+        let (account_did, _account_ucan) = server_create_resource(&server_ed_did_key)?;
+        let (dnslink_did, _dnslink_ucan) = server_create_resource(&server_ed_did_key)?;
+        let mut seed = vec![];
+
+        // 1.               account -*-> server
+        let account_pbox = ucan::delegation::Payload::powerbox(
+            account_did,
+            server,
+            "/".into(),
+            ucan::time::Timestamp::five_years_from_now(),
+        );
 
         // This UCAN gives account access to the device
-        let device_ucan: Ucan = UcanBuilder::default()
-            .for_audience(device)
-            .claiming_capability(Capability::new(
-                UcanResource::AllProvable, // UcanResource::OwnedBy(account_did.to_string()),
-                TopAbility,
-                EmptyCaveat,
-            ))
-            .witnessed_by(&account_ucan, None)
-            .sign(server)?;
+        // let device_ucan: Ucan = UcanBuilder::default()
+        //     .for_audience(device)
+        //     .claiming_capability(Capability::new(
+        //         UcanResource::AllProvable, // UcanResource::OwnedBy(account_did.to_string()),
+        //         TopAbility,
+        //         EmptyCaveat,
+        //     ))
+        //     .witnessed_by(&account_ucan, None)
+        //     .sign(server)?;
+
+        // 2.                            server -a-> device
+        let account_device_ucan = ucan::delegation::Payload {
+            // subject: None, // Some(account_did), // FIXME
+            subject: Some(account_did), // FIXME
+            issuer: server, 
+            audience: device,
+
+            command: "/",
+            policy: vec![],
+            metadata: BTreeMap::new(),
+            nonce: Nonce::generate_12(seed.as_mut()),
+            expiration: ucan::time::Timestamp::five_years_from_now(),
+            not_before: None
+        } // FIXME sign
 
         // This UCAN assigns access to the DNSLink to anyone who has access to the account
-        let account_assoc_ucan: Ucan = UcanBuilder::default()
-            .for_audience(&account_did)
-            .claiming_capability(Capability::new(
-                dnslink_did.clone(),
-                TopAbility,
-                EmptyCaveat,
-            ))
-            .witnessed_by(&dnslink_ucan, None)
-            .sign(server)?;
+        // let account_assoc_ucan: Ucan = UcanBuilder::default()
+        //     .for_audience(&account_did)
+        //     .claiming_capability(Capability::new(
+        //         dnslink_did.clone(),
+        //         TopAbility,
+        //         EmptyCaveat,
+        //     ))
+        //     .witnessed_by(&dnslink_ucan, None)
+        //     .sign(server)?;
+
+        // 3.  dnslink -d-> account
+        let dnslink_ucan = ucan::delegation::Payload {
+            subject: Some(dnslink_did),
+            issuer: dnslink_did,
+            audience: server,
+
+            command: "/",
+            policy: vec![],
+            metadata: BTreeMap::new(),
+            nonce: Nonce::generate_12(seed.as_mut()),
+            expiration: ucan::time::Timestamp::five_years_from_now(),
+            not_before: None
+        } // FIXME sign
+
+        pub struct AccountInfo {}
+        pub struct DnsLinkUpdate {
+            pub cid: Cid
+        }
+
+        // NOTE Just sketching an idea, don't mind me
+        // pub struct Proxy<DID: Did, T> {
+        //     pub subject: DID,
+        //     pub proxy: T,
+        //     pub prf: Vec<Cid>
+        // }
 
         // The device should now be able to use the capability, because
         // - it's got access to the account
         // - the account got delegated rights to the DNSLink
-        let invocation: Ucan = UcanBuilder::default()
-            .for_audience(server)
-            .claiming_capability(Capability::new(
-                dnslink_did.clone(),
-                FissionAbility::AccountInfo,
-                EmptyCaveat,
-            ))
-            .witnessed_by(&device_ucan, None)
-            .witnessed_by(&account_assoc_ucan, None)
-            .sign(device)?;
+        //let invocation: Invocation
+        // UcanBuilder::default()
+        //     .for_audience(server)
+        //     .claiming_capability(Capability::new(
+        //         dnslink_did.clone(),
+        //         FissionAbility::AccountInfo,
+        //         EmptyCaveat,
+        //     ))
+        //     .witnessed_by(&device_ucan, None)
+        //     .witnessed_by(&account_assoc_ucan, None)
+        //     .sign(device)?;
 
-        let caps = invocation.capabilities_for(
-            &dnslink_did.clone(),
-            dnslink_did,
-            FissionAbility::AccountInfo,
-            now(),
-            &did_verifier_map,
-            &store,
-        )?;
+        // 4. [dnslink -d-> account -*-> server -a-> device]
+        let account_invocation = ucan::invocation::Payload {
+            subject: account_did,
+            issuer: device,
+            audience: server,
 
-        tracing::debug!(?caps, "Capabilities");
+            ability: AccountInfo,
+            proofs: vec![],
+            metadata: BTreeMap::new(),
+            nonce: Nonce::generate_12(seed.as_mut()),
+            issued_at: None,
+            expiration: None,
+        }
 
-        assert!(!caps.is_empty());
+        let dnslink_invocation = ucan::invocation::Payload {
+            subject: dnslink_did,
+            issuer: device,
+            audience: server,
+
+            ability: DnsLinkUpdate { cid: todo!() }
+            proofs: vec![],
+            metadata: BTreeMap::new(),
+            nonce: Nonce::generate_12(seed.as_mut()),
+            issued_at: None,
+            expiration: None,
+        }
+
+        // let pbox_delegation =
+        //     Delegation::try_sign(&server_signer, varsig_header, powerbox_payload).expect("FIXME");
+
+        // let caps = invocation.capabilities_for(
+        //     &dnslink_did.clone(),
+        //     dnslink_did,
+        //     FissionAbility::AccountInfo,
+        //     now(),
+        //     &did_verifier_map,
+        //     &store,
+        // )?;
+
+        // tracing::debug!(?caps, "Capabilities");
+
+        // assert!(!caps.is_empty());
 
         Ok(())
     }

@@ -44,6 +44,7 @@ data-encoding = "2.5.0"
 assert_matches = "1.5.0"
 hickory-proto = { version = "0.24", default-features = false }
 idna = "0.5.0"
+ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "predicate" }
 
 [dev-dependencies]
 test-log = { workspace = true }
