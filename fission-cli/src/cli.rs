@@ -768,7 +768,7 @@ impl<'s> CliState<'s> {
             .build();
 
         let mut upload_url = self.settings.api_endpoint.clone();
-        upload_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
+        upload_url.set_path(&format!("/api/v0/volume/push/{cid}"));
 
         // we use `push_with`, instead of `send_car_mirror_push`, because this way we can
         // re-issue a fresh UCAN token for each request and avoid having auth tokens expire.
@@ -798,7 +798,7 @@ impl<'s> CliState<'s> {
         cache: &InMemoryCache,
     ) -> Result<()> {
         let mut download_url = self.settings.api_endpoint.clone();
-        download_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
+        download_url.set_path(&format!("/api/v0/volume/pull/{cid}"));
 
         let config = &Default::default();
 
@@ -807,7 +807,7 @@ impl<'s> CliState<'s> {
         ClientBuilder::new(Client::new())
             .with(LogAndHandleErrorMiddleware)
             .build()
-            .get(download_url)
+            .post(download_url)
             .run_car_mirror_pull(cid, config, store, cache)
             .await?;
 

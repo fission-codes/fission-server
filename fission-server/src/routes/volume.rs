@@ -40,7 +40,7 @@ use tokio_util::io::StreamReader;
         (status = 403, description = "Forbidden"),
     )
 )]
-pub async fn put_volume_cid<S: ServerSetup>(
+pub async fn push_volume_cid<S: ServerSetup>(
     State(state): State<AppState<S>>,
     authority: Authority,
     Path(cid_string): Path<String>,
@@ -109,7 +109,7 @@ pub async fn put_volume_cid<S: ServerSetup>(
         (status = 400, description = "Bad Request"),
     )
 )]
-pub async fn get_volume_cid<S: ServerSetup>(
+pub async fn pull_volume_cid<S: ServerSetup>(
     State(state): State<AppState<S>>,
     Path(cid_string): Path<String>,
     request: Option<DagCbor<PullRequest>>,
