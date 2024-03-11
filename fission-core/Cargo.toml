@@ -18,6 +18,7 @@ authors = [
 
 [lib]
 path = "src/lib.rs"
+doctest = false # Disable doctest compilation due to https://github.com/rust-lang/rust/issues/95825
 
 [dependencies]
 anyhow = { workspace = true }
