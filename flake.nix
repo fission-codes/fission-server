@@ -98,7 +98,7 @@
           ];
 
         shellHook = ''
-          [ -e .git/hooks/pre-commit ] || pre-commit install --install-hooks && pre-commit install --hook-type commit-msg
+          [ -e .git/hooks/pre-commit ] || pre-commit install
 
           PGDATA="./.pg";
           PGURL=postgres://postgres@localhost:5432/fission-server
