@@ -43,7 +43,8 @@ jobs:
           LLVM_PROFILE_FILE: "fission-server-%p-%m.profraw"
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-        run: cargo test --all-features
+        # Disable doctest compilation due to https://github.com/rust-lang/rust/issues/95825
+        run: cargo test --all-features --lib --tests
 
       - name: Install grcov
         run: "curl -L https://github.com/mozilla/grcov/releases/download/v0.8.12/grcov-x86_64-unknown-linux-gnu.tar.bz2 | tar jxf -"
