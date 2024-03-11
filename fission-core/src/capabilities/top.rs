@@ -1,6 +1,7 @@
 //! Top capability
 
 use anyhow::{anyhow, Result};
+use std::fmt::Display;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 /// Top ability
@@ -9,12 +10,11 @@ pub enum Ability {
     Top,
 }
 
-impl ToString for Ability {
-    fn to_string(&self) -> String {
+impl Display for Ability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Ability::Top => "*",
+            Ability::Top => f.write_str("*"),
         }
-        .into()
     }
 }
 

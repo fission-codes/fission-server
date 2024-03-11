@@ -5,9 +5,10 @@ use crate::{
     dns::server::DnsServer,
     routes::ws::WsPeerMap,
     settings::{self},
-    setups::ServerSetup,
+    setups::{DbBlockStore, IpfsDatabase, ServerSetup},
 };
 use anyhow::{anyhow, Result};
+use car_mirror::cache::{CacheMissing, InMemoryCache};
 use fission_core::ed_did_key::EdDidKey;
 use std::sync::Arc;
 
@@ -20,8 +21,8 @@ pub struct AppState<S: ServerSetup> {
     pub db_pool: Pool,
     /// The ipfs peers to be rendered in the ipfs/peers endpoint
     pub ipfs_peers: Vec<String>,
-    /// Connection to what stores the IPFS blocks
-    pub ipfs_db: S::IpfsDatabase,
+    /// Anything related to storing, retrieving and caching information about blocks
+    pub blocks: Blocks<S::IpfsDatabase>,
     /// The service that sends account verification codes
     pub verification_code_sender: S::VerificationCodeSender,
     /// The currently connected websocket peers
@@ -30,6 +31,44 @@ pub struct AppState<S: ServerSetup> {
     pub server_keypair: Arc<EdDidKey>,
     /// The DNS server state. Used for answering DoH queries
     pub dns_server: DnsServer,
+}
+
+/// Anything related to block storage (connection to kubo/something mocking kubo, caches, metadata)
+#[derive(Clone, Debug)] // Clone is cheap, it's mostly structs-of-Arcs
+pub struct Blocks<D: IpfsDatabase> {
+    /// The blockstore stack based on the ipfs database
+    pub store: CacheMissing<DbBlockStore<D>>,
+    /// Cache for information about blocks for car mirror
+    pub cache: InMemoryCache,
+}
+
+/// Cache capacity settings
+#[derive(Debug)]
+pub struct CacheCapacities {
+    /// Of how many CIDs we remember whether we have them or not
+    pub missing_block_cids: usize,
+    /// How many CIDs to remember the links between
+    pub reference_cids: usize,
+}
+
+impl<D: IpfsDatabase> Blocks<D> {
+    /// Return the underlying IpfsDatabase
+    pub fn ipfs_db(&self) -> &D {
+        &self.store.inner.inner
+    }
+}
+
+impl<D: IpfsDatabase> Blocks<D> {
+    /// Initialize the blocks subsystem
+    pub fn new(ipfs_db: D, approx_capacities: CacheCapacities) -> Self {
+        Self {
+            store: CacheMissing::new(
+                approx_capacities.missing_block_cids,
+                DbBlockStore::from(ipfs_db),
+            ),
+            cache: InMemoryCache::new(approx_capacities.reference_cids),
+        }
+    }
 }
 
 /// Builder for [`AppState`]
@@ -92,11 +131,18 @@ impl<S: ServerSetup> AppStateBuilder<S> {
             dns_settings,
             db_pool,
             ipfs_peers,
-            ipfs_db,
             verification_code_sender,
             ws_peer_map,
             server_keypair: Arc::new(did),
             dns_server,
+            blocks: Blocks::new(
+                ipfs_db,
+                // TODO(matheus23): make these numbers configurable
+                CacheCapacities {
+                    reference_cids: 100_000,
+                    missing_block_cids: 150_000,
+                },
+            ),
         })
     }
 
@@ -162,7 +208,7 @@ where
         f.debug_struct("AppState")
             .field("db_pool", &self.db_pool)
             .field("ipfs_peers", &self.ipfs_peers)
-            .field("ipfs_db", &self.ipfs_db)
+            .field("blocks", &self.blocks)
             .field("ws_peer_map", &self.ws_peer_map)
             .field("verification_code_sender", &self.verification_code_sender)
             .finish()

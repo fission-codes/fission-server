@@ -6,7 +6,7 @@ use crate::{
     error::AppResult,
     setups::ServerSetup,
 };
-use axum::{self, extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode};
 use diesel::{
     migration::{Migration, MigrationSource},
     pg::Pg,

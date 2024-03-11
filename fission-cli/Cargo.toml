@@ -25,6 +25,10 @@ rs-ucan = { workspace = true }
 url = { workspace = true }
 ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
+wnfs = { workspace = true }
+car-mirror = { workspace = true }
+car-mirror-reqwest = { workspace = true }
+chrono = { workspace = true }
 fission-core = { path = "../fission-core", version = "0.1.0" }
 clap = { version = "4.4.6", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = [
@@ -36,7 +40,7 @@ tracing-subscriber = { version = "0.3", features = [
 tracing = "0.1"
 config = { workspace = true }
 directories = "5.0.1"
-reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls", "stream"] }
 inquire = "0.6.2"
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -49,6 +53,9 @@ http-cache = { version = "0.17.0", default-features = false }
 http-cache-semantics = "1.0.1"
 rand_chacha = "0.3.1"
 blake3 = "1.5.0"
+futures = "0.3.30"
+async-recursion = "1.0.5"
+walkdir = "2.4.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
@@ -60,6 +67,10 @@ assert_fs = "1.1.1"
 escargot = "0.5.8"
 websocket = { version = "0.27.0", default-features = false, features = ["sync"] }
 rexpect = { git = "https://github.com/rust-cli/rexpect", branch = "master" }
+
+# # enable the "rug" feature (using GMP) for rs-wnfs, speeding up nameaccumulator operations
+# [target.'cfg(unix)'.dependencies]
+# wnfs-nameaccumulator = { git = "https://github.com/wnfs-wg/rs-wnfs.git", branch = "matheus23/root-tree", default-features = false, features = ["rug"] }
 
 [[test]]
 name = "integration"

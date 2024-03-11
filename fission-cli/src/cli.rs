@@ -7,11 +7,18 @@ use crate::{
     ucan::{encode_ucan_header, find_delegation_chain},
 };
 use anyhow::{anyhow, bail, Context, Result};
+use car_mirror::cache::InMemoryCache;
+use car_mirror_reqwest::RequestBuilderExt as _;
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ed25519::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use ed25519_dalek::SigningKey;
 use fission_core::{
-    capabilities::{did::Did, fission::FissionAbility, indexing::IndexingAbility},
+    capabilities::{
+        did::Did,
+        fission::{FissionAbility, FissionPlugin},
+        indexing::IndexingAbility,
+    },
     common::{
         Account, AccountCreationRequest, AccountLinkRequest, EmailVerifyRequest, UcansResponse,
     },
@@ -24,11 +31,15 @@ use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheO
 use inquire::ui::RenderConfig;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
-use reqwest::{header::CONTENT_TYPE, Client, Method};
+use reqwest::{
+    header::{ACCEPT, CACHE_CONTROL, CONTENT_TYPE},
+    Client, Method,
+};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
 use rs_ucan::{
     builder::UcanBuilder,
     capability::Capability,
+    plugins::Plugin,
     semantics::{ability::Ability, caveat::EmptyCaveat},
     ucan::Ucan,
 };
@@ -36,9 +47,17 @@ use std::{
     fmt::Debug,
     fs::{create_dir_all, OpenOptions},
     io::Read,
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
 };
+use tokio::fs::{self, File};
+use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use wnfs::{
+    common::{libipld::Cid, BlockStore, MemoryBlockStore, Storable},
+    public::{PublicDirectory, PublicFile, PublicNode},
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "fission")]
@@ -62,6 +81,8 @@ pub struct Cli {
 pub enum Commands {
     /// Account and login management commands
     Account(AccountCmds),
+    /// Commands related to managing the account-associated storage
+    Volume(VolumeCmds),
     /// Print file paths used by the application (e.g. the path to config)
     Paths,
 }
@@ -84,6 +105,8 @@ pub enum AccountCommands {
     Rename(RenameCommand),
     /// Delete one of your accounts
     Delete(DeleteCommand),
+    /// Issue UCANs for given ability
+    Issue(IssueAbility),
 }
 
 #[derive(Debug, Parser)]
@@ -100,13 +123,56 @@ pub struct DeleteCommand {
     username: Option<String>,
 }
 
+#[derive(Debug, Parser)]
+pub struct IssueAbility {
+    /// The ability to issue, e.g. "account/info" or "account/manage"
+    ability: String,
+    /// The lifetime for which the ability should be issued,
+    /// use "forever" in case it shouldn't have a time limit
+    #[arg(long)]
+    lifetime: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct VolumeCmds {
+    #[command(subcommand)]
+    command: VolumeCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum VolumeCommands {
+    /// Publish a directory or file as a volume
+    Publish(PublishCommand),
+    /// Download a volume to given directory
+    Download(DownloadCommand),
+}
+
+#[derive(Debug, Parser)]
+pub struct PublishCommand {
+    /// Path to the directory to publish
+    path: PathBuf,
+    /// Username of the account to use for uploading.
+    /// If not provided, it's assumed you only have access to one account.
+    #[arg(long, short = 'u')]
+    username: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct DownloadCommand {
+    /// The domain name of the volume to download. Alternatively can be a CID.
+    volume: String,
+    /// Path to the directory where to download the volume to
+    #[arg(long, short = 'o')]
+    output: PathBuf,
+}
+
 impl Cli {
     pub async fn run(&self, mut settings: Settings) -> Result<()> {
         let ansi = !self.no_colors;
         setup_tracing(ansi);
 
         if let Some(key_file) = &self.key_file {
-            settings.key_file = key_file.clone();
+            settings.key_file.clone_from(key_file);
         }
 
         match &self.command {
@@ -203,6 +269,135 @@ impl Cli {
 
                         println!("Successfully deleted your account.");
                     }
+                    AccountCommands::Issue(ability) => {
+                        let lifetime = match ability.lifetime.as_deref() {
+                            Some("forever") => None,
+                            None => Some(360),
+                            Some(num) => Some(num.parse().context("Parsing lifetime parameter")?),
+                        };
+
+                        let ability = FissionPlugin::try_handle_ability(
+                            &FissionPlugin,
+                            &Did(String::new()),
+                            &ability.ability,
+                        )
+                        .context("Parsing ability")?
+                        .ok_or(anyhow!("Failed to parse ability"))?;
+
+                        let accounts = state.find_accounts(state.find_capabilities()?).await;
+
+                        let auth = state.pick_account(
+                            accounts,
+                            &None,
+                            "Which account do you want to issue an ability from?",
+                        )?;
+
+                        let ucan = state.issue_ucan_with(
+                            Did(auth.account.did.clone()),
+                            ability,
+                            Some(lifetime),
+                            &auth.ucans,
+                        )?;
+
+                        println!("Authorization: Bearer {}", ucan.encode()?);
+                        println!();
+                        println!(
+                            "ucans: {}",
+                            auth.ucans
+                                .iter()
+                                .map(|ucan| ucan.encode().map_err(|e| anyhow!(e)))
+                                .collect::<Result<Vec<_>>>()?
+                                .join(",")
+                        );
+                    }
+                }
+            }
+            Commands::Volume(volume) => {
+                let mut state = CliState::load(&settings, self.key_seed.clone(), ansi).await?;
+                state.fetch_ucans().await?;
+
+                match &volume.command {
+                    VolumeCommands::Publish(publish) => {
+                        let accounts = state.find_accounts(state.find_capabilities()?).await;
+
+                        let auth = state.pick_account(
+                            accounts,
+                            &publish.username,
+                            "Which account do you want to use?",
+                        )?;
+                        let did = Did(auth.account.did.to_string());
+
+                        let store = &MemoryBlockStore::new();
+                        let cache = &InMemoryCache::new(100_000);
+
+                        let source = &publish.path;
+                        if !source.exists() {
+                            bail!("Can't publish path, it doesn't exist: {}", source.display());
+                        }
+
+                        let cid = if source.is_file() {
+                            let filename = source
+                                .file_name()
+                                .expect("If the source is a file, it should have a filename")
+                                .to_string_lossy()
+                                .to_string();
+                            let mut directory = PublicDirectory::new_rc(Utc::now());
+                            directory
+                                .write(&[filename], std::fs::read(source)?, Utc::now(), store)
+                                .await?;
+                            directory.store(store).await?
+                        } else if source.is_dir() {
+                            let mut directory = PublicDirectory::new_rc(Utc::now());
+                            import_dir_from(source, &mut directory, store).await?;
+                            directory.store(store).await?
+                        } else {
+                            bail!("Unsupported file type (not a file or directory)");
+                        };
+
+                        state
+                            .volume_put(did, &auth.ucans, cid, store, cache)
+                            .await?;
+                        println!("Successfully uploaded");
+                    }
+                    VolumeCommands::Download(download) => {
+                        let store = &MemoryBlockStore::new();
+                        let cache = &InMemoryCache::new(100_000);
+
+                        if download.output.is_file() {
+                            bail!(
+                                "Can't write to {}: Expected a directory, but got a file.",
+                                download.output.to_string_lossy()
+                            );
+                        }
+
+                        let cid = if let Ok(cid) = Cid::from_str(&download.volume) {
+                            println!("Interpreting the input as a CID");
+                            cid
+                        } else {
+                            let record = doh_request(
+                                &state.client,
+                                &settings,
+                                RecordType::TXT,
+                                &format!("_dnslink.{}", download.volume),
+                                true,
+                            )
+                            .await?;
+
+                            let cid = record
+                                .data
+                                .strip_prefix("dnslink=/ipfs/")
+                                .ok_or(anyhow!("Failed parsing dnslink record: {}", record.data))?;
+
+                            Cid::from_str(cid)?
+                        };
+
+                        state.volume_get(cid, store, cache).await?;
+                        println!("Finished downloading");
+
+                        let directory = PublicDirectory::load(&cid, store).await?;
+                        export_dir_to(download.output.clone(), &directory, store).await?;
+                        println!("Extracted to {}", download.output.to_string_lossy());
+                    }
                 }
             }
             Commands::Paths => {
@@ -267,6 +462,7 @@ impl<'s> CliState<'s> {
             settings,
             RecordType::TXT,
             &format!("_did.{server_host}"),
+            false,
         )
         .await?
         .data;
@@ -364,6 +560,7 @@ impl<'s> CliState<'s> {
             self.settings,
             RecordType::TXT,
             &format!("_did.{username}"),
+            false,
         )
         .await
         .context("Looking up user DID")?
@@ -441,7 +638,7 @@ impl<'s> CliState<'s> {
 
             let resolve_account = async {
                 let ucan =
-                    self.issue_ucan_with(did.clone(), FissionAbility::AccountInfo, &chain)?;
+                    self.issue_ucan_with(did.clone(), FissionAbility::AccountInfo, None, &chain)?;
 
                 let account: Account = self
                     .server_request(Method::GET, "/api/v0/account")?
@@ -518,7 +715,7 @@ impl<'s> CliState<'s> {
     }
 
     async fn rename_account(&self, did: Did, chain: &[Ucan], new_username: Username) -> Result<()> {
-        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, chain)?;
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, None, chain)?;
 
         self.server_request(
             Method::PATCH,
@@ -533,7 +730,7 @@ impl<'s> CliState<'s> {
     }
 
     async fn add_handle_account(&self, did: Did, chain: &[Ucan], handle: Handle) -> Result<()> {
-        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, chain)?;
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountManage, None, chain)?;
 
         self.server_request(Method::PATCH, &format!("/api/v0/account/handle/{handle}"))?
             .bearer_auth(ucan.encode()?)
@@ -545,12 +742,73 @@ impl<'s> CliState<'s> {
     }
 
     async fn delete_account(&self, did: Did, chain: &[Ucan]) -> Result<()> {
-        let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, chain)?;
+        let ucan = self.issue_ucan_with(did, FissionAbility::AccountDelete, None, chain)?;
 
         self.server_request(Method::DELETE, "/api/v0/account")?
             .bearer_auth(ucan.encode()?)
             .header("ucans", encode_ucan_header(chain)?)
             .send()
+            .await?;
+
+        Ok(())
+    }
+
+    async fn volume_put(
+        &self,
+        did: Did,
+        chain: &[Ucan],
+        cid: Cid,
+        store: &MemoryBlockStore,
+        cache: &InMemoryCache,
+    ) -> Result<()> {
+        // We use a custom client, because we need to skip caching requests,
+        // as our caching middleware from http-cache will fail on reqwest body streams.
+        let client = ClientBuilder::new(Client::new())
+            .with(LogAndHandleErrorMiddleware)
+            .build();
+
+        let mut upload_url = self.settings.api_endpoint.clone();
+        upload_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
+
+        // we use `push_with`, instead of `send_car_mirror_push`, because this way we can
+        // re-issue a fresh UCAN token for each request and avoid having auth tokens expire.
+        car_mirror_reqwest::push_with(cid, store, cache, |body| async {
+            let ucan =
+                self.issue_ucan_with(did.clone(), FissionAbility::AccountManage, None, chain)?;
+
+            Ok::<_, anyhow::Error>(
+                client
+                    .put(upload_url.clone())
+                    .bearer_auth(ucan.encode()?)
+                    .header("ucans", encode_ucan_header(chain)?)
+                    .body(body)
+                    .send()
+                    .await?,
+            )
+        })
+        .await?;
+
+        Ok(())
+    }
+
+    async fn volume_get(
+        &self,
+        cid: Cid,
+        store: &MemoryBlockStore,
+        cache: &InMemoryCache,
+    ) -> Result<()> {
+        let mut download_url = self.settings.api_endpoint.clone();
+        download_url.set_path(&format!("/api/v0/volume/cid/{cid}"));
+
+        let config = &Default::default();
+
+        // We use a custom client, because we need to skip caching requests,
+        // as our caching middleware from http-cache will fail on reqwest body streams.
+        ClientBuilder::new(Client::new())
+            .with(LogAndHandleErrorMiddleware)
+            .build()
+            .get(download_url)
+            .run_car_mirror_pull(cid, config, store, cache)
             .await?;
 
         Ok(())
@@ -573,7 +831,7 @@ impl<'s> CliState<'s> {
             bail!("Couldn't find proof for ability {ability} on subject {subject_did}");
         };
 
-        let ucan = self.issue_ucan_with(subject_did, ability, &chain)?;
+        let ucan = self.issue_ucan_with(subject_did, ability, None, &chain)?;
 
         Ok((ucan, chain))
     }
@@ -582,12 +840,16 @@ impl<'s> CliState<'s> {
         &self,
         subject_did: Did,
         ability: impl Ability,
+        lifetime: Option<Option<u64>>,
         chain: &[Ucan],
     ) -> Result<Ucan> {
         let mut builder = UcanBuilder::default()
             .for_audience(&self.server_did)
-            .with_lifetime(360)
             .claiming_capability(Capability::new(subject_did, ability, EmptyCaveat));
+
+        if let Some(lifetime) = lifetime.unwrap_or(Some(360)) {
+            builder = builder.with_lifetime(lifetime);
+        }
 
         if let Some(first) = chain.first() {
             builder = builder.witnessed_by(first, None);
@@ -640,18 +902,19 @@ async fn doh_request(
     settings: &Settings,
     record_type: RecordType,
     record: &str,
+    no_cache: bool,
 ) -> Result<dns::DohRecordJson> {
     let mut url = settings.api_endpoint.clone();
     url.set_path("dns-query");
     url.set_query(Some(&format!("name={record}&type={record_type}")));
 
-    let response: dns::Response = client
-        .get(url)
-        .header("Accept", "application/dns-json")
-        .send()
-        .await?
-        .json()
-        .await?;
+    let mut request = client.get(url).header(ACCEPT, "application/dns-json");
+
+    if no_cache {
+        request = request.header(CACHE_CONTROL, "no-cache");
+    }
+
+    let response: dns::Response = request.send().await?.json().await?;
 
     // Must always be a single answer, since we're asking only a single question
     let answer = response.answer.into_iter().next().ok_or(anyhow!(
@@ -669,4 +932,98 @@ fn setup_tracing(ansi: bool) {
         )
         .with(EnvFilter::from_default_env())
         .init();
+}
+
+#[async_recursion::async_recursion]
+async fn export_dir_to(
+    path: PathBuf,
+    directory: &PublicDirectory,
+    store: &impl BlockStore,
+) -> Result<()> {
+    fs::create_dir_all(&path).await?;
+    for (name, _) in directory.ls(&[], store).await? {
+        let entry_path = Path::new(&name);
+        if !entry_path.is_relative() {
+            eprintln!("Skipping directory entry \"{name}\", as it can't be parsed as relative path segment");
+            continue;
+        }
+
+        let entry = path.join(entry_path);
+
+        tracing::info!(?entry, "Exporting volume entry");
+
+        let node = directory
+            .get_node(&[name.clone()], store)
+            .await?
+            .expect("Node must be there, we just got it from ls");
+        match node {
+            PublicNode::File(file) => {
+                let mut fs_file = File::create(entry).await?;
+                let mut stream = file.stream_content(0, store).await?.compat();
+                tokio::io::copy(&mut stream, &mut fs_file).await?;
+            }
+            PublicNode::Dir(dir) => export_dir_to(entry, dir, store).await?,
+        }
+    }
+
+    Ok(())
+}
+
+async fn import_dir_from(
+    path: &PathBuf,
+    directory: &mut Arc<PublicDirectory>,
+    store: &impl BlockStore,
+) -> Result<()> {
+    for entry in walkdir::WalkDir::new(path) {
+        match entry {
+            Ok(entry) => {
+                let path = entry.path();
+                let path_segments = parse_path(path)?;
+
+                tracing::info!(?path, "Importing volume entry");
+
+                if entry.file_type().is_file() {
+                    let fs_file = File::open(path).await?;
+                    let file_imported =
+                        PublicFile::with_content_streaming_rc(Utc::now(), fs_file.compat(), store)
+                            .await?;
+
+                    let file = directory
+                        .open_file_mut(&path_segments, Utc::now(), store)
+                        .await?;
+                    file.copy_content_from(&file_imported, Utc::now());
+                } else {
+                    directory.mkdir(&path_segments, Utc::now(), store).await?;
+                }
+            }
+            Err(e) => {
+                eprintln!("Skipping directory entry due to error: {e}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// converts a canonicalized relative path to a string, returning an error if
+/// the path is not valid unicode
+///
+/// this will also fail if the path is non canonical, i.e. contains `..` or `.`,
+/// or if the path components contain any windows or unix path separators
+fn parse_path(path: impl AsRef<Path>) -> Result<Vec<String>> {
+    path.as_ref()
+        .components()
+        .map(|c| {
+            let c = if let Component::Normal(x) = c {
+                x.to_str().context("invalid character in path")?
+            } else {
+                anyhow::bail!("invalid path component {:?}", c)
+            };
+            anyhow::ensure!(
+                !c.contains('/') && !c.contains('\\'),
+                "invalid path component {:?}",
+                c
+            );
+            Ok(c.to_string())
+        })
+        .collect::<Result<Vec<_>>>()
 }

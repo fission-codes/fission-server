@@ -22,18 +22,6 @@ jobs:
           - nightly
           # minimum version
           - "1.75"
-    services:
-      postgres:
-        image: postgres
-        env:
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
     steps:
       - name: Install Protoc
         uses: arduino/setup-protoc@v2
@@ -98,25 +86,17 @@ jobs:
         rust-toolchain:
           - stable
           - nightly
-    services:
-      postgres:
-        image: postgres
-        env:
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
     steps:
       - name: Install Protoc
         uses: arduino/setup-protoc@v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Start Docker Compose Services
+        run: docker-compose up -d
 
       - name: Install Environment Packages
         run: |
@@ -134,3 +114,6 @@ jobs:
 
       - name: Run Tests
         run: cargo test --all-features
+
+      - name: Stop Docker Compose Services
+        run: docker-compose down

@@ -4,7 +4,7 @@ use crate::{
     db::Pool,
     dns::{
         response_handler::Handle,
-        user_dids::{did_record_set, record_set, UserDidsAuthority},
+        user_dids::{did_record_set, record_set, UserRecordsAuthority},
     },
     settings::Dns,
 };
@@ -31,8 +31,8 @@ use tokio::sync::broadcast;
 pub struct DnsServer {
     /// The authority that handles the server's main `_did` DNS TXT record lookups
     pub server_did_authority: Arc<InMemoryAuthority>,
-    /// The authority that handles all user `_did` DNS TXT record lookups
-    pub user_did_authority: Arc<UserDidsAuthority>,
+    /// The authority that handles all user `_did` and `_dnslink` DNS TXT record lookups
+    pub user_did_authority: Arc<UserRecordsAuthority>,
     /// The catch-all authority that forwards requests to secondary nameservers
     pub forwarder: Arc<ForwardAuthority>,
     /// The authority handling the `.test` TLD for mocking in tests.
@@ -138,13 +138,14 @@ impl DnsServer {
         settings: &Dns,
         db_pool: Pool,
         default_soa: rdata::SOA,
-    ) -> Result<UserDidsAuthority> {
+    ) -> Result<UserRecordsAuthority> {
         let origin_name = Name::parse(&settings.origin, Some(&Name::root()))?;
-        Ok(UserDidsAuthority::new(
+        Ok(UserRecordsAuthority::new(
             db_pool,
             origin_name.into(),
             default_soa,
             settings.default_ttl,
+            settings.dnslink_ttl,
         ))
     }
 

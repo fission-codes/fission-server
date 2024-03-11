@@ -120,6 +120,16 @@ impl From<anyhow::Error> for AppError {
             Err(e) => e,
         };
 
+        let err = match err.downcast::<car_mirror::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
+        let err = match err.downcast::<cid::Error>() {
+            Ok(err) => return Self::from(err),
+            Err(e) => e,
+        };
+
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
@@ -178,6 +188,68 @@ impl From<QueryRejection> for AppError {
 impl From<ExtensionRejection> for AppError {
     fn from(value: ExtensionRejection) -> Self {
         Self::new(StatusCode::BAD_REQUEST, Some(value))
+    }
+}
+
+impl From<car_mirror::Error> for AppError {
+    fn from(err: car_mirror::Error) -> Self {
+        match err {
+            car_mirror::Error::BlockStoreError(err) => AppError::from(err),
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
+    }
+}
+
+impl From<&car_mirror::Error> for AppError {
+    fn from(err: &car_mirror::Error) -> Self {
+        match err {
+            car_mirror::Error::BlockStoreError(err) => AppError::from(err),
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
+    }
+}
+
+impl From<wnfs::common::BlockStoreError> for AppError {
+    fn from(err: wnfs::common::BlockStoreError) -> Self {
+        match err {
+            wnfs::common::BlockStoreError::CIDNotFound(_) => {
+                Self::new(StatusCode::NOT_FOUND, Some(err))
+            }
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
+    }
+}
+
+impl From<&wnfs::common::BlockStoreError> for AppError {
+    fn from(err: &wnfs::common::BlockStoreError) -> Self {
+        match err {
+            wnfs::common::BlockStoreError::CIDNotFound(_) => {
+                Self::new(StatusCode::NOT_FOUND, Some(err))
+            }
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
+    }
+}
+
+impl From<cid::Error> for AppError {
+    fn from(err: cid::Error) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, Some(err))
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        if let Some(err) = err.get_ref() {
+            if let Some(err) = err.downcast_ref::<car_mirror::Error>() {
+                return Self::from(err);
+            }
+
+            if let Some(err) = err.downcast_ref::<wnfs::common::BlockStoreError>() {
+                return Self::from(err);
+            }
+        }
+
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err))
     }
 }
 

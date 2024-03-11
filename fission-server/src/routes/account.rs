@@ -18,7 +18,6 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use axum::{
-    self,
     extract::{Path, State},
     http::StatusCode,
 };
@@ -126,10 +125,7 @@ pub async fn link_account<S: ServerSetup>(
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
         async move {
-            let account: AccountRecord = accounts::dsl::accounts
-                .filter(accounts::did.eq(account_did))
-                .first(conn)
-                .await?;
+            let account = AccountRecord::find_by_did(conn, account_did).await?;
 
             let email = account.email.clone().ok_or(AppError::new(
                 StatusCode::UNPROCESSABLE_ENTITY,

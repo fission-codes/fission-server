@@ -120,8 +120,11 @@ impl Display for FissionAbility {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::ed_did_key::EdDidKey;
+    use assert_matches::assert_matches;
     use libipld::{raw::RawCodec, Ipld};
     use rs_ucan::{
         builder::UcanBuilder,
@@ -130,13 +133,14 @@ mod tests {
         plugins::ucan::UcanResource,
         semantics::{ability::TopAbility, caveat::EmptyCaveat},
         store::{InMemoryStore, Store},
-        time,
+        time::{self, now},
         ucan::Ucan,
         DefaultFact,
     };
+    use testresult::TestResult;
 
-    #[test]
-    fn test_resource_can_be_delegated() -> Result<()> {
+    #[test_log::test]
+    fn test_resource_can_be_delegated() -> TestResult {
         let mut store = InMemoryStore::<RawCodec>::default();
         let did_verifier_map = DidVerifierMap::default();
 
@@ -148,7 +152,7 @@ mod tests {
             .claiming_capability(Capability::new(
                 UcanResource::AllProvable,
                 TopAbility,
-                EmptyCaveat {},
+                EmptyCaveat,
             ))
             .with_lifetime(60 * 60)
             .sign(alice)?;
@@ -160,7 +164,7 @@ mod tests {
             .claiming_capability(Capability::new(
                 Did("did:key:sth".to_string()),
                 FissionAbility::AccountInfo,
-                EmptyCaveat {},
+                EmptyCaveat,
             ))
             .witnessed_by(&root_ucan, None)
             .with_lifetime(60 * 60)
@@ -180,5 +184,109 @@ mod tests {
         assert_eq!(capabilities.len(), 1);
 
         Ok(())
+    }
+
+    #[ignore = "waiting for rs_ucan updates to support ucan:<did> scheme"]
+    #[test]
+    fn test_broken_ucan() -> Result<()> {
+        let issuer = &EdDidKey::generate();
+        let ucan: Ucan = UcanBuilder::default()
+            .for_audience(issuer)
+            .claiming_capability(Capability::new(
+                UcanResource::OwnedBy(issuer.did()),
+                TopAbility,
+                EmptyCaveat,
+            ))
+            .sign(issuer)?;
+
+        // This should work
+        assert_matches!(
+            Ucan::<DefaultFact, DefaultCapabilityParser>::from_str(&ucan.encode()?),
+            Ok(_)
+        );
+
+        Ok(())
+    }
+
+    #[test_log::test]
+    #[ignore]
+    fn test_powerbox_ucan_resource() -> TestResult {
+        let store = InMemoryStore::<RawCodec>::default();
+        let did_verifier_map = DidVerifierMap::default();
+
+        let server = &EdDidKey::generate();
+        let device = &EdDidKey::generate();
+
+        // Both of these UCANs just create ephemeral DIDs & delegate all of those
+        // DID's rights to the server
+        let (account_did, account_ucan) = server_create_resource(server)?;
+        let (dnslink_did, dnslink_ucan) = server_create_resource(server)?;
+
+        // This UCAN gives account access to the device
+        let device_ucan: Ucan = UcanBuilder::default()
+            .for_audience(device)
+            .claiming_capability(Capability::new(
+                UcanResource::AllProvable, // UcanResource::OwnedBy(account_did.to_string()),
+                TopAbility,
+                EmptyCaveat,
+            ))
+            .witnessed_by(&account_ucan, None)
+            .sign(server)?;
+
+        // This UCAN assigns access to the DNSLink to anyone who has access to the account
+        let account_assoc_ucan: Ucan = UcanBuilder::default()
+            .for_audience(&account_did)
+            .claiming_capability(Capability::new(
+                dnslink_did.clone(),
+                TopAbility,
+                EmptyCaveat,
+            ))
+            .witnessed_by(&dnslink_ucan, None)
+            .sign(server)?;
+
+        // The device should now be able to use the capability, because
+        // - it's got access to the account
+        // - the account got delegated rights to the DNSLink
+        let invocation: Ucan = UcanBuilder::default()
+            .for_audience(server)
+            .claiming_capability(Capability::new(
+                dnslink_did.clone(),
+                FissionAbility::AccountInfo,
+                EmptyCaveat,
+            ))
+            .witnessed_by(&device_ucan, None)
+            .witnessed_by(&account_assoc_ucan, None)
+            .sign(device)?;
+
+        let caps = invocation.capabilities_for(
+            &dnslink_did.clone(),
+            dnslink_did,
+            FissionAbility::AccountInfo,
+            now(),
+            &did_verifier_map,
+            &store,
+        )?;
+
+        tracing::debug!(?caps, "Capabilities");
+
+        assert!(!caps.is_empty());
+
+        Ok(())
+    }
+
+    fn server_create_resource(server: &EdDidKey) -> Result<(Did, Ucan)> {
+        let resource = &EdDidKey::generate();
+        let did = Did(resource.did());
+
+        let ucan = UcanBuilder::default()
+            .for_audience(server)
+            .claiming_capability(Capability::new(
+                UcanResource::AllProvable, // UcanResource::OwnedBy(resource.did()),
+                TopAbility,
+                EmptyCaveat,
+            ))
+            .sign(server)?;
+
+        Ok((did, ucan))
     }
 }
