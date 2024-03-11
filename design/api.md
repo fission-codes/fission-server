@@ -22,6 +22,8 @@ Today we use a REST API. In the future we may switch to an RPC-based design. Whe
 | PATCH | [`/api/v0/account/handle/:handle`](#patch-apiv0accounthandlehandle) | Change the handle that's associated with an account |
 | DELETE | [`/api/v0/account/handle`](#delete-apiv0accounthandle) | Disassociate an account's handle |
 | DELETE | [`/api/v0/account`](#delete-apiv0account) | Delete an account |
+| PUT | [`/api/v0/volume/push/:cid`](#put-apiv0volumepushcid) | Upload data into an account's volume using car-mirror |
+| POST | [`/api/v0/volume/pull/:cid`](#post-apiv0volumepullcid) | Download an account's volume using car-mirror |
 | GET | [`/dns-query`](#get-dns-query) | Perform a DNS-over-HTTPS request |
 | GET | [`/api/v0/capabilities`](#get-apiv0capabilities) | Get capabilities for a given account |
 | POST | [`/api/v0/revocations`](#post-apiv0revocations) | Revoke a UCAN |
@@ -193,6 +195,32 @@ Status 200 OK and `{ success: true }`, if successful.
 
 ---
 
+### PUT `/api/v0/volume/push/:cid`
+
+Upload some data into an account's volume using the car mirror protocol.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Response**:
+
+Defined by the [car mirror http protocol].
+
+---
+
+### POST `/api/v0/volume/pull/:cid`
+
+Delete an account.
+
+**Authorization**: UCAN with ability `account/manage`.
+
+**Request**: Defined by the [car mirror http protocol]. The `Content-Type` header needs to be set to `application/vnd.ipld.dag-cbor`.
+
+**Response**:
+
+A CAR file containing data from the requested IPLD DAG.
+
+---
+
 ### GET `/dns-query`
 
 Perform a DNS-over-HTTPS query.
@@ -320,3 +348,4 @@ Allows finding UCANs known to the server to give capabilities to the associated 
 [revocation validation]: https://github.com/ucan-wg/spec/tree/16ee2ce7815c60a0ea870283d3b53ddcb3043c02#66-revocation
 [google-doh]: https://developers.google.com/speed/public-dns/docs/doh/json
 [cloudflare-doh]: https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/
+[car mirror http protocol]: https://github.com/wnfs-wg/car-mirror-http-spec
