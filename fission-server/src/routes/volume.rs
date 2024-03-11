@@ -48,14 +48,13 @@ pub async fn put_volume_cid<S: ServerSetup>(
     body: BodyStream,
 ) -> AppResult<(StatusCode, DagCbor<PushResponse>)> {
     let cid = Cid::from_str(&cid_string)?;
+    let content_length = content_length_header.map(|TypedHeader(ContentLength(len))| len);
+
+    tracing::info!(content_length, "Parsed content length hint");
 
     let Did(did) = authority
         .get_capability(&state, FissionAbility::AccountManage)
         .await?;
-
-    let content_length = content_length_header.map(|TypedHeader(ContentLength(len))| len);
-
-    tracing::info!(content_length, "Parsed content length hint");
 
     let conn = &mut db::connect(&state.db_pool).await?;
     conn.transaction(|conn| {
