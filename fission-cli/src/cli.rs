@@ -172,7 +172,7 @@ impl Cli {
         setup_tracing(ansi);
 
         if let Some(key_file) = &self.key_file {
-            settings.key_file = key_file.clone();
+            settings.key_file.clone_from(key_file);
         }
 
         match &self.command {
