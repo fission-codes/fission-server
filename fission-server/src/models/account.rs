@@ -145,8 +145,10 @@ impl AccountRecord {
         &self,
         conn: &mut Conn<'_>,
         cid: &str,
-        _ipfs_db: &impl IpfsDatabase,
+        ipfs_db: &impl IpfsDatabase,
     ) -> Result<NewVolumeRecord> {
+        ipfs_db.pin_add(cid, true).await?;
+
         let volume = Volume::new(conn, cid).await?;
 
         diesel::update(accounts::dsl::accounts)
