@@ -192,26 +192,42 @@ impl From<ExtensionRejection> for AppError {
 }
 
 impl From<car_mirror::Error> for AppError {
-    fn from(value: car_mirror::Error) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    fn from(err: car_mirror::Error) -> Self {
+        match err {
+            car_mirror::Error::BlockStoreError(err) => AppError::from(err),
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
     }
 }
 
 impl From<&car_mirror::Error> for AppError {
-    fn from(value: &car_mirror::Error) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    fn from(err: &car_mirror::Error) -> Self {
+        match err {
+            car_mirror::Error::BlockStoreError(err) => AppError::from(err),
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
     }
 }
 
 impl From<wnfs::common::BlockStoreError> for AppError {
-    fn from(value: wnfs::common::BlockStoreError) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    fn from(err: wnfs::common::BlockStoreError) -> Self {
+        match err {
+            wnfs::common::BlockStoreError::CIDNotFound(_) => {
+                Self::new(StatusCode::NOT_FOUND, Some(err))
+            }
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
     }
 }
 
 impl From<&wnfs::common::BlockStoreError> for AppError {
-    fn from(value: &wnfs::common::BlockStoreError) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(value))
+    fn from(err: &wnfs::common::BlockStoreError) -> Self {
+        match err {
+            wnfs::common::BlockStoreError::CIDNotFound(_) => {
+                Self::new(StatusCode::NOT_FOUND, Some(err))
+            }
+            _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, Some(err)),
+        }
     }
 }
 
