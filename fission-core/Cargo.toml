@@ -35,7 +35,6 @@ linkme = "0.3.15"
 ed25519 = { workspace = true }
 ed25519-dalek = { workspace = true }
 libipld = "0.16.0"
-bs58 = "0.5.0"
 zeroize = { version = "1.6", features = ["zeroize_derive"] }
 signature = "2.1.0"
 tracing = "0.1.40"
