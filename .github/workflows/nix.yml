@@ -31,5 +31,5 @@ jobs:
           nix develop --show-trace -c irust --version
           nix develop --show-trace -c rustc --version
 
-      - name: Nix Homestar Build
+      - name: Nix Fission Server Build
         run: nix build .
