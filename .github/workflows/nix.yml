@@ -32,5 +32,4 @@ jobs:
           nix develop --show-trace -c rustc --version
 
       - name: Nix Homestar Build
-        if: ${{ github.event_name == 'push' }}
         run: nix build .
