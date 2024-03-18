@@ -1,0 +1,35 @@
+name: 📦 Nix Build
+
+on:
+  push:
+    branches: [main]
+
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v9
+
+      - name: Cache Magic
+        uses: DeterminateSystems/magic-nix-cache-action@v3
+
+      - name: Check Nix flake inputs
+        uses: DeterminateSystems/flake-checker-action@v5
+        with:
+          ignore-missing-flake-lock: false
+          fail-mode: true
+
+      - name: Nix Develop Check
+        run: |
+          nix develop --show-trace -c irust --version
+          nix develop --show-trace -c rustc --version
+
+      - name: Nix Fission Server Build
+        run: nix build .
