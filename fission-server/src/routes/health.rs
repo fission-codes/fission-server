@@ -54,7 +54,7 @@ pub async fn healthcheck<S: ServerSetup>(
 ) -> AppResult<(StatusCode, axum::Json<serde_json::Value>)> {
     let (database_connected, database_up_to_date) =
         if let Ok(mut conn) = db::connect(&state.db_pool).await {
-            let database_connected = conn.ping().await.is_ok();
+            let database_connected = conn.ping(&Default::default()).await.is_ok();
             let database_up_to_date = db::schema_version(&mut conn)
                 .await
                 .map(|version| version == latest_embedded_migration_version())

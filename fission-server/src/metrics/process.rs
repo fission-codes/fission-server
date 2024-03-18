@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Context, Result};
 use metrics::{describe_gauge, Unit};
 use std::time::Duration;
-use sysinfo::{get_current_pid, ProcessExt, System, SystemExt};
+use sysinfo::{get_current_pid, System};
 use tracing::{info, warn};
 
 /// Create and describe gauges for process metrics.

@@ -23,7 +23,7 @@ pub fn catch_panic(err: Box<dyn Any + Send + 'static>) -> Response {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::error::{parse_error, AppError};
+    use crate::error::parse_error;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
