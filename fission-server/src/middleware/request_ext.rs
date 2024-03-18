@@ -26,7 +26,6 @@ impl<T> RequestExt<T> for Request<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use axum::http::Request;
 
     #[test]
     fn parse_path() {

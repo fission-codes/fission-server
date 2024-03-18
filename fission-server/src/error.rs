@@ -301,9 +301,7 @@ pub async fn parse_error(response: Response) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{http::StatusCode, response::IntoResponse};
     use testresult::TestResult;
-    use ulid::Ulid;
 
     #[test]
     fn test_from_anyhow_error() {

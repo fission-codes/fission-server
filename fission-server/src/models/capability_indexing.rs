@@ -8,7 +8,7 @@ use crate::{
     models::revocation::find_revoked_subset,
 };
 use anyhow::{anyhow, Result};
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime};
 use diesel::{
     pg::Pg, Associations, ExpressionMethods, Identifiable, Insertable, OptionalExtension, QueryDsl,
     Queryable, Selectable, SelectableHelper,
@@ -260,11 +260,13 @@ impl NewIndexedUcan {
 
         let not_before = ucan
             .not_before()
-            .and_then(|seconds| NaiveDateTime::from_timestamp_millis((seconds * 1000) as i64));
+            .and_then(|seconds| DateTime::from_timestamp_millis((seconds * 1000) as i64))
+            .map(|dt| dt.naive_utc());
 
         let expires_at = ucan
             .expires_at()
-            .and_then(|seconds| NaiveDateTime::from_timestamp_millis((seconds * 1000) as i64));
+            .and_then(|seconds| DateTime::from_timestamp_millis((seconds * 1000) as i64))
+            .map(|dt| dt.naive_utc());
 
         let cid = canonical_cid(ucan)?;
 
@@ -343,9 +345,7 @@ mod tests {
         capabilities::{did::Did, fission::FissionAbility},
         ed_did_key::EdDidKey,
     };
-    use rs_ucan::{
-        builder::UcanBuilder, capability::Capability, semantics::caveat::EmptyCaveat, ucan::Ucan,
-    };
+    use rs_ucan::{builder::UcanBuilder, semantics::caveat::EmptyCaveat};
     use testresult::TestResult;
 
     #[test_log::test(tokio::test)]

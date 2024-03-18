@@ -203,7 +203,6 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use axum::routing::{get, Router};
-    use http::Request;
     use hyper::Body;
     use serde::Deserialize;
     use testresult::TestResult;

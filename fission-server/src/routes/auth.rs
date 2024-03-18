@@ -125,7 +125,7 @@ mod tests {
 
         let inserted_at = Local::now()
             .naive_utc()
-            .checked_sub_signed(Duration::hours(25))
+            .checked_sub_signed(Duration::try_hours(25).unwrap())
             .ok_or_else(|| anyhow!("Couldn't construct old date."))?;
 
         let record = EmailVerification {

@@ -131,7 +131,7 @@ mod tests {
         capability::{Capability, DefaultCapabilityParser},
         did_verifier::DidVerifierMap,
         plugins::ucan::UcanResource,
-        semantics::{ability::TopAbility, caveat::EmptyCaveat},
+        semantics::ability::TopAbility,
         store::{InMemoryStore, Store},
         time::{self, now},
         ucan::Ucan,
