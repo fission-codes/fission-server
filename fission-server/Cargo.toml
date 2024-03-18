@@ -99,7 +99,7 @@ tokio-util = { workspace = true }
 ## Tied to opentelemetry-otlp dependency
 tonic = { version = "0.9", features = ["tls", "transport"] }
 tower = "0.4"
-tower-http = { version = "0.4", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
+tower-http = { version = "0.5", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.20"
