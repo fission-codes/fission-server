@@ -52,10 +52,7 @@ macro_rules! header {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use axum::{
-        headers::{Header, HeaderMapExt},
-        http,
-    };
+    use axum::headers::{Header, HeaderMapExt};
 
     header!(XDummyId, XDUMMY_ID, "x-dummy-id");
 

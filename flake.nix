@@ -21,7 +21,7 @@
     flake-utils,
     rust-overlay,
     command-utils,
-  } @ inputs:
+  }:
     flake-utils.lib.eachDefaultSystem (system: let
       overlays = [(import rust-overlay)];
       pkgs = import nixpkgs {inherit system overlays;};
@@ -75,7 +75,7 @@
           "Rerun the server on every code change (Tip: use the RUST_LOG env variable)"
           "${cargo} watch -p fission-server -c -s '${cargo} run'";
       };
-    in rec {
+    in {
       devShells.default = pkgs.mkShell {
         name = "fission-server";
         nativeBuildInputs = with pkgs;
@@ -90,7 +90,6 @@
             postgresql
             pgcli
             direnv
-            self.packages.${system}.irust
             kubo
             command_menu
           ]
@@ -144,20 +143,6 @@
 
       formatter = pkgs.alejandra;
 
-      packages.irust = rustPlatform.buildRustPackage rec {
-        pname = "irust";
-        version = "1.65.1";
-        src = pkgs.fetchFromGitHub {
-          owner = "sigmaSd";
-          repo = "IRust";
-          rev = "v${version}";
-          sha256 = "sha256-AMOND5q1XzNhN5smVJp+2sGl/OqbxkGPGuPBCE48Hik=";
-        };
-
-        doCheck = false;
-        cargoSha256 = "sha256-A24O3p85mCRVZfDyyjQcQosj/4COGNnqiQK2a7nCP6I=";
-      };
-
       packages.default = rustPlatform.buildRustPackage {
         name = "fission-server";
         src = ./.;
@@ -175,11 +160,11 @@
             darwin.apple_sdk.frameworks.CoreFoundation
             darwin.apple_sdk.frameworks.Foundation
           ];
+        nativeBuildInputs = with pkgs; [pkg-config];
 
         doCheck = false;
 
-        OPENSSL_NO_VENDOR =
-          1; # see https://github.com/sfackler/rust-openssl/pull/2122
+        OPENSSL_NO_VENDOR = 1; # see https://github.com/sfackler/rust-openssl/pull/2122
       };
     });
 }

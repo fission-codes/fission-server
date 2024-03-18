@@ -42,21 +42,20 @@ axum = { workspace = true, features = ["headers", "ws"] }
 axum-macros = "0.3.7"
 axum-server = "0.5.1"
 axum-tracing-opentelemetry = { version = "0.13" }
-base64 = "0.21"
 base64-url = "2.0.0"
 bb8 = "0.8.0"
 bytes = "1.4.0"
 car-mirror = { workspace = true }
 quick_cache = "0.4.0"
 chrono = { workspace = true }
-cid = "0.10.1"
+cid = "0.10"
 clap = { version = "4.4.6", features = ["derive"] }
 config = { workspace = true }
-console-subscriber = { version = "0.1", default-features = false, features = [ "parking_lot" ], optional = true }
+console-subscriber = { version = "0.2", default-features = false, features = [ "parking_lot" ], optional = true }
 const_format = "0.2"
 dashmap = "5.5.0"
-diesel = { version = "2.0.4", features = ["postgres", "chrono", "serde_json"] }
-diesel-async = { version = "0.3", features = ["bb8", "postgres"] }
+diesel = { version = "2.0", features = ["postgres", "chrono", "serde_json"] }
+diesel-async = { version = "0.4", features = ["bb8", "postgres"] }
 diesel_migrations = "2.1"
 fission-core = { path = "../fission-core", version = "0.1" }
 futures = "0.3"
@@ -91,7 +90,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_path_to_error = "0.1"
 serde_with = "3.1"
-sysinfo = "0.29"
+sysinfo = "0.30"
 task-local-extensions = "0.1"
 thiserror = "1.0"
 time = { version = "0.3", features = ["serde-well-known", "serde-human-readable"] }
@@ -126,7 +125,6 @@ assert_matches = "1.5.0"
 blake3 = "1.4.1"
 test-log = { workspace = true }
 testresult = { workspace = true }
-wiremock = "0.5"
 
 [features]
 test_utils = []
@@ -137,3 +135,6 @@ default = []
 all-features = true
 # defines the configuration attribute `docsrs`
 rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["axum-macros"]

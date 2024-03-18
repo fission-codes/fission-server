@@ -55,7 +55,7 @@ mod tests {
     };
     use anyhow::Result;
     use assert_matches::assert_matches;
-    use fission_core::{capabilities::did::Did, ed_did_key::EdDidKey};
+    use fission_core::ed_did_key::EdDidKey;
     use http::Method;
     use rs_ucan::{
         builder::UcanBuilder,

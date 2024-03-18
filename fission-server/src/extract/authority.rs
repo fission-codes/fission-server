@@ -165,7 +165,6 @@ mod tests {
     use axum::{
         body::BoxBody,
         extract::State,
-        http::StatusCode,
         routing::{get, Router},
     };
     use fission_core::ed_did_key::EdDidKey;

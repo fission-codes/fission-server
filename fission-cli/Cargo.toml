@@ -63,7 +63,6 @@ once_cell = { version = "1.18", default-features = false }
 predicates = "3.1.0"
 testresult = { workspace = true }
 test-log = { workspace = true }
-assert_fs = "1.1.1"
 escargot = "0.5.8"
 websocket = { version = "0.27.0", default-features = false, features = ["sync"] }
 rexpect = { git = "https://github.com/rust-cli/rexpect", branch = "master" }

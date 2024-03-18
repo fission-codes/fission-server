@@ -9,7 +9,6 @@ use std::{
 };
 
 static SERVER_BIN: Lazy<CargoRun> = Lazy::new(|| {
-    // let temp = assert_fs::TempDir::new().expect("Couldn't create temporary directory");
     tracing::info!("Possibly starting a fission-server build");
     let cargo_run = escargot::CargoBuild::new()
         .bin("fission-server")
