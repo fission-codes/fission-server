@@ -28,8 +28,15 @@ jobs:
 
       - name: Nix Develop Check
         run: |
-          nix develop --show-trace -c irust --version
           nix develop --show-trace -c rustc --version
+          nix develop --show-trace -c cargo deny --version
+          nix develop --show-trace -c cargo dist --version
+          nix develop --show-trace -c cargo expand --version
+          nix develop --show-trace -c cargo outdated --version
+          nix develop --show-trace -c cargo sort --version
+          nix develop --show-trace -c cargo udeps --version
+          nix develop --show-trace -c cargo watch --version
+          nix develop --show-trace -c diesel --version
 
       - name: Nix Fission Server Build
         run: nix build .

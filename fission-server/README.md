@@ -406,8 +406,8 @@ sending traces to [Honeycomb][honeycomb] or a similar cloud service.
 
 ### Recommended Development Flow
 
-- We recommend leveraging [cargo-watch][cargo-watch],
-  [cargo-expand][cargo-expand] and [irust][irust] for Rust development.
+- We recommend leveraging [cargo-watch][cargo-watch] and
+  [cargo-expand][cargo-expand] for Rust development.
 - We recommend using [cargo-udeps][cargo-udeps] for removing unused dependencies
   before commits and pull-requests.
 
@@ -456,7 +456,6 @@ This project is licensed under the [Apache License 2.0](./LICENSE), or
 [direnv]:https://direnv.net/
 [honeycomb]: https://www.honeycomb.io/
 [influx-logfmt]: https://github.com/influxdata/influxdb_iox/tree/main/logfmt
-[irust]: https://github.com/sigmaSd/IRust
 [jaeger]: https://www.jaegertracing.io/
 [logfmt]: https://brandur.org/logfmt
 [nix]:https://nixos.org/download.html
