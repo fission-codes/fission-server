@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-23.11";
+    nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     command-utils.url = "github:expede/nix-command-utils";
 
@@ -16,6 +17,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-unstable,
     flake-utils,
     rust-overlay,
     command-utils,
@@ -23,6 +25,7 @@
     flake-utils.lib.eachDefaultSystem (system: let
       overlays = [(import rust-overlay)];
       pkgs = import nixpkgs {inherit system overlays;};
+      unstable = import nixpkgs-unstable {inherit system overlays;};
 
       rust-toolchain =
         pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -36,15 +39,17 @@
 
       format-pkgs = with pkgs; [nixpkgs-fmt alejandra];
 
-      cargo-installs = with pkgs; [
-        cargo-deny
-        cargo-expand
-        cargo-outdated
-        cargo-sort
-        cargo-udeps
-        cargo-watch
-        diesel-cli
-      ];
+      cargo-installs = with pkgs;
+        [
+          cargo-deny
+          cargo-expand
+          cargo-outdated
+          cargo-sort
+          cargo-udeps
+          cargo-watch
+          diesel-cli
+        ]
+        ++ [unstable.cargo-dist];
 
       pgctl = "${pkgs.postgresql}/bin/pg_ctl";
       ipfs = "${pkgs.kubo}/bin/ipfs";
