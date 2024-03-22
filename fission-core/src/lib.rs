@@ -2,10 +2,11 @@
 #![warn(missing_debug_implementations, missing_docs, rust_2018_idioms)]
 #![deny(unreachable_pub)]
 
-//! fission-core
+//! fission-core, shared code between the server & clients
 
 pub mod authority;
 pub mod capabilities;
+pub mod caps;
 pub mod common;
 pub mod dns;
 pub mod ed_did_key;

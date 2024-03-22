@@ -106,6 +106,7 @@ tracing-opentelemetry = "0.20"
 tracing-subscriber = { workspace = true }
 hickory-server = { version = "0.24", features = ["dns-over-rustls"] }
 rs-ucan = { workspace = true }
+ucan = { workspace = true }
 ulid = { version = "1.0", features = ["serde"] }
 url = { workspace = true }
 utoipa = { workspace = true }
