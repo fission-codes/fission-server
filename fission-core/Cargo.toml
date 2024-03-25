@@ -48,3 +48,7 @@ idna = "0.5.0"
 [dev-dependencies]
 test-log = { workspace = true }
 testresult = { workspace = true }
+
+[features]
+default = []
+test_utils = []

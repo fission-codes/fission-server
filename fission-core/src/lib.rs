@@ -12,4 +12,6 @@ pub mod dns;
 pub mod ed_did_key;
 pub mod revocation;
 pub mod serde_value_source;
+#[cfg(any(test, feature = "test_utils"))]
+pub mod test_utils;
 pub mod username;

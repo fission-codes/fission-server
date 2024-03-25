@@ -18,7 +18,6 @@ use fission_core::authority::{
 use http::{HeaderValue, StatusCode};
 use libipld::Ipld;
 use serde_json::json;
-use std::str::FromStr;
 use ucan::{
     ability::{arguments::Named, command::ToCommand, parse::ParseAbility},
     Delegation,

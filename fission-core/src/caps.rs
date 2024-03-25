@@ -175,52 +175,22 @@ impl Serialize for FissionAbility {
 #[cfg(test)]
 mod tests {
     use super::{CmdAccountCreate, CmdAccountManage};
-    use crate::caps::{CmdAccountInfo, FissionAbility};
+    use crate::{
+        caps::{CmdAccountInfo, FissionAbility},
+        test_utils::{delegate, setup_agents, varsig_header},
+    };
     use assert_matches::assert_matches;
-    use libipld::Ipld;
-    use rand::rngs::OsRng;
     use std::{collections::BTreeMap, convert::Infallible, time::SystemTime};
     use testresult::TestResult;
     use ucan::{
-        ability::{arguments::Named, command::ToCommand, parse::ParseAbility},
-        crypto::{
-            signature::Envelope,
-            varsig::{self, header::EdDsaHeader},
-        },
-        delegation::{self, store::Store},
-        did::preset::{Signer, Verifier},
+        delegation::{self},
         invocation::{
             self,
             agent::{InvokeError, Recipient},
             Agent,
         },
-        time::Timestamp,
         Invocation,
     };
-
-    fn varsig_header() -> varsig::header::Preset {
-        varsig::header::Preset::EdDsa(EdDsaHeader {
-            codec: varsig::encoding::Preset::DagCbor,
-        })
-    }
-
-    fn setup_agents<T: ToCommand + Clone + ParseAbility>(
-        delegation_store: &delegation::store::MemoryStore,
-    ) -> (
-        Agent<invocation::store::MemoryStore<T>, &'_ delegation::store::MemoryStore, T>,
-        delegation::Agent<&'_ delegation::store::MemoryStore>,
-    )
-    where
-        Named<Ipld>: From<T>,
-    {
-        let sk = ed25519_dalek::SigningKey::generate(&mut OsRng);
-        let did = Verifier::Key(ucan::did::key::Verifier::EdDsa(sk.verifying_key()));
-        let signer = Signer::Key(ucan::did::key::Signer::EdDsa(sk));
-        let inv_store = invocation::store::MemoryStore::<T>::default();
-        let invocation_agent = Agent::new(did.clone(), signer.clone(), inv_store, delegation_store);
-        let delegation_agent = delegation::Agent::new(did, signer, delegation_store);
-        (invocation_agent, delegation_agent)
-    }
 
     fn simulate_create_account<'a>(
         delegations: &'a delegation::store::MemoryStore,
@@ -308,29 +278,6 @@ mod tests {
             SystemTime::now(),
             varsig_header(),
         )
-    }
-
-    fn delegate(
-        delegations: &delegation::store::MemoryStore,
-        from: &delegation::Agent<&delegation::store::MemoryStore>,
-        to: &ucan::did::preset::Verifier,
-        subject: Option<&ucan::did::preset::Verifier>,
-        cmd: &str,
-    ) -> TestResult {
-        let ucan = from.delegate(
-            to.clone(),
-            subject.cloned(),
-            None,
-            cmd.to_string(),
-            Vec::new(),
-            BTreeMap::new(),
-            Timestamp::five_years_from_now(),
-            None,
-            SystemTime::now(),
-            varsig_header(),
-        )?;
-        delegations.insert(ucan.cid()?, ucan)?;
-        Ok(())
     }
 
     #[test_log::test]

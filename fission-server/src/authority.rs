@@ -2,22 +2,12 @@
 
 use crate::{
     app_state::AppState,
-    db,
-    db::Conn,
     error::{AppError, AppResult},
-    models::revocation::find_revoked_subset,
     setups::ServerSetup,
 };
-use anyhow::{bail, Result};
-use fission_core::{
-    capabilities::did::Did,
-    caps::FissionAbility,
-    revocation::{canonical_cid, Revocation},
-};
+use fission_core::{capabilities::did::Did, caps::FissionAbility, revocation::Revocation};
 use http::StatusCode;
-use libipld::{raw::RawCodec, Ipld};
-use serde::de::DeserializeOwned;
-use std::collections::BTreeSet;
+use libipld::Ipld;
 use ucan::{
     ability::{arguments::Named, command::ToCommand, parse::ParseAbility},
     crypto::signature::Envelope,
@@ -55,7 +45,7 @@ where
     ///
     /// The UCAN from the `authorization`'s canonical CID needs to match the revocation's
     /// CID.
-    pub fn validate_revocation(&self, revocation: &Revocation) -> AppResult<()> {
+    pub fn validate_revocation(&self, _revocation: &Revocation) -> AppResult<()> {
         // TODO
         Ok(())
     }
@@ -110,10 +100,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use fission_core::ed_did_key::EdDidKey;
-    use rs_ucan::builder::UcanBuilder;
     use testresult::TestResult;
 
     #[test_log::test(tokio::test)]

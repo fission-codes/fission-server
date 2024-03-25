@@ -6,11 +6,7 @@ use crate::{
 };
 use axum::extract::State;
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
-use fission_core::{
-    capabilities::{did::Did, indexing::IndexingAbility},
-    caps::CmdCapabilityFetch,
-    common::UcansResponse,
-};
+use fission_core::{capabilities::did::Did, caps::CmdCapabilityFetch, common::UcansResponse};
 use http::StatusCode;
 
 /// Return capabilities for a given DID
@@ -59,7 +55,7 @@ mod tests {
     };
     use anyhow::Result;
     use assert_matches::assert_matches;
-    use fission_core::ed_did_key::EdDidKey;
+    use fission_core::{capabilities::indexing::IndexingAbility, ed_did_key::EdDidKey};
     use http::Method;
     use rs_ucan::{
         builder::UcanBuilder,
