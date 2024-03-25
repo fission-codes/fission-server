@@ -24,7 +24,8 @@ test-log = { version = "0.2", default-features = false, features = ["trace"] }
 testresult = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "parking_lot", "registry"] }
 rs-ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "matheus23/skip-rsa-len-check" }
-ucan = { path = "../rs-ucan" }
+# ucan = { path = "../rs-ucan" }
+ucan = { git = "https://github.com/fission-codes/rs-ucan/", branch = "matheus23/v1.0-2" }
 url = { version = "2.3", features = ["serde"] }
 utoipa = { version = "3.1", features = ["uuid", "axum_extras"] }
 validator = { version = "0.16.0", features = ["derive"] }
