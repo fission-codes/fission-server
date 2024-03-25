@@ -97,7 +97,7 @@ time = { version = "0.3", features = ["serde-well-known", "serde-human-readable"
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 ## Tied to opentelemetry-otlp dependency
-tonic = { version = "0.9", features = ["tls", "transport"] }
+tonic = { version = "0.10", features = ["tls", "transport"] }
 tower = "0.4"
 tower-http = { version = "0.4", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "timeout", "trace", "util"] }
 tracing = "0.1"
