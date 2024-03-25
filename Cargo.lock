@@ -1502,6 +1502,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "erased-serde"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b73807008a3c7f171cc40312f37d95ef0396e048b5848d775f54b1a4dd4a0d3"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1621,7 +1630,7 @@ dependencies = [
  "data-encoding",
  "ed25519",
  "ed25519-dalek",
- "erased-serde",
+ "erased-serde 0.4.4",
  "hickory-proto",
  "idna 0.5.0",
  "libipld",
@@ -1672,7 +1681,7 @@ dependencies = [
  "diesel_migrations",
  "ed25519",
  "ed25519-dalek",
- "erased-serde",
+ "erased-serde 0.4.4",
  "fission-core",
  "futures",
  "futures-util",
@@ -4389,7 +4398,7 @@ dependencies = [
  "dyn-clone",
  "ed25519",
  "ed25519-dalek",
- "erased-serde",
+ "erased-serde 0.3.31",
  "jose-b64",
  "js-sys",
  "k256",
