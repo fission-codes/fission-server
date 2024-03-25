@@ -8,6 +8,7 @@ use axum::extract::State;
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
 use fission_core::{
     capabilities::{did::Did, indexing::IndexingAbility},
+    caps::CmdCapabilityFetch,
     common::UcansResponse,
 };
 use http::StatusCode;
@@ -31,7 +32,10 @@ pub async fn get_capabilities<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<UcansResponse>)> {
     let Did(audience_needle) = authority
-        .get_capability(&state, IndexingAbility::Fetch)
+        .get_capability(
+            &state,
+            fission_core::caps::FissionAbility::CapabilityFetch(CmdCapabilityFetch),
+        )
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;

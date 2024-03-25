@@ -1,6 +1,7 @@
 //! UCAN 1.0 capabilities used in the fission server (TODO: adjust docs once the upgrade is complete)
 
 use libipld::Ipld;
+use serde::Serialize;
 use ucan::ability::{
     arguments::Named,
     command::{Command, ToCommand},
@@ -8,7 +9,7 @@ use ucan::ability::{
 };
 
 /// All account-related abilities
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FissionAbility {
     /// Account creation
     AccountCreate(CmdAccountCreate),
@@ -25,14 +26,14 @@ pub enum FissionAbility {
 }
 
 /// All non-critical account abilities
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AccountNoncritical {
     /// Account information
     Info(CmdAccountInfo),
 }
 
 /// The `/account/create` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CmdAccountCreate;
 
 impl Command for CmdAccountCreate {
@@ -46,7 +47,7 @@ impl From<CmdAccountCreate> for FissionAbility {
 }
 
 /// The `/account/noncritical/info` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CmdAccountInfo;
 
 impl Command for CmdAccountInfo {
@@ -60,7 +61,7 @@ impl From<CmdAccountInfo> for FissionAbility {
 }
 
 /// The `/account/manage` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CmdAccountManage;
 
 impl Command for CmdAccountManage {
@@ -74,7 +75,7 @@ impl From<CmdAccountManage> for FissionAbility {
 }
 
 /// The `/account/delete` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CmdAccountDelete;
 
 impl Command for CmdAccountDelete {
@@ -88,7 +89,7 @@ impl From<CmdAccountDelete> for FissionAbility {
 }
 
 /// The `/account/link` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CmdAccountLink;
 
 impl Command for CmdAccountLink {
@@ -102,7 +103,7 @@ impl From<CmdAccountLink> for FissionAbility {
 }
 
 /// The `/capability/fetch` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CmdCapabilityFetch;
 
 impl Command for CmdCapabilityFetch {
@@ -158,6 +159,16 @@ impl From<FissionAbility> for Named<Ipld> {
     fn from(_: FissionAbility) -> Self {
         // No fields yet
         Named::new()
+    }
+}
+
+impl Serialize for FissionAbility {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let ipld: Named<Ipld> = self.clone().into();
+        ipld.serialize(serializer)
     }
 }
 

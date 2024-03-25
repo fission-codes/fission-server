@@ -24,7 +24,11 @@ use axum::{
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection, RunQueryDsl};
 use fission_core::{
-    capabilities::{did::Did, fission::FissionAbility},
+    capabilities::did::Did,
+    caps::{
+        AccountNoncritical, CmdAccountCreate, CmdAccountDelete, CmdAccountInfo, CmdAccountLink,
+        CmdAccountManage, FissionAbility,
+    },
     common::{
         Account, AccountCreationRequest, AccountLinkRequest, MemberNumberResponse, SuccessResponse,
     },
@@ -65,7 +69,7 @@ pub async fn create_account<S: ServerSetup>(
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, Some(e)))?;
 
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountCreate)
+        .get_capability(&state, FissionAbility::AccountCreate(CmdAccountCreate))
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -119,7 +123,7 @@ pub async fn link_account<S: ServerSetup>(
     Json(request): Json<AccountLinkRequest>,
 ) -> AppResult<(StatusCode, Json<AccountAndAuth>)> {
     let Did(agent_did) = authority
-        .get_capability(&state, FissionAbility::AccountLink)
+        .get_capability(&state, FissionAbility::AccountLink(CmdAccountLink))
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -176,7 +180,10 @@ pub async fn get_account<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountInfo)
+        .get_capability(
+            &state,
+            FissionAbility::AccountNoncritical(AccountNoncritical::Info(CmdAccountInfo)),
+        )
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -211,7 +218,10 @@ pub async fn get_member_number<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<MemberNumberResponse>)> {
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountInfo)
+        .get_capability(
+            &state,
+            FissionAbility::AccountNoncritical(AccountNoncritical::Info(CmdAccountInfo)),
+        )
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -254,7 +264,7 @@ pub async fn patch_username<S: ServerSetup>(
     Username::from_str(&username)?;
 
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountManage)
+        .get_capability(&state, FissionAbility::AccountManage(CmdAccountManage))
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -295,7 +305,7 @@ pub async fn patch_handle<S: ServerSetup>(
     handle.validate()?;
 
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountManage)
+        .get_capability(&state, FissionAbility::AccountManage(CmdAccountManage))
         .await?;
 
     // TODO Better APIs. It should be easier to ask our own DNS server some Qs
@@ -360,7 +370,7 @@ pub async fn delete_handle<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<SuccessResponse>)> {
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountManage)
+        .get_capability(&state, FissionAbility::AccountManage(CmdAccountManage))
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;
@@ -394,7 +404,7 @@ pub async fn delete_account<S: ServerSetup>(
     authority: Authority,
 ) -> AppResult<(StatusCode, Json<Account>)> {
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountDelete)
+        .get_capability(&state, FissionAbility::AccountDelete(CmdAccountDelete))
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;

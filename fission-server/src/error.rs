@@ -1,5 +1,7 @@
 //! Generic result/error resprentation(s).
 
+use std::{convert::Infallible, fmt::Debug};
+
 use axum::{
     extract::rejection::{ExtensionRejection, QueryRejection},
     http::StatusCode,
@@ -8,7 +10,13 @@ use axum::{
 };
 
 use http::header::ToStrError;
+use libipld::codec::Codec;
 use serde::{Deserialize, Serialize};
+use ucan::{
+    crypto::varsig,
+    did::Did,
+    invocation::{agent::ReceiveError, store::Store},
+};
 use ulid::Ulid;
 use utoipa::ToSchema;
 use validator::ValidationErrors;
@@ -188,6 +196,48 @@ impl From<QueryRejection> for AppError {
 impl From<ExtensionRejection> for AppError {
     fn from(value: ExtensionRejection) -> Self {
         Self::new(StatusCode::BAD_REQUEST, Some(value))
+    }
+}
+
+impl From<Infallible> for AppError {
+    fn from(the_impossible: Infallible) -> Self {
+        match the_impossible {}
+    }
+}
+
+impl<
+        T,
+        DID: Did + Debug,
+        D,
+        S: Store<T, DID, V, C>,
+        V: varsig::Header<C>,
+        C: Codec + TryFrom<u64> + Into<u64>,
+    > From<ReceiveError<T, DID, D, S, V, C>> for AppError
+where
+    <S as Store<T, DID, V, C>>::InvocationStoreError: Debug,
+{
+    fn from(err: ReceiveError<T, DID, D, S, V, C>) -> Self {
+        match err {
+            ReceiveError::DelegationNotFound(_) => {
+                AppError::new(StatusCode::FORBIDDEN, Some("Delegation not found"))
+            }
+            ReceiveError::EncodingError(_) => {
+                AppError::new(StatusCode::BAD_REQUEST, Some("UCANs invalidly encoded"))
+            }
+            ReceiveError::SigVerifyError(_) => AppError::new(
+                StatusCode::BAD_REQUEST,
+                Some("UCAN signature couldn't be verified"),
+            ),
+            ReceiveError::InvocationStoreError(_) => AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Some("Something went wrong in the invocation store"),
+            ),
+            ReceiveError::DelegationStoreError(_) => AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Some("Something went wrong in the delegation store"),
+            ),
+            ReceiveError::ValidationError(e) => AppError::new(StatusCode::FORBIDDEN, Some(e)),
+        }
     }
 }
 

@@ -1722,6 +1722,7 @@ dependencies = [
  "console-subscriber",
  "const_format",
  "dashmap",
+ "data-encoding",
  "diesel",
  "diesel-async",
  "diesel_migrations",
