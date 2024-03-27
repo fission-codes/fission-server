@@ -18,7 +18,10 @@ use bytes::Bytes;
 use car_mirror::messages::{PullRequest, PushResponse};
 use cid::Cid;
 use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
-use fission_core::capabilities::{did::Did, fission::FissionAbility};
+use fission_core::{
+    capabilities::did::Did,
+    caps::{CmdAccountManage, FissionAbility},
+};
 use futures_util::{Stream, TryStreamExt};
 use headers::ContentLength;
 use http::StatusCode;
@@ -53,7 +56,7 @@ pub async fn push_volume_cid<S: ServerSetup>(
     tracing::info!(content_length, "Parsed content length hint");
 
     let Did(did) = authority
-        .get_capability(&state, FissionAbility::AccountManage)
+        .get_capability(&state, FissionAbility::AccountManage(CmdAccountManage))
         .await?;
 
     let conn = &mut db::connect(&state.db_pool).await?;

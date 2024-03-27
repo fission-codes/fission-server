@@ -2,8 +2,7 @@
 //!
 //! Todo: this should be extracted to a separate crate and made available as a generic Axum UCAN extractor.
 
-use std::str::FromStr;
-
+use crate::{authority::Authority, error::AppError};
 use anyhow::anyhow;
 use axum::{
     async_trait,
@@ -12,18 +11,16 @@ use axum::{
     http::request::Parts,
     RequestPartsExt,
 };
-
+use fission_core::authority::{
+    self,
+    Error::{InvalidUcan, MissingCredentials},
+};
 use http::{HeaderValue, StatusCode};
-use rs_ucan::ucan::Ucan;
-use serde::de::DeserializeOwned;
+use libipld::Ipld;
 use serde_json::json;
-
-// 🧬
-
-use crate::{authority::Authority, error::AppError};
-use fission_core::{
-    authority,
-    authority::Error::{InvalidUcan, MissingCredentials},
+use ucan::{
+    ability::{arguments::Named, command::ToCommand, parse::ParseAbility},
+    Delegation,
 };
 
 /////////////////
@@ -32,7 +29,7 @@ use fission_core::{
 
 /// The `ucans` header
 #[derive(Debug)]
-pub struct UcansHeader(Vec<Ucan>);
+pub struct UcansHeader(Vec<Delegation>);
 
 impl Header for UcansHeader {
     fn name() -> &'static HeaderName {
@@ -45,11 +42,11 @@ impl Header for UcansHeader {
     where
         I: Iterator<Item = &'i http::HeaderValue>,
     {
-        let mut ucans = Vec::new();
+        let mut delegations = Vec::new();
 
         for header_value in header_values {
             let header_str = header_value.to_str().map_err(|_| {
-                tracing::warn!("Got non-string ucan request header: {:?}", header_value);
+                tracing::error!("Got non-string ucan request header: {:?}", header_value);
                 headers::Error::invalid()
             })?;
 
@@ -61,15 +58,31 @@ impl Header for UcansHeader {
                     // Per Postel's principle we're lenient in what we accept.
                     continue;
                 }
-                let ucan = Ucan::from_str(ucan_str).map_err(|e| {
-                    tracing::warn!(?ucan_str, "Got invalid ucan in ucan request header: {e}");
-                    headers::Error::invalid()
-                })?;
-                ucans.push(ucan);
+
+                let bytes = data_encoding::BASE64URL_NOPAD
+                    .decode(ucan_str.as_bytes())
+                    .map_err(|e| {
+                        tracing::error!(
+                            ?ucan_str,
+                            "Got invalid ucan in ucan request header: {e:#?}"
+                        );
+                        headers::Error::invalid()
+                    })?;
+
+                let delegation: Delegation =
+                    serde_ipld_dagcbor::from_slice(&bytes).map_err(|e| {
+                        tracing::error!(
+                            ?ucan_str,
+                            "Got invalid ucan in ucan request header, couldn't deserialize: {e:#?}"
+                        );
+                        headers::Error::invalid()
+                    })?;
+
+                delegations.push(delegation);
             }
         }
 
-        Ok(UcansHeader(ucans))
+        Ok(UcansHeader(delegations))
     }
 
     fn encode<E>(&self, values: &mut E)
@@ -79,14 +92,29 @@ impl Header for UcansHeader {
         let header_str = self
             .0
             .iter()
-            .map(|ucan| ucan.encode().expect("Failed to encode UCAN"))
+            .filter_map(|delegation| {
+                let result = (|| {
+                    let bytes = serde_ipld_dagcbor::to_vec(&delegation)?;
+                    let string = data_encoding::BASE64URL_NOPAD.encode(&bytes);
+                    Ok::<_, anyhow::Error>(string)
+                })();
+                if let Err(e) = &result {
+                    tracing::error!("Couldn't encode delegation in HTTP header: {e:#?}");
+                }
+                // This isn't ideal, but avoids panicking.
+                result.ok()
+            })
             .collect::<Vec<_>>()
             .join(" ");
 
-        let header_value = HeaderValue::from_str(&header_str)
-            .expect("Encoded UCAN into invalid HTTP header characters");
-
-        values.extend([header_value]);
+        match HeaderValue::from_str(&header_str) {
+            Err(e) => {
+                tracing::error!("Couldn't encode 'ucans' header as string: {e:#?}");
+            }
+            Ok(header_value) => {
+                values.extend([header_value]);
+            }
+        }
     }
 }
 
@@ -95,36 +123,43 @@ impl Header for UcansHeader {
 ////////////
 
 #[async_trait]
-impl<S, F> FromRequestParts<S> for Authority<F>
+impl<S, A> FromRequestParts<S> for Authority<A>
 where
     S: Send + Sync,
-    F: Clone + DeserializeOwned,
+    A: Clone + ToCommand + ParseAbility,
+    Named<Ipld>: From<A>,
 {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        do_extract_authority(parts).await.map_err(|err| match err {
-            authority::Error::InsufficientCapabilityScope { .. } => {
-                AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
+        do_extract_authority(parts).await.map_err(|err| {
+            tracing::error!(?err, "Couldn't extract UCANs from request");
+            match err {
+                authority::Error::InsufficientCapabilityScope { .. } => {
+                    AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
+                }
+                authority::Error::InvalidUcan { reason } => AppError::new(
+                    StatusCode::UNAUTHORIZED,
+                    Some(format!("Invalid UCAN: {reason}")),
+                ),
+                authority::Error::MissingCredentials => {
+                    AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
+                }
+                authority::Error::MissingProofs { proofs_needed } => AppError::new(
+                    StatusCode::NOT_EXTENDED,
+                    Some(json!({ "prf": proofs_needed })),
+                ),
             }
-            authority::Error::InvalidUcan { reason } => AppError::new(
-                StatusCode::UNAUTHORIZED,
-                Some(format!("Invalid UCAN: {reason}")),
-            ),
-            authority::Error::MissingCredentials => {
-                AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
-            }
-            authority::Error::MissingProofs { proofs_needed } => AppError::new(
-                StatusCode::NOT_EXTENDED,
-                Some(json!({ "prf": proofs_needed })),
-            ),
         })
     }
 }
 
-async fn do_extract_authority<F: Clone + DeserializeOwned>(
+async fn do_extract_authority<A: Clone + ToCommand + ParseAbility>(
     parts: &mut Parts,
-) -> Result<Authority<F>, authority::Error> {
+) -> Result<Authority<A>, authority::Error>
+where
+    Named<Ipld>: From<A>,
+{
     // Extract the token from the authorization header
     let TypedHeader(Authorization(bearer)) = parts
         .extract::<TypedHeader<Authorization<Bearer>>>()
@@ -134,22 +169,31 @@ async fn do_extract_authority<F: Clone + DeserializeOwned>(
             MissingCredentials
         })?;
 
-    let TypedHeader(UcansHeader(proofs)) = parts
+    let TypedHeader(UcansHeader(delegations)) = parts
         .extract::<TypedHeader<UcansHeader>>()
         .await
         .map_err(|e| {
-            tracing::error!(?e, "Error while looking up ucans header value");
-            MissingCredentials
-        })?;
+        tracing::error!(?e, "Error while looking up ucans header value");
+        MissingCredentials
+    })?;
 
     // Decode the UCAN
     let token = bearer.token();
-    let ucan = Ucan::try_from(token).map_err(|reason| InvalidUcan {
-        reason: anyhow!(reason),
+    let bytes = data_encoding::BASE64URL_NOPAD
+        .decode(token.as_bytes())
+        .map_err(|e| InvalidUcan {
+            reason: anyhow!("Couldn't parse base64 {token:?}: {e:#?}"),
+        })?;
+
+    let invocation = serde_ipld_dagcbor::from_slice(&bytes).map_err(|e| InvalidUcan {
+        reason: anyhow!("Couldn't decode invocation: {e:#?}"),
     })?;
 
     // Construct authority
-    Ok(Authority { ucan, proofs })
+    Ok(Authority {
+        invocation,
+        delegations,
+    })
 }
 
 ///////////
@@ -167,18 +211,37 @@ mod tests {
         extract::State,
         routing::{get, Router},
     };
-    use fission_core::ed_did_key::EdDidKey;
+    use fission_core::caps::{CmdCapabilityFetch, FissionAbility};
     use http::{Request, Response};
-    use rs_ucan::builder::UcanBuilder;
+    use rand::rngs::OsRng;
+    use std::collections::BTreeMap;
     use testresult::TestResult;
     use tower::ServiceExt;
+    use ucan::{
+        ability::crud::{self, Crud},
+        crypto::{
+            signature::Envelope,
+            varsig::{self, header::EdDsaHeader},
+            Nonce,
+        },
+        did::preset::{Signer, Verifier},
+        invocation::Payload,
+        Invocation,
+    };
 
     #[test_log::test(tokio::test)]
     async fn extract_authority() -> TestResult {
         let ctx = &TestContext::new().await?;
-        let issuer = &EdDidKey::generate();
+        let sk = ed25519_dalek::SigningKey::generate(&mut OsRng);
+        let did = Verifier::Key(ucan::did::key::Verifier::EdDsa(sk.verifying_key()));
+        let signer = Signer::Key(ucan::did::key::Signer::EdDsa(sk));
+
+        let server_did = Verifier::Key(ucan::did::key::Verifier::EdDsa(
+            ctx.server_did().verifying_key(),
+        ));
 
         // Test if request requires a valid UCAN
+        #[axum_macros::debug_handler]
         async fn authorized_get(
             _state: State<AppState<TestSetup>>,
             _authority: Authority,
@@ -191,12 +254,27 @@ mod tests {
             .with_state(ctx.app_state().clone());
 
         // If a valid UCAN is given
-        let ucan: Ucan = UcanBuilder::default()
-            .for_audience(ctx.server_did())
-            .with_lifetime(100)
-            .sign(issuer)?;
+        let ucan = Invocation::try_sign(
+            &signer,
+            varsig::header::Preset::EdDsa(EdDsaHeader {
+                codec: varsig::encoding::Preset::DagCbor,
+            }),
+            Payload {
+                subject: did.clone(),
+                issuer: did,
+                audience: Some(server_did),
+                ability: FissionAbility::CapabilityFetch(CmdCapabilityFetch),
+                proofs: Vec::new(),
+                cause: None,
+                metadata: BTreeMap::new(),
+                nonce: Nonce::generate_12(&mut Vec::new()),
+                issued_at: None,
+                expiration: None,
+            },
+        )?;
 
-        let ucan_string: String = ucan.encode()?;
+        let ucan_string: String =
+            data_encoding::BASE64URL_NOPAD.encode(&serde_ipld_dagcbor::to_vec(&ucan)?);
         let authed = app
             .clone()
             .oneshot(

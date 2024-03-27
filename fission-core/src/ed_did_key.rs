@@ -5,11 +5,12 @@ use ed25519::{
     pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey},
     Signature,
 };
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::thread_rng;
 use rs_ucan::crypto::SignerDid;
 use signature::Signer;
 use std::fmt::Display;
+use ucan::did::preset::{self, Verifier};
 use zeroize::ZeroizeOnDrop;
 
 /// An Ed25519 EdDSA `did:key:zM...` with the signing key stored in-memory and zeroized on drop
@@ -57,6 +58,19 @@ impl EdDidKey {
     /// Similarly to `Self::did()`, returns the DID public key string, but without cloning.
     pub fn did_as_str(&self) -> &str {
         &self.did_key_string
+    }
+
+    /// Returns this DID's public key
+    pub fn verifying_key(&self) -> VerifyingKey {
+        self.signing_key.verifying_key()
+    }
+
+    /// TODO remove once we've moved fully to rs-ucan 1.0
+    pub fn to_ucan_interop(&self) -> (preset::Signer, Verifier) {
+        (
+            preset::Signer::Key(ucan::did::key::Signer::EdDsa(self.signing_key.clone())),
+            preset::Verifier::Key(ucan::did::key::Verifier::EdDsa(self.verifying_key())),
+        )
     }
 }
 
