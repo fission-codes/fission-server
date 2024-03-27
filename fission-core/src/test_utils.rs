@@ -5,10 +5,7 @@ use rand::rngs::OsRng;
 use std::{collections::BTreeMap, time::SystemTime};
 use ucan::{
     ability::{arguments::Named, command::ToCommand, parse::ParseAbility},
-    crypto::{
-        signature::Envelope,
-        varsig::{self, header::EdDsaHeader},
-    },
+    crypto::varsig::{self, header::EdDsaHeader},
     delegation::{self, store::Store},
     did::preset::{Signer, Verifier},
     invocation::{self, Agent},
@@ -69,7 +66,7 @@ pub fn create_delegation(
 ) -> Result<Delegation> {
     let ucan = from.delegate(
         to.clone(),
-        subject.cloned(),
+        subject,
         None,
         cmd.to_string(),
         Vec::new(),
@@ -92,6 +89,6 @@ pub fn delegate(
     cmd: &str,
 ) -> Result<()> {
     let ucan = create_delegation(from, to, subject, cmd)?;
-    delegations.insert(ucan.cid()?, ucan)?;
+    delegations.insert(ucan)?;
     Ok(())
 }

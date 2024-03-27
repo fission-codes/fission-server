@@ -150,6 +150,10 @@ impl ParseAbility for FissionAbility {
             CmdAccountInfo::COMMAND => Ok(FissionAbility::AccountNoncritical(
                 AccountNoncritical::Info(CmdAccountInfo),
             )),
+            CmdAccountLink::COMMAND => Ok(FissionAbility::AccountLink(CmdAccountLink)),
+            CmdAccountDelete::COMMAND => Ok(FissionAbility::AccountDelete(CmdAccountDelete)),
+            CmdAccountManage::COMMAND => Ok(FissionAbility::AccountManage(CmdAccountManage)),
+            CmdCapabilityFetch::COMMAND => Ok(FissionAbility::CapabilityFetch(CmdCapabilityFetch)),
             _ => Err(ParseAbilityError::UnknownCommand(cmd.to_string())),
         }
     }

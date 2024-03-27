@@ -132,21 +132,24 @@ where
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        do_extract_authority(parts).await.map_err(|err| match err {
-            authority::Error::InsufficientCapabilityScope { .. } => {
-                AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
+        do_extract_authority(parts).await.map_err(|err| {
+            tracing::error!(?err, "Couldn't extract UCANs from request");
+            match err {
+                authority::Error::InsufficientCapabilityScope { .. } => {
+                    AppError::new(StatusCode::FORBIDDEN, Some("Insufficient capability scope"))
+                }
+                authority::Error::InvalidUcan { reason } => AppError::new(
+                    StatusCode::UNAUTHORIZED,
+                    Some(format!("Invalid UCAN: {reason}")),
+                ),
+                authority::Error::MissingCredentials => {
+                    AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
+                }
+                authority::Error::MissingProofs { proofs_needed } => AppError::new(
+                    StatusCode::NOT_EXTENDED,
+                    Some(json!({ "prf": proofs_needed })),
+                ),
             }
-            authority::Error::InvalidUcan { reason } => AppError::new(
-                StatusCode::UNAUTHORIZED,
-                Some(format!("Invalid UCAN: {reason}")),
-            ),
-            authority::Error::MissingCredentials => {
-                AppError::new(StatusCode::UNAUTHORIZED, Some("Missing credentials"))
-            }
-            authority::Error::MissingProofs { proofs_needed } => AppError::new(
-                StatusCode::NOT_EXTENDED,
-                Some(json!({ "prf": proofs_needed })),
-            ),
         })
     }
 }
@@ -208,6 +211,7 @@ mod tests {
         extract::State,
         routing::{get, Router},
     };
+    use fission_core::caps::{CmdCapabilityFetch, FissionAbility};
     use http::{Request, Response};
     use rand::rngs::OsRng;
     use std::collections::BTreeMap;
@@ -259,10 +263,7 @@ mod tests {
                 subject: did.clone(),
                 issuer: did,
                 audience: Some(server_did),
-                ability: Crud::Read(crud::read::Read {
-                    path: None,
-                    args: None,
-                }),
+                ability: FissionAbility::CapabilityFetch(CmdCapabilityFetch),
                 proofs: Vec::new(),
                 cause: None,
                 metadata: BTreeMap::new(),

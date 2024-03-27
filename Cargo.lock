@@ -5876,7 +5876,6 @@ checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
 [[package]]
 name = "ucan"
 version = "0.2.0"
-source = "git+https://github.com/fission-codes/rs-ucan/?branch=matheus23/v1.0-2#551ef37af247a79128388bd7bfc871f5742692de"
 dependencies = [
  "base64 0.21.7",
  "blst",

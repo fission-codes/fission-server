@@ -10,7 +10,6 @@ use http::StatusCode;
 use libipld::Ipld;
 use ucan::{
     ability::{arguments::Named, command::ToCommand, parse::ParseAbility},
-    crypto::signature::Envelope,
     delegation::{self, store::Store},
     invocation, Delegation, Invocation,
 };
@@ -73,7 +72,7 @@ where
 
         let delegation_store = delegation::store::MemoryStore::new();
         for delegation in delegations {
-            delegation_store.insert(delegation.cid()?, delegation)?;
+            delegation_store.insert(delegation)?;
         }
         let (signer, did) = app_state.server_keypair.to_ucan_interop();
         let agent = invocation::Agent::<_, _, A>::new(
@@ -100,10 +99,87 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::Authority;
+    use crate::test_utils::test_context::TestContext;
+    use assert_matches::assert_matches;
+    use fission_core::{
+        caps::{CmdAccountCreate, CmdCapabilityFetch, FissionAbility},
+        test_utils::{setup_invocation_agent, varsig_header},
+    };
+    use std::{collections::BTreeMap, time::SystemTime};
     use testresult::TestResult;
 
     #[test_log::test(tokio::test)]
     async fn smoke_test() -> TestResult {
-        todo!()
+        let ctx = &TestContext::new().await?;
+        let (_, server_did) = ctx.server_did().to_ucan_interop();
+        // create an invocation agent
+        let agent = setup_invocation_agent::<FissionAbility>();
+
+        // create an invocation
+        let invocation = agent.invoke(
+            Some(server_did),
+            agent.did.clone(),
+            FissionAbility::CapabilityFetch(CmdCapabilityFetch),
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+            SystemTime::now(),
+            varsig_header(),
+        )?;
+
+        // create an Authority with only that invocation
+        let authority = Authority {
+            invocation,
+            delegations: Vec::new(),
+        };
+
+        // verify that get_capability works
+        let result = authority
+            .get_capability(
+                ctx.app_state(),
+                FissionAbility::CapabilityFetch(CmdCapabilityFetch),
+            )
+            .await;
+
+        assert_matches!(result, Ok(_));
+
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_get_mismatching_capability_fails() -> TestResult {
+        let ctx = &TestContext::new().await?;
+        let (_, server_did) = ctx.server_did().to_ucan_interop();
+        let agent = setup_invocation_agent::<FissionAbility>();
+        let invocation = agent.invoke(
+            Some(server_did),
+            agent.did.clone(),
+            FissionAbility::CapabilityFetch(CmdCapabilityFetch),
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+            SystemTime::now(),
+            varsig_header(),
+        )?;
+
+        let authority = Authority {
+            invocation,
+            delegations: Vec::new(),
+        };
+
+        // we're using a different capability here
+        let result = authority
+            .get_capability(
+                ctx.app_state(),
+                FissionAbility::AccountCreate(CmdAccountCreate),
+            )
+            .await;
+
+        assert_matches!(result, Err(_));
+
+        Ok(())
     }
 }

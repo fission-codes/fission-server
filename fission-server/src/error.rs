@@ -205,16 +205,19 @@ impl From<Infallible> for AppError {
     }
 }
 
-impl<
-        T,
-        DID: Did + Debug,
-        D,
-        S: Store<T, DID, V, C>,
-        V: varsig::Header<C>,
-        C: Codec + TryFrom<u64> + Into<u64>,
-    > From<ReceiveError<T, DID, D, S, V, C>> for AppError
-where
-    <S as Store<T, DID, V, C>>::InvocationStoreError: Debug,
+impl<E: Into<AppError>> From<ucan::delegation::store::DelegationStoreError<E>> for AppError {
+    fn from(err: ucan::delegation::store::DelegationStoreError<E>) -> Self {
+        match err {
+            ucan::delegation::store::DelegationStoreError::CannotMakeCid(e) => {
+                AppError::new(StatusCode::INTERNAL_SERVER_ERROR, Some(e))
+            }
+            ucan::delegation::store::DelegationStoreError::StoreError(e) => e.into(),
+        }
+    }
+}
+
+impl<T, DID: Did + Debug, D, S: Store<T, DID, V, C>, V: varsig::Header<C>, C: Codec>
+    From<ReceiveError<T, DID, D, S, V, C>> for AppError
 {
     fn from(err: ReceiveError<T, DID, D, S, V, C>) -> Self {
         match err {
